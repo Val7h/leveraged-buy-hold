@@ -9,6 +9,39 @@ import { formatCurrency, formatPercent } from "@/lib/utils";
 
 const DEFAULT_TICKERS = "NEE,SO,D,DUK,JNJ,PG,KO,PEP,MCD,T,VZ,O,MAIN,AFL,WM,MO,ABT,WEC,AEP,BRK-B";
 
+const SHARPE_PRESETS: Record<string, { label: string; flag: string; tickers: string }> = {
+  // ── EUA Defensivos ────────────────────────────────────────────────────────
+  defensivas:    { label: "Defensivas EUA",    flag: "🇺🇸", tickers: "NEE,SO,D,DUK,JNJ,PG,KO,PEP,MCD,T,VZ,O,MAIN,AFL,WM,MO,ABT,WEC,AEP,BRK-B" },
+  utilities:     { label: "Utilities EUA",     flag: "🇺🇸", tickers: "NEE,SO,D,DUK,AEP,WEC,ES,EXC,PCG,ETR,AWK,CMS,NI,OGE,PNW" },
+  healthcare:    { label: "Healthcare",        flag: "🇺🇸", tickers: "JNJ,ABT,MDT,BMY,PFE,MRK,UNH,CVS,CI,ELV,HCA,ABBV,AMGN,GILD,BIIB" },
+  consumo:       { label: "Consumo Básico",    flag: "🇺🇸", tickers: "PG,KO,PEP,MO,CL,GIS,K,CPB,HRL,SJM,CAG,MKC,HSY,CLX,CHD" },
+  dividendos:    { label: "Dividendos EUA",    flag: "🇺🇸", tickers: "O,MAIN,STAG,MO,T,VZ,AFL,BEN,WPC,NNN,ADC,IIPR,GAIN,HTGC,ARCC" },
+  reits:         { label: "REITs",             flag: "🏢",  tickers: "O,WPC,NNN,STAG,ADC,VICI,AMT,CCI,EQIX,PLD,SPG,PSA,EXR,MAA,UDR" },
+  // ── EUA Tech & Growth ─────────────────────────────────────────────────────
+  bigtech:       { label: "Big Tech",          flag: "💻",  tickers: "AAPL,MSFT,GOOGL,AMZN,META,NVDA,TSLA,NFLX,ORCL,ADBE" },
+  tech_mid:      { label: "Tech Mid Cap",      flag: "💻",  tickers: "CRM,NOW,SNOW,DDOG,ZS,CRWD,NET,PLTR,ANET,MRVL,AMD,QCOM,TXN,AVGO,KLAC" },
+  fintech:       { label: "Fintech",           flag: "💳",  tickers: "V,MA,PYPL,SQ,FIS,FISV,GPN,AFRM,SOFI,NU" },
+  industrials:   { label: "Industriais EUA",   flag: "🏭",  tickers: "CAT,DE,HON,MMM,GE,RTX,LMT,NOC,BA,UPS,FDX,CSX,UNP,NSC,WAB" },
+  // ── ETFs ──────────────────────────────────────────────────────────────────
+  etfs_amplos:   { label: "ETFs Amplos",       flag: "📊",  tickers: "SPY,QQQ,IWM,DIA,VTI,VOO,IVV,RSP,MDY,IJH" },
+  etfs_setor:    { label: "ETFs Setoriais",    flag: "📊",  tickers: "XLK,XLF,XLE,XLV,XLU,XLI,XLB,XLP,XLY,XLRE,XLC,XBI,GDX,SLX,KRE" },
+  etfs_global:   { label: "ETFs Globais",      flag: "🌍",  tickers: "VEA,VWO,EEM,EWJ,EWZ,MCHI,INDA,IEMG,VGK,EFA,AGG,BND,TLT,GLD,SLV" },
+  etfs_tematico: { label: "ETFs Temáticos",    flag: "🚀",  tickers: "ARKK,ARKG,ARKF,ARKQ,ARKW,BOTZ,ROBO,ICLN,QCLN,LIT,DRIV,JETS,MSOS,BLOK,METV" },
+  etfs_lev:      { label: "ETFs Alavancados",  flag: "⚡",  tickers: "TQQQ,UPRO,SPXL,TECL,SOXL,UDOW,TNA,FAS,LABU,CURE" },
+  // ── Cripto ────────────────────────────────────────────────────────────────
+  cripto_acoes:  { label: "Cripto (Ações)",    flag: "₿",   tickers: "COIN,MSTR,RIOT,MARA,CLSK,CIFR,HUT,BTBT,BTDR,IREN" },
+  tokenized:     { label: "Tokenizadas Bitget",flag: "🪙",  tickers: "TSLAONUSDT,NVDAONUSDT,AAPLONUSDT,AMZNONUSDT,GOOGLONUSDT,MSFTONUSDT,METAONUSDT" },
+  // ── B3 ────────────────────────────────────────────────────────────────────
+  b3_def:        { label: "B3 Defensivas",     flag: "🇧🇷", tickers: "TAEE11.SA,EGIE3.SA,CPFE3.SA,ENGI11.SA,TRPL4.SA,VIVT3.SA,TIMS3.SA,SAPR11.SA,SBSP3.SA,CPLE6.SA" },
+  b3_bancos:     { label: "B3 Bancos",         flag: "🇧🇷", tickers: "ITUB4.SA,BBDC4.SA,BBAS3.SA,SANB11.SA,BPAC11.SA,ITSA4.SA,BBSE3.SA,WIZS3.SA" },
+  b3_cresc:      { label: "B3 Crescimento",    flag: "🇧🇷", tickers: "WEGE3.SA,RENT3.SA,RDOR3.SA,RADL3.SA,TOTS3.SA,INTB3.SA,EMBR3.SA,PRIO3.SA,HAPV3.SA" },
+  b3_comod:      { label: "B3 Commodities",    flag: "🇧🇷", tickers: "VALE3.SA,PETR4.SA,GGBR4.SA,CSNA3.SA,USIM5.SA,SUZB3.SA,KLBN11.SA,JBSS3.SA,BRFS3.SA,SMTO3.SA" },
+  b3_energia:    { label: "B3 Energia",        flag: "🇧🇷", tickers: "TAEE11.SA,EGIE3.SA,CPFE3.SA,ENGI11.SA,TRPL4.SA,CMIG4.SA,ELET3.SA,EQTL3.SA,NEOE3.SA,AURE3.SA" },
+  b3_top20:      { label: "B3 Top 20",         flag: "🇧🇷", tickers: "PETR4.SA,VALE3.SA,ITUB4.SA,BBDC4.SA,ABEV3.SA,WEGE3.SA,BBAS3.SA,RDOR3.SA,RENT3.SA,HAPV3.SA,BPAC11.SA,SUZB3.SA,RADL3.SA,EGIE3.SA,TAEE11.SA,KLBN11.SA,EQTL3.SA,VIVT3.SA,FLRY3.SA,SANB11.SA" },
+  // ── Mix ───────────────────────────────────────────────────────────────────
+  global_mix:    { label: "Global Mix",        flag: "🌐",  tickers: "AAPL,JNJ,NEE,KO,O,MSFT,PG,VZ,T,ABT,MCD,PEP,MMM,SO,WEC" },
+};
+
 function sharpeColor(v: number): string {
   if (v < 0)  return "text-danger";
   if (v < 1)  return "text-warning";
@@ -107,6 +140,23 @@ export default function SharpeComparePage() {
               />
             </div>
           </div>
+
+          {/* Preset categories */}
+          <div className="mb-3">
+            <p className="text-xs text-text-muted mb-2">Categorias pré-definidas:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(SHARPE_PRESETS).map(([key, val]) => (
+                <button
+                  key={key}
+                  onClick={() => setTickers(val.tickers)}
+                  className="text-xs px-2.5 py-1 rounded-full border border-border hover:border-primary/50 hover:text-primary text-text-secondary transition-colors whitespace-nowrap"
+                >
+                  <span className="mr-1">{val.flag}</span>{val.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
             <div>
               <label className="label">Início</label>
