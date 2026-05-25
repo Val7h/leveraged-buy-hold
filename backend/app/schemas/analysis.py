@@ -42,7 +42,39 @@ class BacktestResult(BaseModel):
     leverage_curve: List[Dict[str, Any]]
     metrics: List[BacktestPeriodMetrics]
     crisis_analysis: List[Dict[str, Any]]
+    price_series: List[Dict[str, Any]] = []
+    trades: List[Dict[str, Any]] = []
     completed_at: datetime
+
+
+class SharpeCompareRequest(BaseModel):
+    tickers: str                  # comma-separated, e.g. "NEE,SO,JNJ"
+    start: str = "2015-01-01"
+    end: Optional[str] = None
+    leverage: float = 3.0
+    capital: float = 10_000.0
+    risk_free: float = 0.05       # annual, e.g. 0.05 = 5%
+
+
+class SharpeCompareItem(BaseModel):
+    ticker: str
+    retorno_total: float
+    retorno_anualizado: float
+    volatilidade: float
+    sharpe: float
+    max_drawdown: float
+    beta: float
+    final_equity: float
+    margin_call: bool
+    margin_call_date: Optional[str] = None
+
+
+class SharpeCompareResult(BaseModel):
+    items: List[SharpeCompareItem]
+    benchmark: str
+    leverage: float
+    period: str
+    computed_at: str
 
 
 class SimulationRequest(BaseModel):

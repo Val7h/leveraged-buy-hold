@@ -176,13 +176,51 @@ export interface BacktestMetrics {
   initial_value: number;
 }
 
+export type TradeMarkerType =
+  | "INICIAL"
+  | "APORTE"
+  | "REBALANCE_ALTA"
+  | "REBALANCE_BAIXA"
+  | "MARGIN_CALL";
+
+export interface TradeMarker {
+  date: string;
+  type: TradeMarkerType;
+  price: number;
+  leverage: number;
+  details: string;
+}
+
 export interface BacktestResult {
   equity_curves: Record<string, TimeSeriesPoint[]>;
   drawdown_curves: Record<string, TimeSeriesPoint[]>;
   leverage_curve: Array<{ date: string; leverage: number }>;
   metrics: BacktestMetrics[];
   crisis_analysis: Array<Record<string, unknown>>;
+  price_series?: Array<{ date: string; value: number }>;
+  trades?: TradeMarker[];
   completed_at: string;
+}
+
+export interface SharpeCompareItem {
+  ticker: string;
+  retorno_total: number;
+  retorno_anualizado: number;
+  volatilidade: number;
+  sharpe: number;
+  max_drawdown: number;
+  beta: number;
+  final_equity: number;
+  margin_call: boolean;
+  margin_call_date?: string;
+}
+
+export interface SharpeCompareResult {
+  items: SharpeCompareItem[];
+  benchmark: string;
+  leverage: number;
+  period: string;
+  computed_at: string;
 }
 
 export interface SimulationScenario {

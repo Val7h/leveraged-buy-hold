@@ -82,6 +82,14 @@ export const backtestApi = {
     monthly_contribution: number;
     risk_profile: string;
   }) => api.post("/api/v1/backtest", data),
+  sharpeCompare: (data: {
+    tickers: string;
+    start?: string;
+    end?: string;
+    leverage?: number;
+    capital?: number;
+    risk_free?: number;
+  }) => api.post("/api/v1/backtest/sharpe-compare", data),
 };
 
 // Simulator

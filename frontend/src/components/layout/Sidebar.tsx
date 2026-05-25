@@ -6,7 +6,7 @@ import { useSignalStore } from "@/store/signalStore";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Briefcase, Search, FlaskConical,
-  TrendingUp, Bell, LogOut, ChevronRight, Bookmark, History,
+  TrendingUp, Bell, LogOut, ChevronRight, Bookmark, History, BarChart3,
 } from "lucide-react";
 
 const navItems = [
@@ -15,9 +15,10 @@ const navItems = [
   { href: "/portfolio",  label: "Carteira",   icon: Briefcase,       badge: null },
   { href: "/history",    label: "Histórico",  icon: History,         badge: null },
   { href: "/assets",     label: "Screening",  icon: Search,          badge: null },
-  { href: "/backtest",   label: "Backtest",   icon: FlaskConical,    badge: null },
-  { href: "/simulator",  label: "Simulador",  icon: TrendingUp,      badge: null },
-  { href: "/alerts",     label: "Alertas",    icon: Bell,            badge: null },
+  { href: "/backtest",       label: "Backtest",   icon: FlaskConical, badge: null },
+  { href: "/sharpe-compare", label: "Sharpe",     icon: BarChart3,    badge: null },
+  { href: "/simulator",      label: "Simulador",  icon: TrendingUp,   badge: null },
+  { href: "/alerts",         label: "Alertas",    icon: Bell,         badge: null },
 ];
 
 export default function Sidebar() {

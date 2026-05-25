@@ -4,6 +4,7 @@ import AppShell from "@/components/layout/AppShell";
 import EquityCurve from "@/components/charts/EquityCurve";
 import DrawdownChart from "@/components/charts/DrawdownChart";
 import LeverageChart from "@/components/charts/LeverageChart";
+import PriceTradeChart from "@/components/charts/PriceTradeChart";
 import { backtestApi } from "@/lib/api";
 import type { BacktestResult, BacktestMetrics } from "@/types";
 import { FlaskConical, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
@@ -137,6 +138,15 @@ export default function BacktestPage() {
               <DrawdownChart data={result.drawdown_curves} />
               <LeverageChart data={result.leverage_curve} title="Alavancagem — Estratégia Adaptativa" />
             </div>
+
+            {/* Price chart with trade markers */}
+            {result.price_series && result.price_series.length > 0 && (
+              <PriceTradeChart
+                priceData={result.price_series}
+                trades={result.trades ?? []}
+                ticker={tickers.split(",")[0].trim().toUpperCase()}
+              />
+            )}
 
             {/* Crisis analysis */}
             {(result.crisis_analysis?.length ?? 0) > 0 && (
