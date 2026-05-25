@@ -148,14 +148,54 @@ _TICKER_PARAMS: dict = {
     # Market proxy
     "SPY": (0.10, 0.15), "QQQ": (0.14, 0.20), "IWM": (0.09, 0.20),
     "SHY": (0.03, 0.02),
-    # B3 — ações brasileiras (retornos em BRL, volatilidade maior)
-    "PETR4": (0.12, 0.38), "VALE3": (0.11, 0.35), "ITUB4": (0.13, 0.28),
-    "BBDC4": (0.10, 0.28), "ABEV3": (0.08, 0.22), "WEGE3": (0.18, 0.28),
-    "RENT3": (0.15, 0.30), "LREN3": (0.12, 0.32), "RADL3": (0.16, 0.28),
-    "FLRY3": (0.12, 0.24), "TAEE11": (0.10, 0.20), "EGIE3": (0.11, 0.20),
-    "CPFE3": (0.09, 0.19), "ENGI11": (0.12, 0.22), "TRPL4": (0.10, 0.20),
-    "BBSE3": (0.14, 0.24), "CSAN3": (0.13, 0.30), "VIVT3": (0.08, 0.22),
-    "KLBN11": (0.11, 0.26), "SUZB3": (0.12, 0.30),
+    # ── B3 — ações brasileiras (retornos em BRL, volatilidade maior) ──────────
+    # Bancos & Finanças
+    "ITUB4": (0.13, 0.28), "ITUB3": (0.13, 0.28), "ITSA4": (0.12, 0.24),
+    "BBDC4": (0.10, 0.28), "BBDC3": (0.10, 0.28),
+    "BBAS3": (0.12, 0.26), "SANB11": (0.11, 0.24), "BPAC11": (0.15, 0.28),
+    "CIEL3": (0.06, 0.28), "BRGE3": (0.09, 0.26), "BBSE3": (0.14, 0.24),
+    "WIZS3": (0.10, 0.28),
+    # Petróleo & Gás
+    "PETR4": (0.12, 0.38), "PETR3": (0.12, 0.38),
+    "PRIO3": (0.18, 0.40), "RRRP3": (0.20, 0.45), "RECV3": (0.18, 0.42),
+    "CSAN3": (0.13, 0.30), "UGPA3": (0.10, 0.22), "VBBR3": (0.12, 0.28),
+    # Mineração & Siderurgia
+    "VALE3": (0.11, 0.35),
+    "GGBR4": (0.12, 0.32), "GOAU4": (0.10, 0.30),
+    "CSNA3": (0.10, 0.35), "USIM5": (0.08, 0.35), "BRAP4": (0.10, 0.28),
+    "CMIN3": (0.14, 0.38), "FESA4": (0.11, 0.28),
+    # Papel & Celulose
+    "KLBN11": (0.11, 0.26), "SUZB3": (0.12, 0.30), "DXCO3": (0.10, 0.25),
+    # Energia Elétrica & Saneamento
+    "TAEE11": (0.10, 0.20), "EGIE3": (0.11, 0.20), "CPFE3": (0.09, 0.19),
+    "ENGI11": (0.12, 0.22), "TRPL4": (0.10, 0.20), "CMIG4": (0.09, 0.22),
+    "ELET3": (0.11, 0.28), "ELET6": (0.11, 0.28), "EQTL3": (0.13, 0.24),
+    "NEOE3": (0.11, 0.22), "CPLE6": (0.09, 0.22), "AURE3": (0.10, 0.22),
+    "SBSP3": (0.10, 0.22), "SAPR11": (0.10, 0.20),
+    # Alimentos & Bebidas
+    "ABEV3": (0.08, 0.22), "JBSS3": (0.14, 0.32), "BRFS3": (0.10, 0.30),
+    "MRFG3": (0.12, 0.35), "BEEF3": (0.12, 0.32), "SMTO3": (0.10, 0.26),
+    "SLCE3": (0.12, 0.28), "MDIA3": (0.09, 0.22),
+    # Saúde & Farmácia
+    "RDOR3": (0.16, 0.28), "HAPV3": (0.12, 0.35), "RADL3": (0.16, 0.28),
+    "FLRY3": (0.12, 0.24), "HYPE3": (0.12, 0.22), "ODPV3": (0.12, 0.22),
+    "QUAL3": (0.10, 0.28), "BLAU3": (0.14, 0.30),
+    # Varejo & Consumo
+    "LREN3": (0.12, 0.32), "ASAI3": (0.12, 0.30), "PCAR3": (0.08, 0.32),
+    "MGLU3": (0.10, 0.45), "ARZZ3": (0.14, 0.28), "SOMA3": (0.12, 0.30),
+    "PETZ3": (0.12, 0.35), "ALPA4": (0.10, 0.32),
+    # Telecom
+    "VIVT3": (0.08, 0.22), "TIMS3": (0.08, 0.22),
+    # Industrial, Tecnologia & Diversificados
+    "WEGE3": (0.18, 0.28), "EMBR3": (0.12, 0.32), "TOTS3": (0.16, 0.28),
+    "INTB3": (0.18, 0.28), "LWSA3": (0.12, 0.35),
+    # Imóveis & Construção
+    "MULT3": (0.11, 0.25), "MRVE3": (0.10, 0.32), "CYRE3": (0.11, 0.30),
+    "EZTC3": (0.12, 0.28), "DIRR3": (0.12, 0.30), "CURY3": (0.14, 0.28),
+    "IGTI11": (0.11, 0.25), "ALSO3": (0.11, 0.24),
+    # Mobilidade & Logística
+    "RENT3": (0.15, 0.30), "MOVI3": (0.12, 0.32), "SIMH3": (0.12, 0.30),
+    "RAIL3": (0.13, 0.28), "GOLL4": (0.08, 0.55), "AZUL4": (0.08, 0.55),
     # Big Tech US (yfinance)
     "TSLA":  (0.25, 0.65), "NVDA": (0.40, 0.70), "AAPL": (0.15, 0.25),
     "AMZN":  (0.20, 0.35), "GOOGL":(0.18, 0.30), "MSFT": (0.22, 0.28),
@@ -181,8 +221,9 @@ def _synthetic_price_history(ticker: str, period: str) -> pd.DataFrame:
     seed = int(hashlib.md5(ticker.upper().encode()).hexdigest(), 16) % (2 ** 31)
     np.random.seed(seed)
 
-    # Parâmetros realistas por ticker, default defensivo
-    mu, sigma = _TICKER_PARAMS.get(ticker.upper(), (0.08, 0.16))
+    # Parâmetros realistas por ticker (strip .SA suffix for B3 tickers)
+    ticker_key = ticker.upper().replace(".SA", "")
+    mu, sigma = _TICKER_PARAMS.get(ticker_key, (0.08, 0.16))
 
     dt = 1 / 252
     log_returns = (mu - 0.5 * sigma ** 2) * dt + sigma * np.sqrt(dt) * np.random.standard_normal(n_days)
