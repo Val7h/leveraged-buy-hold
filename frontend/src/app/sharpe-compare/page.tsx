@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import { backtestApi } from "@/lib/api";
 import type { SharpeCompareResult, SharpeCompareItem } from "@/types";
-import { BarChart3, RefreshCw, Download, TrendingUp, Skull } from "lucide-react";
+import { BarChart3, RefreshCw, Download, TrendingUp, Skull, Search } from "lucide-react";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 
 const DEFAULT_TICKERS = "NEE,SO,D,DUK,JNJ,PG,KO,PEP,MCD,T,VZ,O,MAIN,AFL,WM,MO,ABT,WEC,AEP,BRK-B";
@@ -150,8 +150,8 @@ export default function SharpeComparePage() {
         {result && !loading && (
           <div className="space-y-4">
             {/* Summary bar */}
-            <div className="flex items-center justify-between">
-              <div className="flex gap-4 text-xs text-text-muted">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex gap-4 text-xs text-text-muted flex-wrap">
                 <span>{result.items.length} ativos · {result.leverage}x alavancagem · {result.period}</span>
                 <span className="text-success font-medium">
                   ✓ {result.items.filter((r) => !r.margin_call).length} sobreviventes
@@ -162,13 +162,29 @@ export default function SharpeComparePage() {
                   </span>
                 )}
               </div>
-              <button
-                onClick={() => exportCsv(result.items, result.leverage, result.period)}
-                className="btn-ghost text-xs flex items-center gap-1.5 border border-border"
-              >
-                <Download size={12} />
-                Exportar CSV
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const top10 = result.items
+                      .filter((r) => !r.margin_call)
+                      .slice(0, 10)
+                      .map((r) => r.ticker)
+                      .join(",");
+                    router.push(`/assets?tickers=${encodeURIComponent(top10)}&autorun=1`);
+                  }}
+                  className="btn-primary text-xs flex items-center gap-1.5"
+                >
+                  <Search size={12} />
+                  Analisar Top 10 no Screening
+                </button>
+                <button
+                  onClick={() => exportCsv(result.items, result.leverage, result.period)}
+                  className="btn-ghost text-xs flex items-center gap-1.5 border border-border"
+                >
+                  <Download size={12} />
+                  Exportar CSV
+                </button>
+              </div>
             </div>
 
             {/* Table */}

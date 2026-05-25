@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import AssetCard from "@/components/assets/AssetCard";
 import MarketStateWidget from "@/components/assets/MarketStateWidget";
@@ -79,11 +80,31 @@ const PRESET_LISTS: Record<string, { tickers: string; label: string; flag?: stri
 };
 
 export default function AssetsPage() {
+  const searchParams = useSearchParams();
   const [tickers, setTickers] = useState(PRESET_LISTS.defensive.tickers);
   const [minScore, setMinScore] = useState(0);
   const [result, setResult] = useState<AssetScreenResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Auto-run when navigated from Sharpe Compare with ?tickers=...&autorun=1
+  useEffect(() => {
+    const t = searchParams.get("tickers");
+    const auto = searchParams.get("autorun");
+    if (t) {
+      setTickers(t);
+      if (auto === "1") {
+        // Small delay to let state settle
+        setTimeout(() => {
+          assetsApi.screen({ tickers: t.toUpperCase(), min_score: 0 })
+            .then((res) => setResult(res.data))
+            .catch((e) => setError(e?.response?.data?.detail || "Erro ao buscar ativos"))
+            .finally(() => setLoading(false));
+          setLoading(true);
+        }, 100);
+      }
+    }
+  }, [searchParams]);
 
   const handleScreen = async () => {
     setLoading(true);
