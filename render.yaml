@@ -2,7 +2,7 @@ databases:
   - name: lbh-db
     plan: free
     databaseName: leveraged_bh
-    user: postgres
+    user: lbh_user
 
 services:
   # ── Backend (FastAPI) ──────────────────────────────────────────
