@@ -206,21 +206,23 @@ function isBR(ticker: string): boolean {
 
 /**
  * Returns ordered list of logo URLs to try.
- * Priority: Clearbit (domain map) → Parqet → initials fallback.
+ * Priority: Clearbit (domain map) → FMP (image-stock) → Parqet → initials fallback.
  */
 function getSources(logoTicker: string): string[] {
   const sources: string[] = [];
 
   if (isBR(logoTicker)) {
-    // B3: Clearbit via domain map first, then Parqet
+    // B3: Clearbit → FMP (with .SA suffix) → Parqet
     const prefix = logoTicker.slice(0, 4);
     const domain = B3_DOMAINS[prefix];
     if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
+    sources.push(`https://financialmodelingprep.com/image-stock/${logoTicker}.SA.png`);
     sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
   } else {
-    // US / other: Clearbit via domain map first, then Parqet
+    // US / other: Clearbit → FMP → Parqet
     const domain = US_DOMAINS[logoTicker];
     if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
+    sources.push(`https://financialmodelingprep.com/image-stock/${logoTicker}.png`);
     sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
   }
 
