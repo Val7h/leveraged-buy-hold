@@ -18,7 +18,126 @@ const TICKER_COLORS: Record<string, string> = {
   Y: "bg-pink-600/20 text-pink-300",    Z: "bg-indigo-600/20 text-indigo-300",
 };
 
-// ── B3 ticker prefix → company website domain (for Clearbit logos) ──────────
+// ── US ticker → company domain (Clearbit) ────────────────────────────────────
+const US_DOMAINS: Record<string, string> = {
+  // Utilities
+  NEE: "nexteraenergy.com",     SO:  "southerncompany.com",
+  D:   "dominionenergy.com",    DUK: "duke-energy.com",
+  AEP: "aep.com",              WEC: "wecenergygroup.com",
+  ES:  "eversource.com",       EXC: "exeloncorp.com",
+  PCG: "pge.com",              ETR: "entergy.com",
+  AWK: "amwater.com",          CMS: "cmsenergy.com",
+  NI:  "nisource.com",         PNW: "pinnaclewest.com",
+  OGE: "oge.com",
+  // Healthcare
+  JNJ: "jnj.com",              ABT: "abbott.com",
+  MDT: "medtronic.com",        BMY: "bms.com",
+  PFE: "pfizer.com",           MRK: "merck.com",
+  UNH: "unitedhealthgroup.com",CVS: "cvshealth.com",
+  CI:  "cigna.com",            ELV: "elevancehealth.com",
+  HCA: "hcahealthcare.com",    ABBV:"abbvie.com",
+  AMGN:"amgen.com",            GILD:"gilead.com",
+  BIIB:"biogen.com",
+  // Consumer staples
+  PG:  "pg.com",               KO:  "coca-cola.com",
+  PEP: "pepsico.com",          MO:  "altria.com",
+  CL:  "colgatepalmolive.com", GIS: "generalmills.com",
+  K:   "kelloggs.com",         CPB: "campbellsoupcompany.com",
+  HRL: "hormel.com",           SJM: "jmsmucker.com",
+  CAG: "conagrabrands.com",    MKC: "mccormick.com",
+  HSY: "thehersheycompany.com",CLX: "clorox.com",
+  CHD: "churchdwight.com",
+  // Telecom / Media
+  T:   "att.com",              VZ:  "verizon.com",
+  NFLX:"netflix.com",          DIS: "disney.com",
+  CMCSA:"comcast.com",
+  // Dividends / REITs
+  O:   "realtyincome.com",     MAIN:"maincapital.com",
+  STAG:"stagindustrial.com",   WPC: "wpcarey.com",
+  NNN: "nnnreit.com",          ADC: "agreerealty.com",
+  GAIN:"gladstoneinvestment.com",
+  HTGC:"hercules-capital.com", ARCC:"aresmgmt.com",
+  VICI:"viciproperties.com",   AMT: "americantower.com",
+  CCI: "crowncastle.com",      EQIX:"equinix.com",
+  PLD: "prologis.com",         SPG: "simon.com",
+  PSA: "publicstorage.com",    EXR: "extraspace.com",
+  MAA: "maacommunities.com",   UDR: "udr.com",
+  IIPR:"innovativeindustrialproperties.com",
+  // Financials
+  AFL: "aflac.com",            BEN: "franklintempleton.com",
+  V:   "visa.com",             MA:  "mastercard.com",
+  PYPL:"paypal.com",           SQ:  "squareup.com",
+  FIS: "fisglobal.com",        FISV:"fiserv.com",
+  GPN: "globalpayments.com",   AFRM:"affirm.com",
+  SOFI:"sofi.com",             NU:  "nu.com.br",
+  // Diversified / Other
+  "BRK-B":"berkshirehathaway.com",
+  WM:  "wm.com",               MCD: "mcdonalds.com",
+  MMM: "3m.com",
+  // Big Tech
+  AAPL:"apple.com",            MSFT:"microsoft.com",
+  GOOGL:"abc.xyz",             GOOG:"abc.xyz",
+  AMZN:"amazon.com",           META:"meta.com",
+  NVDA:"nvidia.com",           TSLA:"tesla.com",
+  ORCL:"oracle.com",           ADBE:"adobe.com",
+  IBM: "ibm.com",              INTC:"intel.com",
+  CSCO:"cisco.com",            QCOM:"qualcomm.com",
+  // Tech Mid
+  CRM: "salesforce.com",       NOW: "servicenow.com",
+  SNOW:"snowflake.com",        DDOG:"datadoghq.com",
+  ZS:  "zscaler.com",          CRWD:"crowdstrike.com",
+  NET: "cloudflare.com",       PLTR:"palantir.com",
+  ANET:"arista.com",           MRVL:"marvell.com",
+  AMD: "amd.com",              TXN: "ti.com",
+  AVGO:"broadcom.com",         KLAC:"kla.com",
+  // Industrials
+  CAT: "caterpillar.com",      DE:  "deere.com",
+  HON: "honeywell.com",        GE:  "ge.com",
+  RTX: "rtx.com",              LMT: "lockheedmartin.com",
+  NOC: "northropgrumman.com",  BA:  "boeing.com",
+  UPS: "ups.com",              FDX: "fedex.com",
+  CSX: "csx.com",              UNP: "up.com",
+  NSC: "nscorp.com",           WAB: "wabtec.com",
+  // ETFs (fund managers)
+  SPY: "ssga.com",             QQQ: "invesco.com",
+  IWM: "blackrock.com",        DIA: "ssga.com",
+  VTI: "vanguard.com",         VOO: "vanguard.com",
+  IVV: "blackrock.com",        RSP: "invesco.com",
+  MDY: "ssga.com",             IJH: "blackrock.com",
+  XLK: "ssga.com",             XLF: "ssga.com",
+  XLE: "ssga.com",             XLV: "ssga.com",
+  XLU: "ssga.com",             XLI: "ssga.com",
+  XLB: "ssga.com",             XLP: "ssga.com",
+  XLY: "ssga.com",             XLRE:"ssga.com",
+  XLC: "ssga.com",             XBI: "ssga.com",
+  VEA: "vanguard.com",         VWO: "vanguard.com",
+  EEM: "blackrock.com",        EWJ: "blackrock.com",
+  EWZ: "blackrock.com",        MCHI:"blackrock.com",
+  INDA:"blackrock.com",        IEMG:"blackrock.com",
+  VGK: "vanguard.com",         EFA: "blackrock.com",
+  AGG: "blackrock.com",        BND: "vanguard.com",
+  TLT: "blackrock.com",        GLD: "ssga.com",
+  SLV: "blackrock.com",        GDX: "vaneck.com",
+  LIT: "globalxetfs.com",      BOTZ:"globalxetfs.com",
+  ROBO:"etfmg.com",            ICLN:"blackrock.com",
+  QCLN:"firsttrust.com",       DRIV:"globalxetfs.com",
+  JETS:"uscfinvestments.com",  BLOK:"amplifyetfs.com",
+  METV:"roundhillinvestments.com",ARKK:"ark-invest.com",
+  ARKG:"ark-invest.com",       ARKF:"ark-invest.com",
+  ARKQ:"ark-invest.com",       ARKW:"ark-invest.com",
+  TQQQ:"proshares.com",        UPRO:"proshares.com",
+  SPXL:"direxion.com",         TECL:"direxion.com",
+  SOXL:"direxion.com",         UDOW:"proshares.com",
+  TNA: "direxion.com",         FAS: "direxion.com",
+  LABU:"direxion.com",         CURE:"direxion.com",
+  // Crypto stocks
+  COIN:"coinbase.com",         MSTR:"microstrategy.com",
+  RIOT:"riotplatforms.com",    MARA:"marathondh.com",
+  CLSK:"cleanspark.com",       HUT: "hutmining.com",
+  BTBT:"bit-digital.com",      IREN:"ir.com",
+};
+
+// ── B3 ticker prefix → company domain (Clearbit) ─────────────────────────────
 const B3_DOMAINS: Record<string, string> = {
   PETR: "petrobras.com.br",    VALE: "vale.com",
   ITUB: "itau.com.br",         ITSA: "itausa.com.br",
@@ -87,21 +206,25 @@ function isBR(ticker: string): boolean {
 
 /**
  * Returns ordered list of logo URLs to try.
- * B3 tickers: Clearbit (company domain) first, then Parqet.
- * US/others:  Parqet only.
+ * Priority: Clearbit (domain map) → Parqet → initials fallback.
  */
 function getSources(logoTicker: string): string[] {
+  const sources: string[] = [];
+
   if (isBR(logoTicker)) {
+    // B3: Clearbit via domain map first, then Parqet
     const prefix = logoTicker.slice(0, 4);
     const domain = B3_DOMAINS[prefix];
-    const sources: string[] = [];
-    if (domain) {
-      sources.push(`https://logo.clearbit.com/${domain}`);
-    }
+    if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
     sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
-    return sources;
+  } else {
+    // US / other: Clearbit via domain map first, then Parqet
+    const domain = US_DOMAINS[logoTicker];
+    if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
+    sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
   }
-  return [`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`];
+
+  return sources;
 }
 
 export default function TickerLogo({ ticker, size = 28, className }: TickerLogoProps) {
