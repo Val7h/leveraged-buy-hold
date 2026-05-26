@@ -11,6 +11,7 @@ import {
 import { simulatorApi } from "@/lib/api";
 import type { SimulationResult } from "@/types";
 import { TrendingUp, RefreshCw, Briefcase, X } from "lucide-react";
+import TickerLogo from "@/components/ui/TickerLogo";
 import { formatCurrency } from "@/lib/utils";
 
 export default function SimulatorPage() {
@@ -111,8 +112,9 @@ export default function SimulatorPage() {
                 {tickerList.map((t) => (
                   <span
                     key={t}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-xs font-mono text-primary"
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-xs font-mono text-primary"
                   >
+                    <TickerLogo ticker={t} size={14} />
                     {t}
                     <button onClick={() => removeTicker(t)} className="hover:text-danger transition-colors">
                       <X size={10} />

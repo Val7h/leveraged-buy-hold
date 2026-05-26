@@ -6,6 +6,7 @@ import { backtestApi } from "@/lib/api";
 import type { SharpeCompareResult, SharpeCompareItem } from "@/types";
 import { BarChart3, RefreshCw, Download, TrendingUp, Skull, Search } from "lucide-react";
 import { formatCurrency, formatPercent } from "@/lib/utils";
+import TickerLogo from "@/components/ui/TickerLogo";
 
 const DEFAULT_TICKERS = "NEE,SO,D,DUK,JNJ,PG,KO,PEP,MCD,T,VZ,O,MAIN,AFL,WM,MO,ABT,WEC,AEP,BRK-B";
 
@@ -274,12 +275,17 @@ export default function SharpeComparePage() {
                       } ${idx === 0 && !item.margin_call ? "bg-primary/5" : ""}`}
                     >
                       <td className="py-2.5 pr-3">
-                        <span className={`font-mono font-bold ${item.margin_call ? "text-text-muted" : "text-text-primary"}`}>
-                          {item.ticker}
-                        </span>
-                        {idx === 0 && !item.margin_call && (
-                          <span className="ml-1.5 badge bg-primary/10 border-primary/20 text-primary text-[10px]">MELHOR</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <TickerLogo ticker={item.ticker} size={22} />
+                          <div>
+                            <span className={`font-mono font-bold ${item.margin_call ? "text-text-muted" : "text-text-primary"}`}>
+                              {item.ticker}
+                            </span>
+                            {idx === 0 && !item.margin_call && (
+                              <span className="ml-1.5 badge bg-primary/10 border-primary/20 text-primary text-[10px]">MELHOR</span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="py-2.5 pr-3 font-mono text-text-secondary">{item.beta.toFixed(2)}</td>
                       <td className={`py-2.5 pr-3 font-mono font-semibold ${item.retorno_total >= 0 ? "text-success" : "text-danger"}`}>

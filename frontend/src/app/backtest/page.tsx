@@ -8,6 +8,7 @@ import PriceTradeChart from "@/components/charts/PriceTradeChart";
 import { backtestApi } from "@/lib/api";
 import type { BacktestResult, BacktestMetrics } from "@/types";
 import { FlaskConical, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
+import TickerLogo from "@/components/ui/TickerLogo";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -97,7 +98,12 @@ export default function BacktestPage() {
           <div className="space-y-5">
             {/* Metrics table */}
             <div className="card overflow-x-auto">
-              <h2 className="text-sm font-semibold text-text-primary mb-4">Comparação de Estratégias</h2>
+              <div className="flex items-center gap-2.5 mb-4">
+                <TickerLogo ticker={tickers.split(",")[0].trim().toUpperCase()} size={28} />
+                <h2 className="text-sm font-semibold text-text-primary">
+                  Comparação de Estratégias — {tickers.split(",")[0].trim().toUpperCase()}
+                </h2>
+              </div>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border">

@@ -5,6 +5,7 @@ import { alertsApi } from "@/lib/api";
 import type { Alert } from "@/types";
 import { Bell, Plus, Trash2, CheckCircle, Clock } from "lucide-react";
 import { formatPercent } from "@/lib/utils";
+import TickerLogo from "@/components/ui/TickerLogo";
 
 const ALERT_TYPES = [
   { value: "entry_signal",        label: "Sinal de Entrada",          description: "Dispara quando sinal for ENTRAR ou ENTRAR FORTE",    noThreshold: true },
@@ -142,7 +143,8 @@ export default function AlertsPage() {
               {checkResult.triggered.length} Alerta(s) Disparado(s)
             </h3>
             {checkResult.triggered.map((t, i) => (
-              <div key={i} className="text-xs text-text-secondary py-1 border-b border-border/40 last:border-0">
+              <div key={i} className="text-xs text-text-secondary py-1 border-b border-border/40 last:border-0 flex items-center gap-2">
+                <TickerLogo ticker={t.ticker} size={18} />
                 <span className="font-mono font-semibold text-warning">{t.ticker}</span>
                 {" · "}{typeLabel(t.type)}
                 {" · "}{t.message}
@@ -171,6 +173,7 @@ export default function AlertsPage() {
                     ) : (
                       <Clock size={14} className="text-text-muted flex-shrink-0" />
                     )}
+                    <TickerLogo ticker={alert.ticker} size={28} />
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-text-primary text-sm">{alert.ticker}</span>
