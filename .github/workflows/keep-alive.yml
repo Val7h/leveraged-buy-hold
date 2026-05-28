@@ -1,0 +1,19 @@
+name: Keep Alive — LBH System
+
+on:
+  schedule:
+    - cron: '*/14 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping LBH Backend
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://lbh-backend.onrender.com)
+          echo "lbh-backend: $STATUS"
+      - name: Ping LBH Frontend
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://lbh-frontend.onrender.com)
+          echo "lbh-frontend: $STATUS"
