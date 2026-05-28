@@ -6,30 +6,42 @@ import { useSignalStore } from "@/store/signalStore";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Briefcase, Search, FlaskConical,
-  TrendingUp, Bell, LogOut, ChevronRight, Bookmark, History, BarChart3,
+  TrendingUp, Bell, LogOut, ChevronRight, Bookmark, History, BarChart3, X,
 } from "lucide-react";
 
 const navItems = [
-  { href: "/dashboard",  label: "Dashboard",  icon: LayoutDashboard, badge: null },
-  { href: "/watchlist",  label: "Watchlist",  icon: Bookmark,        badge: "opportunities" },
-  { href: "/portfolio",  label: "Carteira",   icon: Briefcase,       badge: null },
-  { href: "/history",    label: "Histórico",  icon: History,         badge: null },
-  { href: "/assets",     label: "Screening",  icon: Search,          badge: null },
-  { href: "/backtest",       label: "Backtest",   icon: FlaskConical, badge: null },
-  { href: "/sharpe-compare", label: "Sharpe",     icon: BarChart3,    badge: null },
-  { href: "/simulator",      label: "Simulador",  icon: TrendingUp,   badge: null },
-  { href: "/alerts",         label: "Alertas",    icon: Bell,         badge: null },
+  { href: "/dashboard",      label: "Dashboard",  icon: LayoutDashboard, badge: null },
+  { href: "/watchlist",      label: "Watchlist",  icon: Bookmark,        badge: "opportunities" },
+  { href: "/portfolio",      label: "Carteira",   icon: Briefcase,       badge: null },
+  { href: "/history",        label: "Histórico",  icon: History,         badge: null },
+  { href: "/assets",         label: "Screening",  icon: Search,          badge: null },
+  { href: "/backtest",       label: "Backtest",   icon: FlaskConical,    badge: null },
+  { href: "/sharpe-compare", label: "Sharpe",     icon: BarChart3,       badge: null },
+  { href: "/simulator",      label: "Simulador",  icon: TrendingUp,      badge: null },
+  { href: "/alerts",         label: "Alertas",    icon: Bell,            badge: null },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const { opportunityCount } = useSignalStore();
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-60 bg-surface border-r border-border flex flex-col z-40">
+    <aside
+      className={cn(
+        "fixed left-0 top-0 h-screen w-60 bg-surface border-r border-border flex flex-col z-40",
+        "transition-transform duration-200 ease-in-out",
+        "lg:translate-x-0",
+        isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+      )}
+    >
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-border">
+      <div className="px-5 py-5 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center flex-shrink-0">
             <span className="text-primary font-bold text-sm">L</span>
@@ -39,6 +51,14 @@ export default function Sidebar() {
             <p className="text-xs text-text-muted mt-0.5">Quantfury Pro</p>
           </div>
         </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={onClose}
+          className="lg:hidden p-1.5 rounded-lg hover:bg-surface-2 text-text-muted hover:text-text-primary transition-colors"
+          aria-label="Fechar menu"
+        >
+          <X size={16} />
+        </button>
       </div>
 
       {/* Nav */}

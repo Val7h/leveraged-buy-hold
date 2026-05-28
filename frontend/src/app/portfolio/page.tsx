@@ -6,6 +6,7 @@ import { usePortfolioStore } from "@/store/portfolioStore";
 import { portfolioApi, assetsApi } from "@/lib/api";
 import { formatCurrency, formatPercent, formatLeverage, getLeverageColor, getPnlColor } from "@/lib/utils";
 import TickerLogo from "@/components/ui/TickerLogo";
+import PortfolioEquityCurve from "@/components/charts/PortfolioEquityCurve";
 import { Plus, Trash2, TrendingUp, Lightbulb, Pencil, Check, X, Loader2, Lock, Unlock, RefreshCw } from "lucide-react";
 import type { ContributionSuggestion } from "@/types";
 
@@ -14,6 +15,8 @@ export default function PortfolioPage() {
   const { activePortfolioId, portfolios, metrics, positions, fetchPortfolios, fetchMetrics, fetchPositions, addPosition, updatePosition, removePosition, toggleSeed, toggleCycle } = usePortfolioStore();
   const [suggestions, setSuggestions] = useState<ContributionSuggestion[]>([]);
   const [capital, setCapital] = useState(1000);
+  const [equityCurve, setEquityCurve] = useState<any>(null);
+  const [curveLoading, setCurveLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPos, setNewPos] = useState({ ticker: "", shares: "", avg_price: "", leverage: "1" });
   const [fetchingPrice, setFetchingPrice] = useState(false);
@@ -28,6 +31,12 @@ export default function PortfolioPage() {
     if (activePortfolioId) {
       fetchMetrics(activePortfolioId);
       fetchPositions(activePortfolioId);
+      // Load equity curve
+      setCurveLoading(true);
+      portfolioApi.getEquityCurve(activePortfolioId)
+        .then((res) => setEquityCurve(res.data))
+        .catch(() => {})
+        .finally(() => setCurveLoading(false));
     }
   }, [activePortfolioId]);
 
@@ -166,6 +175,19 @@ export default function PortfolioPage() {
                 <p className={`text-base font-mono font-semibold ${m.color || "text-text-primary"}`}>{m.value}</p>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Equity Curve */}
+        {(equityCurve || curveLoading) && (
+          <div className="mb-6">
+            <PortfolioEquityCurve
+              curve={equityCurve?.curve ?? []}
+              totalInvested={equityCurve?.total_invested ?? 0}
+              pnlPct={equityCurve?.pnl_pct ?? 0}
+              maxDrawdown={equityCurve?.max_drawdown ?? 0}
+              loading={curveLoading}
+            />
           </div>
         )}
 

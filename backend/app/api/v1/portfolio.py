@@ -267,6 +267,104 @@ def get_history(
     ]
 
 
+# ── Equity Curve ──────────────────────────────────────────────────────────────
+
+@router.get("/{portfolio_id}/equity-curve")
+def get_equity_curve(
+    portfolio_id: int,
+    days: int = 730,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Returns daily portfolio equity curve for the last `days` days.
+    equity = sum(shares * historical_close) for all active positions.
+    """
+    import pandas as pd
+    from app.services.market_data import fetch_price_history
+
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.id == portfolio_id, Portfolio.user_id == user.id
+    ).first()
+    if not portfolio:
+        raise HTTPException(404, "Carteira não encontrada")
+
+    positions = db.query(Position).filter(
+        Position.portfolio_id == portfolio_id,
+        Position.is_active == True,
+    ).all()
+
+    if not positions:
+        return {"curve": [], "total_invested": 0.0, "positions_count": 0,
+                "pnl_pct": 0.0, "max_drawdown": 0.0}
+
+    period = "5y" if days > 730 else "2y" if days > 365 else "1y"
+
+    # Fetch close prices for each position
+    price_map: dict[str, pd.Series] = {}
+    for pos in positions:
+        try:
+            df = fetch_price_history(pos.ticker, period=period)
+            if df is not None and not df.empty and "Close" in df.columns:
+                price_map[pos.ticker] = df["Close"].squeeze()
+        except Exception:
+            pass
+
+    if not price_map:
+        return {"curve": [], "total_invested": 0.0, "positions_count": len(positions),
+                "pnl_pct": 0.0, "max_drawdown": 0.0}
+
+    # Build union index, filter to requested days
+    all_idx = None
+    for s in price_map.values():
+        all_idx = s.index if all_idx is None else all_idx.union(s.index)
+
+    tz = getattr(all_idx, "tz", None)
+    now = pd.Timestamp.now(tz=tz)
+    cutoff = now - pd.Timedelta(days=days)
+    all_idx = all_idx[all_idx >= cutoff]
+
+    if len(all_idx) == 0:
+        return {"curve": [], "total_invested": 0.0, "positions_count": len(positions),
+                "pnl_pct": 0.0, "max_drawdown": 0.0}
+
+    # Reindex + forward fill each series
+    aligned: dict[str, pd.Series] = {}
+    for ticker, s in price_map.items():
+        aligned[ticker] = s.reindex(all_idx).ffill().bfill()
+
+    # Daily equity = sum(shares * price) across all positions
+    curve = []
+    for date in all_idx:
+        total_equity = 0.0
+        for pos in positions:
+            if pos.ticker in aligned:
+                try:
+                    price = float(aligned[pos.ticker].loc[date])
+                except Exception:
+                    price = pos.avg_price
+            else:
+                price = pos.avg_price
+            total_equity += pos.shares * price
+        curve.append({"date": date.strftime("%Y-%m-%d"), "equity": round(total_equity, 2)})
+
+    # Metrics
+    first_eq = curve[0]["equity"] if curve else 0
+    last_eq  = curve[-1]["equity"] if curve else 0
+    pnl_pct  = ((last_eq / first_eq) - 1) * 100 if first_eq > 0 else 0.0
+    max_eq   = max((c["equity"] for c in curve), default=0)
+    max_dd   = ((max_eq - last_eq) / max_eq * 100) if max_eq > 0 else 0.0
+    total_invested = sum(pos.shares * pos.avg_price for pos in positions)
+
+    return {
+        "curve": curve,
+        "total_invested": round(total_invested, 2),
+        "positions_count": len(positions),
+        "pnl_pct": round(pnl_pct, 2),
+        "max_drawdown": round(max_dd, 2),
+    }
+
+
 # ── Suggestions ───────────────────────────────────────────────────────────────
 
 @router.get("/{portfolio_id}/suggestions", response_model=List[ContributionSuggestion])

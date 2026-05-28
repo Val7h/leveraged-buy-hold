@@ -72,6 +72,8 @@ export const portfolioApi = {
     api.get(`/api/v1/portfolio/${id}/suggestions`, { params: { available_capital: capital } }),
   getHistory: (id: number) =>
     api.get(`/api/v1/portfolio/${id}/history`),
+  getEquityCurve: (id: number, days = 730) =>
+    api.get(`/api/v1/portfolio/${id}/equity-curve`, { params: { days } }),
 };
 
 // Backtest
