@@ -2,7 +2,7 @@ name: Keep Alive — LBH System
 
 on:
   schedule:
-    - cron: '*/14 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,9 +11,11 @@ jobs:
     steps:
       - name: Ping LBH Backend
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://lbh-backend.onrender.com)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://lbh-backend.onrender.com/api/health)
           echo "lbh-backend: $STATUS"
+          if [ "$STATUS" = "200" ]; then echo "✅ Backend ativo"; else echo "⚠️ Backend retornou $STATUS"; fi
       - name: Ping LBH Frontend
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://lbh-frontend.onrender.com)
           echo "lbh-frontend: $STATUS"
+          if [ "$STATUS" = "200" ]; then echo "✅ Frontend ativo"; else echo "⚠️ Frontend retornou $STATUS"; fi
