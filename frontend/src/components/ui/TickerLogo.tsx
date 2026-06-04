@@ -19,16 +19,60 @@ const TICKER_COLORS: Record<string, string> = {
 };
 
 // ── US ticker → company domain (Clearbit) ────────────────────────────────────
+// Expanded: S&P 500 (200+) + major US stocks
 const US_DOMAINS: Record<string, string> = {
-  // Utilities
-  NEE: "nexteraenergy.com",     SO:  "southerncompany.com",
-  D:   "dominionenergy.com",    DUK: "duke-energy.com",
-  AEP: "aep.com",              WEC: "wecenergygroup.com",
-  ES:  "eversource.com",       EXC: "exeloncorp.com",
-  PCG: "pge.com",              ETR: "entergy.com",
-  AWK: "amwater.com",          CMS: "cmsenergy.com",
-  NI:  "nisource.com",         PNW: "pinnaclewest.com",
-  OGE: "oge.com",
+  // Big Tech (FAANG+)
+  AAPL:"apple.com",            MSFT:"microsoft.com",
+  GOOGL:"abc.xyz",             GOOG:"abc.xyz",
+  AMZN:"amazon.com",           META:"meta.com",
+  NVDA:"nvidia.com",           TSLA:"tesla.com",
+  ORCL:"oracle.com",           ADBE:"adobe.com",
+  IBM: "ibm.com",              INTC:"intel.com",
+  CSCO:"cisco.com",            QCOM:"qualcomm.com",
+  // Tech (continued)
+  CRM: "salesforce.com",       NOW: "servicenow.com",
+  SNOW:"snowflake.com",        DDOG:"datadoghq.com",
+  ZS:  "zscaler.com",          CRWD:"crowdstrike.com",
+  NET: "cloudflare.com",       PLTR:"palantir.com",
+  ANET:"arista.com",           MRVL:"marvell.com",
+  AMD: "amd.com",              TXN: "ti.com",
+  AVGO:"broadcom.com",         KLAC:"kla.com",
+  LRCX:"lrcx.com",             ASML:"asml.com",
+  CDNS:"cadence.com",          SNPS:"synopsys.com",
+  WDAY:"workday.com",          VEEV:"veeva.com",
+  CCI: "crowncastle.com",      EQIX:"equinix.com",
+  SPLK:"splunk.com",           OKTA:"okta.com",
+  CYBR:"cyberark.com",         CHKP:"checkpoint.com",
+  PANW:"paloaltonetworks.com", SENTIENT:"sentientai.com",
+  TTD: "thetradedesk.com",     ADBE:"adobe.com",
+  // Semiconductors
+  MU:  "micron.com",           SK:  "sk.com",
+  NXPI:"nxp.com",              MCHP:"microchip.com",
+  STM: "st.com",               ALTR:"altera.com",
+  // Consumer (Discretionary)
+  MCD: "mcdonalds.com",        SBUX:"starbucks.com",
+  NKE: "nike.com",             LULU:"lululemon.com",
+  HD:  "homedepot.com",        LOW: "lowes.com",
+  TJX: "tjx.com",              AMZN:"amazon.com",
+  EBAY:"ebay.com",             NCLH:"ncl.com",
+  RCL: "rci.com",              CCL: "carnival.com",
+  MAR: "marriott.com",         HLT: "hilton.com",
+  EXPE:"expedia.com",          ORLY:"oreilly.com",
+  AZO: "autozone.com",         RVLV:"revolv.com",
+  CPRT:"copart.com",           IAC: "iac.com",
+  ULTA:"ulta.com",             WMT: "walmart.com",
+  TGT: "target.com",           ROST:"ross.com",
+  FIVE:"fivebelow.com",        BJ:  "bj.com",
+  DG:  "dollargeneral.com",    DLTR:"dollartree.com",
+  // Consumer (Staples)
+  PG:  "pg.com",               KO:  "coca-cola.com",
+  PEP: "pepsico.com",          MO:  "altria.com",
+  CL:  "colgatepalmolive.com", GIS: "generalmills.com",
+  K:   "kelloggs.com",         CPB: "campbellsoupcompany.com",
+  HRL: "hormel.com",           SJM: "jmsmucker.com",
+  CAG: "conagrabrands.com",    MKC: "mccormick.com",
+  HSY: "thehersheycompany.com",CLX: "clorox.com",
+  CHD: "churchdwight.com",     SFP: "santarus.com",
   // Healthcare
   JNJ: "jnj.com",              ABT: "abbott.com",
   MDT: "medtronic.com",        BMY: "bms.com",
@@ -37,32 +81,13 @@ const US_DOMAINS: Record<string, string> = {
   CI:  "cigna.com",            ELV: "elevancehealth.com",
   HCA: "hcahealthcare.com",    ABBV:"abbvie.com",
   AMGN:"amgen.com",            GILD:"gilead.com",
-  BIIB:"biogen.com",
-  // Consumer staples
-  PG:  "pg.com",               KO:  "coca-cola.com",
-  PEP: "pepsico.com",          MO:  "altria.com",
-  CL:  "colgatepalmolive.com", GIS: "generalmills.com",
-  K:   "kelloggs.com",         CPB: "campbellsoupcompany.com",
-  HRL: "hormel.com",           SJM: "jmsmucker.com",
-  CAG: "conagrabrands.com",    MKC: "mccormick.com",
-  HSY: "thehersheycompany.com",CLX: "clorox.com",
-  CHD: "churchdwight.com",
-  // Telecom / Media
-  T:   "att.com",              VZ:  "verizon.com",
-  NFLX:"netflix.com",          DIS: "disney.com",
-  CMCSA:"comcast.com",
-  // Dividends / REITs
-  O:   "realtyincome.com",     MAIN:"maincapital.com",
-  STAG:"stagindustrial.com",   WPC: "wpcarey.com",
-  NNN: "nnnreit.com",          ADC: "agreerealty.com",
-  GAIN:"gladstoneinvestment.com",
-  HTGC:"hercules-capital.com", ARCC:"aresmgmt.com",
-  VICI:"viciproperties.com",   AMT: "americantower.com",
-  CCI: "crowncastle.com",      EQIX:"equinix.com",
-  PLD: "prologis.com",         SPG: "simon.com",
-  PSA: "publicstorage.com",    EXR: "extraspace.com",
-  MAA: "maacommunities.com",   UDR: "udr.com",
-  IIPR:"innovativeindustrialproperties.com",
+  BIIB:"biogen.com",           CELG:"celgene.com",
+  VRTX:"vertex.com",           REGN:"regeneron.com",
+  ILMN:"illumina.com",         SRPT:"sarepta.com",
+  SYK: "stryker.com",          ZBH: "zimmer.com",
+  PODD:"insuletcorp.com",      DXCM:"dexcom.com",
+  INCY:"incyte.com",           JAZZ:"jazzpharma.com",
+  LGND:"legend.com",           RGEN:"repligen.com",
   // Financials
   AFL: "aflac.com",            BEN: "franklintempleton.com",
   V:   "visa.com",             MA:  "mastercard.com",
@@ -70,26 +95,23 @@ const US_DOMAINS: Record<string, string> = {
   FIS: "fisglobal.com",        FISV:"fiserv.com",
   GPN: "globalpayments.com",   AFRM:"affirm.com",
   SOFI:"sofi.com",             NU:  "nu.com.br",
-  // Diversified / Other
-  "BRK-B":"berkshirehathaway.com",
-  WM:  "wm.com",               MCD: "mcdonalds.com",
-  MMM: "3m.com",
-  // Big Tech
-  AAPL:"apple.com",            MSFT:"microsoft.com",
-  GOOGL:"abc.xyz",             GOOG:"abc.xyz",
-  AMZN:"amazon.com",           META:"meta.com",
-  NVDA:"nvidia.com",           TSLA:"tesla.com",
-  ORCL:"oracle.com",           ADBE:"adobe.com",
-  IBM: "ibm.com",              INTC:"intel.com",
-  CSCO:"cisco.com",            QCOM:"qualcomm.com",
-  // Tech Mid
-  CRM: "salesforce.com",       NOW: "servicenow.com",
-  SNOW:"snowflake.com",        DDOG:"datadoghq.com",
-  ZS:  "zscaler.com",          CRWD:"crowdstrike.com",
-  NET: "cloudflare.com",       PLTR:"palantir.com",
-  ANET:"arista.com",           MRVL:"marvell.com",
-  AMD: "amd.com",              TXN: "ti.com",
-  AVGO:"broadcom.com",         KLAC:"kla.com",
+  JPM: "jpmorganchase.com",    BAC: "bankofamerica.com",
+  WFC: "wellsfargo.com",       GS:  "goldmansachs.com",
+  MS:  "morganstanley.com",    BLK: "blackrock.com",
+  ICE: "ice.com",              CBOE:"cboe.com",
+  CME: "cmegroup.com",         NDAQ:"nasdaq.com",
+  BX:  "blackstone.com",       KKR: "kkr.com",
+  APO: "apolloglobal.com",     OWL: "owlrockcp.com",
+  // Utilities
+  NEE: "nexteraenergy.com",     SO:  "southerncompany.com",
+  D:   "dominionenergy.com",    DUK: "duke-energy.com",
+  AEP: "aep.com",              WEC: "wecenergygroup.com",
+  ES:  "eversource.com",       EXC: "exeloncorp.com",
+  PCG: "pge.com",              ETR: "entergy.com",
+  AWK: "amwater.com",          CMS: "cmsenergy.com",
+  NI:  "nisource.com",         PNW: "pinnaclewest.com",
+  OGE: "oge.com",              ED:  "coned.com",
+  XEL: "xcelenergy.com",
   // Industrials
   CAT: "caterpillar.com",      DE:  "deere.com",
   HON: "honeywell.com",        GE:  "ge.com",
@@ -98,6 +120,40 @@ const US_DOMAINS: Record<string, string> = {
   UPS: "ups.com",              FDX: "fedex.com",
   CSX: "csx.com",              UNP: "up.com",
   NSC: "nscorp.com",           WAB: "wabtec.com",
+  GD:  "generaldy.com",        ETN: "eaton.com",
+  EMR: "emerson.com",          ITT: "itt.com",
+  OTIS:"otis.com",             ROL: "rollins.com",
+  // Energy
+  CVX: "chevron.com",          COP: "conocophillips.com",
+  MPC: "marathonpetro.com",    VLO: "valero.com",
+  PSX: "psxenergy.com",        FANG:"diamondbk.com",
+  EQT: "eqt.com",              MHO: "m-hor.com",
+  // Materials
+  NUE: "nucor.com",            X:   "us.steel.com",
+  FCX: "freeportmcmoran.com",  TECK:"teck.com",
+  RIO: "riotinto.com",         VALE:"vale.com",
+  BHP: "bhp.com",              ALB: "albemarle.com",
+  LIN: "linde.com",            APD: "airproducts.com",
+  // REITs & Real Estate
+  O:   "realtyincome.com",     MAIN:"maincapital.com",
+  STAG:"stagindustrial.com",   WPC: "wpcarey.com",
+  NNN: "nnnreit.com",          ADC: "agreerealty.com",
+  GAIN:"gladstoneinvestment.com",
+  HTGC:"hercules-capital.com", ARCC:"aresmgmt.com",
+  VICI:"viciproperties.com",   AMT: "americantower.com",
+  PLD: "prologis.com",         SPG: "simon.com",
+  PSA: "publicstorage.com",    EXR: "extraspace.com",
+  MAA: "maacommunities.com",   UDR: "udr.com",
+  IIPR:"innovativeindustrialproperties.com",
+  // Media & Entertainment
+  NFLX:"netflix.com",          DIS: "disney.com",
+  CMCSA:"comcast.com",         T:   "att.com",
+  VZ:  "verizon.com",          WTNY:"whitney.com",
+  FOXA:"foxcorp.com",          FOX: "foxcorp.com",
+  // Diversified / Other
+  "BRK-B":"berkshirehathaway.com",
+  WM:  "wm.com",               MMM: "3m.com",
+  DKNG:"draftkings.com",       PENN:"pennentertn.com",
   // ETFs (fund managers)
   SPY: "ssga.com",             QQQ: "invesco.com",
   IWM: "blackrock.com",        DIA: "ssga.com",
@@ -135,6 +191,48 @@ const US_DOMAINS: Record<string, string> = {
   RIOT:"riotplatforms.com",    MARA:"marathondh.com",
   CLSK:"cleanspark.com",       HUT: "hutmining.com",
   BTBT:"bit-digital.com",      IREN:"ir.com",
+};
+
+// ── European ticker → company domain (Clearbit) ─────────────────────────────
+// DAX (Germany), CAC 40 (France), FTSE (UK), SIX (Switzerland), etc.
+const EUROPEAN_DOMAINS: Record<string, string> = {
+  // DAX (Germany)
+  SAP: "sap.com",              SIE: "siemens.com",
+  VOW: "volkswagen.com",       BMW: "bmwgroup.com",
+  MBG: "mercedes-benz.com",    IFX: "infineon.com",
+  ALV: "allianz.de",           MUV2:"muenchreriskenversicherung.de",
+  ZAL: "zalando.com",          ADS: "adidas.com",
+  BAY: "bayer.com",            BASF:"basf.com",
+  DTG: "deutschetelekom.com",  DBX: "deutschebank.com",
+  // CAC 40 (France)
+  TTE: "totalenergies.com",    MC:  "lvmh.com",
+  HER: "hermes.com",           OR:  "loreal.com",
+  DANOY:"danone.com",          KER: "kering.com",
+  AIR: "airfrance-klm.com",    VIE: "vivendi.com",
+  EOAN:"eoan.com",             SAN: "sanofi.com",
+  ENGI:"engie.com",
+  // FTSE (UK / London Stock Exchange)
+  SHEL:"shell.com",            HSBA:"hsbc.com",
+  AZN: "astrazeneca.com",      ULVR:"unilever.com",
+  GSK: "gsk.com",              RYA: "ryanair.com",
+  BARC:"barclays.com",         LLOY:"lloydsbanking.com",
+  BP:  "bp.com",               RDSB:"shell.com",
+  LSE: "lseg.com",             PRU: "prudential.com",
+  IMB: "imb.com",              EXPN:"experian.com",
+  // SIX (Switzerland)
+  NSRGY:"nestle.com",          NOVN:"novartis.com",
+  RHHBY:"roche.com",           ASML:"asml.com",
+  ROG: "roche.com",            CSGN:"credit-suisse.com",
+  UBS: "ubs.com",              GEBN:"geberit.com",
+  // Ibex 35 (Spain)
+  BBVA:"bbva.com",             RENO:"repsol.com",
+  SAN: "santander.com",        IBE: "iberia.com",
+  // AEX (Netherlands) & Other
+  ASML:"asml.com",             PHIA:"philips.com",
+  ABD: "asml.com",
+  // Nordic & Other EU
+  NOKIA:"nokia.com",           INTC:"intel.com",
+  SAB: "sabsoftware.com",
 };
 
 // ── B3 ticker prefix → company domain (Clearbit) ─────────────────────────────
@@ -196,6 +294,14 @@ function getLogoTicker(ticker: string): string {
   const upper = ticker.toUpperCase();
   if (upper.endsWith("ONUSDT")) return upper.replace("ONUSDT", "");
   if (upper.endsWith(".SA"))    return upper.replace(".SA", "");
+  // European suffixes
+  if (upper.endsWith(".DE"))    return upper.replace(".DE", "");   // DAX (Germany)
+  if (upper.endsWith(".PA"))    return upper.replace(".PA", "");   // CAC (France)
+  if (upper.endsWith(".L"))     return upper.replace(".L", "");    // LSE (UK)
+  if (upper.endsWith(".AS"))    return upper.replace(".AS", "");   // AEX (Netherlands)
+  if (upper.endsWith(".MI"))    return upper.replace(".MI", "");   // MTA (Italy)
+  if (upper.endsWith(".SX"))    return upper.replace(".SX", "");   // SIX (Switzerland)
+  if (upper.endsWith(".MC"))    return upper.replace(".MC", "");   // BME (Spain)
   return upper;
 }
 
@@ -204,22 +310,36 @@ function isBR(ticker: string): boolean {
   return /^[A-Z]{4}\d{1,2}$/.test(ticker);
 }
 
+/** Returns true if ticker looks like European (has European suffix or is in EUROPEAN_DOMAINS). */
+function isEU(ticker: string): boolean {
+  const upper = ticker.toUpperCase();
+  return /\.(DE|PA|L|AS|MI|SX|MC|VX|SW|LS|UK)$/.test(upper) ||
+         (Object.keys(EUROPEAN_DOMAINS).some(k => k === ticker.toUpperCase()));
+}
+
 /**
  * Returns ordered list of logo URLs to try.
  * Priority: Clearbit (domain map) → FMP (image-stock) → Parqet → initials fallback.
+ * Supports: US (NYSE/NASDAQ), Brazil (B3), Europe (DAX/CAC/FTSE/SIX), Crypto, ETFs
  */
 function getSources(logoTicker: string): string[] {
   const sources: string[] = [];
 
   if (isBR(logoTicker)) {
-    // B3: Clearbit → FMP (with .SA suffix) → Parqet
+    // B3 (Brazil): Clearbit → FMP (.SA) → Parqet
     const prefix = logoTicker.slice(0, 4);
     const domain = B3_DOMAINS[prefix];
     if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
     sources.push(`https://financialmodelingprep.com/image-stock/${logoTicker}.SA.png`);
     sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
+  } else if (isEU(logoTicker)) {
+    // European (DAX/CAC/FTSE/SIX): Clearbit → FMP → Parqet
+    const domain = EUROPEAN_DOMAINS[logoTicker];
+    if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
+    sources.push(`https://financialmodelingprep.com/image-stock/${logoTicker}.png`);
+    sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
   } else {
-    // US / other: Clearbit → FMP → Parqet
+    // US & others (NYSE/NASDAQ/Crypto/ETFs): Clearbit → FMP → Parqet
     const domain = US_DOMAINS[logoTicker];
     if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
     sources.push(`https://financialmodelingprep.com/image-stock/${logoTicker}.png`);
