@@ -193,6 +193,24 @@ const US_DOMAINS: Record<string, string> = {
   BTBT:"bit-digital.com",      IREN:"ir.com",
 };
 
+// ── Canadian ticker → company domain (Clearbit) ──────────────────────────────
+// TSX (Toronto Stock Exchange)
+const CANADIAN_DOMAINS: Record<string, string> = {
+  RY:   "rbc.com",             TD:   "td.com",
+  BNS:  "bns.com",             CM:   "cibc.com",
+  BMO:  "bmo.com",             BCE:  "bce.ca",
+  T:    "telus.com",           ENB:  "enbridge.com",
+  CNQ:  "cnooc.com",           CVE:  "cenovus.com",
+  IMV:  "imvglobal.com",       SU:   "suncor.com",
+  MG:   "macquarie.com",       AQN:  "aequi.ca",
+  FTS:  "fortisbc.com",        REI:  "riocanomall.com",
+  NWC:  "northwest.com",       NTR:  "nutritional.com",
+  TRP:  "transcanada.com",     WN:   "westjet.com",
+  AC:   "aircanada.com",       CNR:  "cn.ca",
+  CP:   "cpr.ca",              WPK:  "weston.com",
+  TTH:  "toromont.com",        SKX:  "skechers.com",
+};
+
 // ── European ticker → company domain (Clearbit) ─────────────────────────────
 // DAX (Germany), CAC 40 (France), FTSE (UK), SIX (Switzerland), etc.
 const EUROPEAN_DOMAINS: Record<string, string> = {
@@ -293,7 +311,9 @@ interface TickerLogoProps {
 function getLogoTicker(ticker: string): string {
   const upper = ticker.toUpperCase();
   if (upper.endsWith("ONUSDT")) return upper.replace("ONUSDT", "");
-  if (upper.endsWith(".SA"))    return upper.replace(".SA", "");
+  if (upper.endsWith(".SA"))    return upper.replace(".SA", "");   // B3 (Brazil)
+  if (upper.endsWith(".TO"))    return upper.replace(".TO", "");   // TSX (Canada)
+  if (upper.endsWith(".CN"))    return upper.replace(".CN", "");   // Canadian NYSE
   // European suffixes
   if (upper.endsWith(".DE"))    return upper.replace(".DE", "");   // DAX (Germany)
   if (upper.endsWith(".PA"))    return upper.replace(".PA", "");   // CAC (France)
@@ -310,6 +330,13 @@ function isBR(ticker: string): boolean {
   return /^[A-Z]{4}\d{1,2}$/.test(ticker);
 }
 
+/** Returns true if ticker looks like Canadian (TSX suffix or in CANADIAN_DOMAINS). */
+function isCA(ticker: string): boolean {
+  const upper = ticker.toUpperCase();
+  return /\.(TO|CN)$/.test(upper) ||
+         (Object.keys(CANADIAN_DOMAINS).some(k => k === ticker.toUpperCase()));
+}
+
 /** Returns true if ticker looks like European (has European suffix or is in EUROPEAN_DOMAINS). */
 function isEU(ticker: string): boolean {
   const upper = ticker.toUpperCase();
@@ -319,8 +346,8 @@ function isEU(ticker: string): boolean {
 
 /**
  * Returns ordered list of logo URLs to try.
- * Priority: Clearbit (domain map) → FMP (image-stock) → Parqet → initials fallback.
- * Supports: US (NYSE/NASDAQ), Brazil (B3), Europe (DAX/CAC/FTSE/SIX), Crypto, ETFs
+ * Priority: Clearbit → FMP (image-stock) → Parqet → FMP Search API → initials fallback.
+ * Supports: US (NYSE/NASDAQ), Canada (TSX), Brazil (B3), Europe (DAX/CAC/FTSE/SIX), Crypto, ETFs
  */
 function getSources(logoTicker: string): string[] {
   const sources: string[] = [];
@@ -331,6 +358,12 @@ function getSources(logoTicker: string): string[] {
     const domain = B3_DOMAINS[prefix];
     if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
     sources.push(`https://financialmodelingprep.com/image-stock/${logoTicker}.SA.png`);
+    sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
+  } else if (isCA(logoTicker)) {
+    // Canadian (TSX): Clearbit → FMP → Parqet
+    const domain = CANADIAN_DOMAINS[logoTicker];
+    if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
+    sources.push(`https://financialmodelingprep.com/image-stock/${logoTicker}.png`);
     sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
   } else if (isEU(logoTicker)) {
     // European (DAX/CAC/FTSE/SIX): Clearbit → FMP → Parqet
@@ -346,7 +379,33 @@ function getSources(logoTicker: string): string[] {
     sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
   }
 
+  // FMP Search API as final fallback
+  // Free tier: limited rate (can fail). For production, add API key:
+  // 1. Get free key at https://financialmodelingprep.com/developer/docs
+  // 2. Set env: NEXT_PUBLIC_FMP_API_KEY=your_key
+  // 3. Uncomment below and remove hardcoded query
+  const fmpKey = process.env.NEXT_PUBLIC_FMP_API_KEY;
+  const fmpSearch = fmpKey
+    ? `https://financialmodelingprep.com/api/v3/search?query=${logoTicker}&limit=1&apikey=${fmpKey}`
+    : `https://financialmodelingprep.com/api/v3/search?query=${logoTicker}&limit=1`;
+  sources.push(fmpSearch);
+
   return sources;
+}
+
+/** Get cached failed tickers to avoid retrying. */
+function getFailedLogos(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  const cached = localStorage.getItem("failed_logos");
+  return cached ? new Set(JSON.parse(cached)) : new Set();
+}
+
+/** Cache a ticker as failed to avoid retrying. */
+function cacheFailedLogo(ticker: string): void {
+  if (typeof window === "undefined") return;
+  const failed = getFailedLogos();
+  failed.add(ticker);
+  localStorage.setItem("failed_logos", JSON.stringify([...failed]));
 }
 
 export default function TickerLogo({ ticker, size = 28, className }: TickerLogoProps) {
@@ -358,19 +417,26 @@ export default function TickerLogo({ ticker, size = 28, className }: TickerLogoP
   const [srcIndex, setSrcIndex] = useState(0);
   const [failed,   setFailed]   = useState(false);
 
+  // Check cache on mount
+  const isInCache = getFailedLogos().has(logoTicker);
+
   const handleError = () => {
     if (srcIndex < sources.length - 1) {
       setSrcIndex((i) => i + 1);
     } else {
+      // Cache this failed ticker
+      cacheFailedLogo(logoTicker);
       setFailed(true);
     }
   };
 
-  if (failed) {
+  // Use fallback immediately if cached
+  if (failed || isInCache) {
     return (
       <div
         className={cn("rounded-full flex items-center justify-center flex-shrink-0 font-bold", fallbackColor, className)}
         style={{ width: size, height: size, fontSize: size * 0.4 }}
+        title={`${logoTicker} (cached fallback)`}
       >
         {initial}
       </div>
