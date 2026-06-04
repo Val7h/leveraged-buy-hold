@@ -139,8 +139,8 @@ def compute_entry_signal(
         return {
             "signal":         "SEM DADOS",
             "signal_color":   "gray",
-            "entry_leverage": float(market_multiplier),
-            "rationale":      "RSI semanal indisponível — usando multiplicador de mercado",
+            "entry_leverage": 1.0,   # sem dados = sem alavancagem
+            "rationale":      "RSI semanal indisponível — aguardar dados para decidir",
         }
 
     # ── Limiar único de entrada: RSI semanal ≤ 38 ────────────────────────────

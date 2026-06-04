@@ -428,7 +428,7 @@ def analyze_asset(
         "composite_score":         composite,
         "leverage_score":          composite,
         "max_recommended_leverage": lev_rec["max_leverage"],
-        "recommended_leverage":    entry["entry_leverage"],
+        "recommended_leverage":    min(entry["entry_leverage"], lev_rec["max_leverage"]),
         "conservative_leverage":   lev_rec["conservative_leverage"],
         "risk_rating":             risk_rating(quality_score),
         "opportunity_rating":      opportunity_rating(opp_score),
