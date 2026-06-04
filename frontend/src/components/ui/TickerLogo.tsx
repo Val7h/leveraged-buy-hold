@@ -193,6 +193,28 @@ const US_DOMAINS: Record<string, string> = {
   BTBT:"bit-digital.com",      IREN:"ir.com",
 };
 
+// ── Asian ticker → company domain (Clearbit) ──────────────────────────────────
+// Hong Kong (HKEX), Singapore (SGX), India (NSE/BSE)
+const ASIAN_DOMAINS: Record<string, string> = {
+  // Hong Kong (HKEX)
+  "0700": "tencent.com",         "0939": "citic.com",
+  "0883": "chinaso.com",         "0175": "geely.com",
+  "1299": "aig.com",             "1398": "icbcltd.com",
+  "0941": "chinamobile.com",     "0016": "sfc.hk",
+  "2333": "baic.com.cn",         "2382": "spreadtrum.com",
+  "1088": "sinopectrade.com",    "3988": "chinaelements.com",
+  // Singapore (SGX)
+  "C6L": "capitaland.com",       "D05": "dbs.com.sg",
+  "O39": "oversea-chinese.com",  "BN4": "bankneys.com.sg",
+  "U96": "unitedtech.com",       "N2IU": "northstar.com.sg",
+  // India (NSE)
+  "RELIANCE": "reliance.com",    "WIPRO": "wipro.com",
+  "TCS": "tcs.com",              "INFY": "infosys.com",
+  "HCLTECH": "hcl.com",          "ICICIBANK": "icicibank.com",
+  "HDFC": "hdfc.com",            "SBIN": "sbi.co.in",
+  "LT": "larsentoubro.com",      "MARUTI": "maruti.co.in",
+};
+
 // ── Canadian ticker → company domain (Clearbit) ──────────────────────────────
 // TSX (Toronto Stock Exchange)
 const CANADIAN_DOMAINS: Record<string, string> = {
@@ -322,6 +344,9 @@ function getLogoTicker(ticker: string): string {
   if (upper.endsWith(".MI"))    return upper.replace(".MI", "");   // MTA (Italy)
   if (upper.endsWith(".SX"))    return upper.replace(".SX", "");   // SIX (Switzerland)
   if (upper.endsWith(".MC"))    return upper.replace(".MC", "");   // BME (Spain)
+  // Asian suffixes
+  if (upper.endsWith(".HK"))    return upper.replace(".HK", "");   // HKEX (Hong Kong)
+  if (upper.endsWith(".SI"))    return upper.replace(".SI", "");   // SGX (Singapore)
   return upper;
 }
 
@@ -344,13 +369,24 @@ function isEU(ticker: string): boolean {
          (Object.keys(EUROPEAN_DOMAINS).some(k => k === ticker.toUpperCase()));
 }
 
+/** Returns true if ticker looks like Asian (Hong Kong, Singapore, India). */
+function isAsia(ticker: string): boolean {
+  const upper = ticker.toUpperCase();
+  return /\.(HK|SI)$/.test(upper) ||
+         /^\d{4,5}$/.test(upper) ||
+         /^[A-Z]+$/.test(upper) && upper.length >= 3 &&
+         (Object.keys(ASIAN_DOMAINS).some(k => k === upper));
+}
+
 /**
  * Returns ordered list of logo URLs to try.
- * Priority: Clearbit → FMP (image-stock) → Parqet → FMP Search API → initials fallback.
- * Supports: US (NYSE/NASDAQ), Canada (TSX), Brazil (B3), Europe (DAX/CAC/FTSE/SIX), Crypto, ETFs
+ * Priority: Clearbit → FMP (image-stock) → Parqet → Backend API → FMP Search API → initials fallback.
+ * Supports: US (NYSE/NASDAQ), Canada (TSX), Brazil (B3), Europe (DAX/CAC/FTSE/SIX),
+ *           Asia (HKEX/SGX/NSE), Crypto, ETFs
  */
 function getSources(logoTicker: string): string[] {
   const sources: string[] = [];
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
   if (isBR(logoTicker)) {
     // B3 (Brazil): Clearbit → FMP (.SA) → Parqet
@@ -371,6 +407,12 @@ function getSources(logoTicker: string): string[] {
     if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
     sources.push(`https://financialmodelingprep.com/image-stock/${logoTicker}.png`);
     sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
+  } else if (isAsia(logoTicker)) {
+    // Asian (HKEX/SGX/NSE): Clearbit → FMP → Parqet
+    const domain = ASIAN_DOMAINS[logoTicker];
+    if (domain) sources.push(`https://logo.clearbit.com/${domain}`);
+    sources.push(`https://financialmodelingprep.com/image-stock/${logoTicker}.png`);
+    sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
   } else {
     // US & others (NYSE/NASDAQ/Crypto/ETFs): Clearbit → FMP → Parqet
     const domain = US_DOMAINS[logoTicker];
@@ -379,11 +421,10 @@ function getSources(logoTicker: string): string[] {
     sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
   }
 
-  // FMP Search API as final fallback
-  // Free tier: limited rate (can fail). For production, add API key:
-  // 1. Get free key at https://financialmodelingprep.com/developer/docs
-  // 2. Set env: NEXT_PUBLIC_FMP_API_KEY=your_key
-  // 3. Uncomment below and remove hardcoded query
+  // Backend API endpoint (secure, with API key)
+  sources.push(`${apiBase}/api/v1/logos/search/${logoTicker}`);
+
+  // FMP Search API as final fallback (free tier)
   const fmpKey = process.env.NEXT_PUBLIC_FMP_API_KEY;
   const fmpSearch = fmpKey
     ? `https://financialmodelingprep.com/api/v3/search?query=${logoTicker}&limit=1&apikey=${fmpKey}`
@@ -393,19 +434,45 @@ function getSources(logoTicker: string): string[] {
   return sources;
 }
 
-/** Get cached failed tickers to avoid retrying. */
+/** Logo cache version (increment when structure changes). */
+const CACHE_VERSION = "v2";
+
+/** Get cached failed tickers with version checking. */
 function getFailedLogos(): Set<string> {
   if (typeof window === "undefined") return new Set();
-  const cached = localStorage.getItem("failed_logos");
+  const key = `logo_cache_failed_${CACHE_VERSION}`;
+  const cached = localStorage.getItem(key);
   return cached ? new Set(JSON.parse(cached)) : new Set();
 }
 
 /** Cache a ticker as failed to avoid retrying. */
 function cacheFailedLogo(ticker: string): void {
   if (typeof window === "undefined") return;
+  const key = `logo_cache_failed_${CACHE_VERSION}`;
   const failed = getFailedLogos();
   failed.add(ticker);
-  localStorage.setItem("failed_logos", JSON.stringify([...failed]));
+  localStorage.setItem(key, JSON.stringify([...failed]));
+}
+
+/** Clean up old cache versions. */
+function cleanupOldCache(): void {
+  if (typeof window === "undefined") return;
+  const keys = Object.keys(localStorage);
+  keys.forEach(k => {
+    if (k.startsWith("logo_cache_") && !k.includes(CACHE_VERSION)) {
+      localStorage.removeItem(k);
+    }
+  });
+}
+
+/** Preload popular logos to improve perceived performance. */
+function preloadPopularLogos(): void {
+  if (typeof window === "undefined") return;
+  const popular = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "JPM", "SPY"];
+  popular.forEach(ticker => {
+    const img = new Image();
+    img.src = `https://logo.clearbit.com/apple.com`;
+  });
 }
 
 export default function TickerLogo({ ticker, size = 28, className }: TickerLogoProps) {
@@ -419,6 +486,14 @@ export default function TickerLogo({ ticker, size = 28, className }: TickerLogoP
 
   // Check cache on mount
   const isInCache = getFailedLogos().has(logoTicker);
+
+  // Cleanup old cache and preload popular logos on first mount
+  useState(() => {
+    if (typeof window !== "undefined") {
+      cleanupOldCache();
+      preloadPopularLogos();
+    }
+  });
 
   const handleError = () => {
     if (srcIndex < sources.length - 1) {

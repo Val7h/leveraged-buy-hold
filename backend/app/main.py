@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import create_tables
-from app.api.v1 import auth, assets, portfolio, backtest, simulator, alerts, watchlist
+from app.api.v1 import auth, assets, portfolio, backtest, simulator, alerts, watchlist, logos
 
 app = FastAPI(
     title="Leveraged Buy & Hold — Sistema Quantitativo",
@@ -34,6 +34,7 @@ app.include_router(backtest.router, prefix="/api/v1")
 app.include_router(simulator.router, prefix="/api/v1")
 app.include_router(alerts.router, prefix="/api/v1")
 app.include_router(watchlist.router, prefix="/api/v1")
+app.include_router(logos.router, prefix="/api/v1")
 
 
 @app.get("/api/health")
