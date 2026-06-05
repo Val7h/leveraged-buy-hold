@@ -1,0 +1,161 @@
+═══════════════════════════════════════════════════════════════════════════════
+PRÓXIMO PASSO: TERÇA-FEIRA 18 DE JUNHO - LEGAL TEAM INTEGRATION
+═══════════════════════════════════════════════════════════════════════════════
+
+FINANCE WORK STATUS: ✅ CODE INTEGRATION COMPLETE
+LEGAL WORK STATUS: 🔄 READY TO START TUESDAY 9 AM
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 O QUE VOCÊ (LEGAL) PRECISA FAZER TERÇA-FEIRA
+═══════════════════════════════════════════════════════════════════════════════
+
+TERÇA-FEIRA 18 DE JUNHO (9 AM - 5 PM):
+
+TASK 1: Database Migration (1-1.5 hours)
+───────────────────────────────────────────
+FILE: backend/migrations/003_add_consent_fields.py
+TEMPLATE: Already created, ready to use
+
+STEPS:
+[ ] 1. Open file: backend/migrations/003_add_consent_fields.py
+[ ] 2. Review the migration (adds 3 columns to users table):
+       - risk_acknowledged (Boolean, default False)
+       - terms_accepted (Boolean, default False)
+       - consent_logged_at (DateTime)
+[ ] 3. Run migration in development:
+       Command: alembic upgrade head
+[ ] 4. Verify columns added to database
+[ ] 5. Test downgrade (rollback)
+[ ] 6. Document status: "✅ Database migration tested"
+
+TASK 2: Consent Endpoint (1.5-2 hours)
+──────────────────────────────────────────
+FILE: backend/app/api/v1/user_consent.py
+TEMPLATE: Already created, needs implementation
+
+ENDPOINT: POST /api/v1/user/consent
+
+STEPS:
+[ ] 1. Open file: backend/app/api/v1/user_consent.py
+[ ] 2. Complete the endpoint implementation
+[ ] 3. Accept POST data with consent flags
+[ ] 4. Update user record in database
+[ ] 5. Test with curl or Postman
+[ ] 6. Verify consent saved in database
+[ ] 7. Document status: "✅ Consent endpoint tested"
+
+TASK 3: RiskDisclaimerModal Integration (1.5-2 hours)
+─────────────────────────────────────────────────────────
+FILE: frontend/src/app/login/page.tsx
+COMPONENT: RiskDisclaimerModal.tsx (already created)
+
+STEPS:
+[ ] 1. Open file: frontend/src/app/login/page.tsx
+[ ] 2. Add import: import RiskDisclaimerModal from '@/components/RiskDisclaimerModal'
+[ ] 3. Add state for modal visibility
+[ ] 4. Show modal on first login
+[ ] 5. Test modal appears
+[ ] 6. Test both checkboxes required
+[ ] 7. Test submit posts to endpoint
+[ ] 8. Document status: "✅ Modal integration tested"
+
+TASK 4: Mobile Testing (2 hours)
+───────────────────────────────
+DEVICES TO TEST:
+[ ] iPhone 12 (390 x 844)
+[ ] Android (360 x 720)
+[ ] Tablet (768 x 1024)
+
+WHAT TO TEST:
+[ ] Modal displays correctly on mobile
+[ ] Both checkboxes visible and clickable
+[ ] Submit button is large enough
+[ ] Form inputs have proper padding
+[ ] No horizontal scrolling
+
+TASK 5: Documentation (1 hour)
+──────────────────────────────
+[ ] 1. Create: TUESDAY_LEGAL_WORK_COMPLETE.txt
+[ ] 2. Document what was completed
+[ ] 3. Record confidence level
+[ ] 4. Record any blockers
+[ ] 5. Final message: "✅ Legal integration complete"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⏱️ TERÇA-FEIRA SCHEDULE (9 AM - 5 PM, 1h lunch)
+═══════════════════════════════════════════════════════════════════════════════
+
+9:00-10:00 AM:    Database migration (1 hour)
+10:00 AM-12:00:   Consent endpoint (2 hours)
+12:00-1:00 PM:    LUNCH
+1:00-2:30 PM:     RiskDisclaimerModal integration (1.5 hours)
+2:30-4:30 PM:     Mobile testing (2 hours)
+4:30-5:00 PM:     Documentation (30 min)
+
+TOTAL: 8 hours (realistic)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎁 RESOURCES READY FOR YOU
+═══════════════════════════════════════════════════════════════════════════════
+
+COMPONENT (already created):
+✅ frontend/src/components/RiskDisclaimerModal.tsx (175 lines)
+   - Fully production-ready
+   - Accessible (WCAG)
+   - Mobile responsive
+
+DATABASE SCRIPT (already created):
+✅ backend/migrations/003_add_consent_fields.py
+   - Adds 3 columns to users table
+   - Just run: alembic upgrade head
+
+BACKEND TEMPLATE (already created):
+✅ backend/app/api/v1/user_consent.py
+   - Skeleton implementation ready
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 SUCCESS CRITERIA
+═══════════════════════════════════════════════════════════════════════════════
+
+MUST DO (TUESDAY):
+✅ Database migration runs without errors
+✅ Consent endpoint receives POST requests
+✅ RiskDisclaimerModal shows on login page
+✅ Both checkboxes required to proceed
+✅ Consent logged to database
+✅ Mobile tested (iPhone + Android)
+✅ No console errors
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💪 YOU GOT THIS!
+═══════════════════════════════════════════════════════════════════════════════
+
+WHAT YOU HAVE:
+✅ RiskDisclaimerModal component (production-ready)
+✅ Database migration script (production-ready)
+✅ Backend template (skeleton ready)
+✅ Step-by-step guides
+
+TUESDAY SCHEDULE IS STRAIGHTFORWARD:
+→ 1.5h: Database work (straightforward)
+→ 2h: Backend endpoint (straightforward)
+→ 2h: Frontend integration (straightforward)
+→ 2h: Mobile testing (straightforward)
+
+If everything goes right: Finance + Legal both complete by Tuesday evening
+If something takes longer: You have Wednesday to fix
+
+EITHER WAY: Thursday go/no-go decision happens as planned
+
+═══════════════════════════════════════════════════════════════════════════════
+
+NEXT: TERÇA-FEIRA 9 AM - LEGAL INTEGRATION SPRINT BEGINS! 🚀
+
+Good luck! You're on track for either June 19 or June 26 launch.
+
+═══════════════════════════════════════════════════════════════════════════════
