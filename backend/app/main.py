@@ -68,4 +68,4 @@ app.include_router(user_consent.router, prefix="/api/v1")
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "1.1.0", "features": ["consent", "stripe"]}
+    return {"status": "ok", "version": "1.2.0", "features": ["consent", "stripe", "db-persistence"]}
