@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, memo } from "react";
 import dynamic from "next/dynamic";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
@@ -41,7 +41,7 @@ function fmtDate(d: string) {
   });
 }
 
-export default function PortfolioEquityCurve({
+function PortfolioEquityCurve({
   curve, totalInvested, pnlPct, maxDrawdown, loading,
 }: Props) {
   const [activeDays, setActiveDays] = useState(365);
@@ -156,3 +156,5 @@ export default function PortfolioEquityCurve({
     </div>
   );
 }
+
+export default memo(PortfolioEquityCurve);

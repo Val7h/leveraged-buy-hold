@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import React, { useState, memo } from "react";
 import { cn, formatCurrency, formatPercent, getScoreColor, getScoreBg, sectorIcon } from "@/lib/utils";
 import ScoreGauge from "@/components/ui/ScoreGauge";
 import TickerLogo from "@/components/ui/TickerLogo";
@@ -27,7 +27,7 @@ const entryConfig: Record<string, { bg: string; border: string; text: string }> 
   "SEM DADOS":              { bg: "bg-surface-2",  border: "border-border",     text: "text-text-muted" },
 };
 
-export default function AssetCard({ asset, onSelect }: AssetCardProps) {
+function AssetCard({ asset, onSelect }: AssetCardProps) {
   const [showChart, setShowChart] = useState(false);
   const tech  = asset.technicals;
   const entry = asset.entry_signal ? (entryConfig[asset.entry_signal] ?? entryConfig["SEM DADOS"]) : null;
@@ -203,3 +203,5 @@ export default function AssetCard({ asset, onSelect }: AssetCardProps) {
     </>
   );
 }
+
+export default memo(AssetCard);

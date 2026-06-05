@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import React, { useState, memo } from "react";
 import { cn } from "@/lib/utils";
 
 const TICKER_COLORS: Record<string, string> = {
@@ -475,7 +475,7 @@ function preloadPopularLogos(): void {
   });
 }
 
-export default function TickerLogo({ ticker, size = 28, className }: TickerLogoProps) {
+function TickerLogo({ ticker, size = 28, className }: TickerLogoProps) {
   const logoTicker    = getLogoTicker(ticker);
   const initial       = logoTicker?.[0]?.toUpperCase() ?? "?";
   const fallbackColor = TICKER_COLORS[initial] ?? "bg-primary/20 text-primary";
@@ -531,3 +531,5 @@ export default function TickerLogo({ ticker, size = 28, className }: TickerLogoP
     />
   );
 }
+
+export default memo(TickerLogo);

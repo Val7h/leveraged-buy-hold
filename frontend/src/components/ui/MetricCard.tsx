@@ -1,3 +1,4 @@
+import React, { memo } from "react";
 import { cn } from "@/lib/utils";
 
 interface MetricCardProps {
@@ -28,7 +29,7 @@ const accentDot = {
   default: "bg-text-muted",
 };
 
-export default function MetricCard({
+function MetricCard({
   label,
   value,
   subValue,
@@ -62,3 +63,5 @@ export default function MetricCard({
     </div>
   );
 }
+
+export default memo(MetricCard);

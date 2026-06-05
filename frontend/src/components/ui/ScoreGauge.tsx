@@ -1,4 +1,5 @@
 "use client";
+import React, { memo } from "react";
 import { cn, getScoreColor } from "@/lib/utils";
 
 interface ScoreGaugeProps {
@@ -8,7 +9,7 @@ interface ScoreGaugeProps {
   showValue?: boolean;
 }
 
-export default function ScoreGauge({ score, label, size = "md", showValue = true }: ScoreGaugeProps) {
+function ScoreGauge({ score, label, size = "md", showValue = true }: ScoreGaugeProps) {
   const pct = Math.min(100, Math.max(0, score));
   const r = size === "lg" ? 42 : size === "md" ? 34 : 26;
   const cx = r + 4;
@@ -67,3 +68,5 @@ export default function ScoreGauge({ score, label, size = "md", showValue = true
     </div>
   );
 }
+
+export default memo(ScoreGauge);
