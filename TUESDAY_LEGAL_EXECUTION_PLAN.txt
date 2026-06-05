@@ -1,0 +1,283 @@
+═══════════════════════════════════════════════════════════════════════════════
+⚖️ TERÇA - LEGAL INTEGRATION EXECUTION PLAN ⚖️
+═══════════════════════════════════════════════════════════════════════════════
+
+DATE: Tuesday June 18, 2026
+TIME: 9:00 AM - 5:00 PM BRT
+ROLE: Legal + Backend Integration
+DURATION: 8 hours of focused work
+GOAL: Legal Integration 100% COMPLETE
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 TERÇA - TIMELINE COMPLETO
+═══════════════════════════════════════════════════════════════════════════════
+
+09:00-10:00: Database Migration (1 HOUR)
+─────────────────────────────────────
+[ ] 09:00: Open terminal in backend directory
+[ ] 09:05: Run: alembic upgrade head
+[ ] 09:10: Verify in database: SELECT * FROM users LIMIT 1
+[ ] 09:20: Verify 3 columns added:
+      - risk_acknowledged (Boolean)
+      - terms_accepted (Boolean)
+      - consent_logged_at (DateTime)
+[ ] 09:30: Test downgrade: alembic downgrade -1
+[ ] 09:40: Test upgrade again: alembic upgrade head
+[ ] 09:55: Document: "Database migration ✅"
+
+CHECKLIST:
+  [ ] Alembic installed
+  [ ] Migration file ready: backend/migrations/003_add_consent_fields.py
+  [ ] Database connection working
+  [ ] 3 columns added successfully
+  [ ] Downgrade/upgrade tested
+
+
+10:00-11:00: Connect Endpoint to Database (1 HOUR)
+──────────────────────────────────────────────────
+[ ] 10:00: Open: backend/app/api/v1/user_consent.py
+[ ] 10:05: Copy user_consent_production.py content
+[ ] 10:10: Replace current user_consent.py with production version
+[ ] 10:15: Uncomment database imports:
+      from app.database import get_db
+      from app.auth import get_current_user
+      from app.models import User
+[ ] 10:20: Uncomment production code in log_consent function
+[ ] 10:30: Test with Postman/curl:
+      curl -X POST http://localhost:8000/api/v1/user/consent \
+      -H "Authorization: Bearer test_token" \
+      -H "Content-Type: application/json" \
+      -d '{"acceptRisk": true, "acceptTerms": true, "timestamp": "2026-06-18T10:30:00Z"}'
+[ ] 10:45: Verify response is 200 OK
+[ ] 10:55: Document: "Endpoint connected ✅"
+
+CHECKLIST:
+  [ ] Production code uncommented
+  [ ] Database imports working
+  [ ] Auth working
+  [ ] Endpoint responds to POST
+  [ ] Error handling working
+
+
+11:00-12:00: Run Tests (1 HOUR)
+───────────────────────────────
+[ ] 11:00: Run: python -m pytest backend/tests/test_user_consent.py -v
+[ ] 11:10: Test: Valid consent submission
+[ ] 11:20: Test: Missing risk acceptance
+[ ] 11:30: Test: Missing terms acceptance
+[ ] 11:40: Test: Invalid timestamp
+[ ] 11:50: Test: Future timestamp rejection
+[ ] 11:55: Document: "All tests passing ✅"
+
+CHECKLIST:
+  [ ] pytest installed
+  [ ] All tests passing
+  [ ] Valid submission works
+  [ ] Invalid submissions rejected
+  [ ] Error messages clear
+
+
+12:00-13:00: LUNCH
+───────────────────
+[ ] Take a real break
+[ ] Eat well
+[ ] Mental reset
+
+
+13:00-14:30: Frontend Integration Test (1.5 HOURS)
+──────────────────────────────────────────────────
+[ ] 13:00: Start frontend dev server: npm run dev
+[ ] 13:05: Start backend server (different terminal)
+[ ] 13:10: Open http://localhost:3000/login
+[ ] 13:15: Click: "Criar Conta" (register)
+[ ] 13:20: Fill form:
+      - Email: test@example.com
+      - Password: Test123!
+      - Name: Test User
+      - Risk Profile: balanced
+[ ] 13:25: Click: "Criar Conta"
+[ ] 13:30: Verify: RiskDisclaimerModal appears
+[ ] 13:35: Try clicking "I Understand & Accept" WITHOUT checking boxes
+      → Should be disabled (red/gray button)
+[ ] 13:40: Check: "I understand the leverage and margin risks..."
+[ ] 13:45: Check: "I have read and accept the Terms of Service..."
+[ ] 13:50: Click: "I Understand & Accept"
+[ ] 13:55: Verify: POST sent to /api/v1/user/consent
+      → Check Network tab in DevTools (F12)
+[ ] 14:00: Verify: Success response received
+[ ] 14:05: Verify: User redirected to dashboard
+[ ] 14:15: Check database: SELECT * FROM users WHERE email = 'test@example.com'
+      → Verify: risk_acknowledged = TRUE
+      → Verify: terms_accepted = TRUE
+      → Verify: consent_logged_at has timestamp
+[ ] 14:25: Document: "Frontend integration working ✅"
+
+CHECKLIST:
+  [ ] Both servers running (frontend + backend)
+  [ ] Registration flow works
+  [ ] Modal appears after registration
+  [ ] Checkboxes required
+  [ ] POST sent with correct data
+  [ ] Database updated correctly
+  [ ] User redirected to dashboard
+
+
+14:30-16:30: Mobile Testing (2 HOURS)
+──────────────────────────────────────
+[ ] 14:30: Open Chrome DevTools (F12)
+[ ] 14:35: Toggle Device Toolbar (Ctrl+Shift+M)
+[ ] 14:40: Select iPhone 12 (390x844)
+
+iPhone 12 Test:
+  [ ] Modal appears correctly
+  [ ] Modal doesn't overflow screen
+  [ ] Both checkboxes visible
+  [ ] Checkbox inputs clickable
+  [ ] Submit button large enough (44x44px)
+  [ ] No horizontal scrolling
+  [ ] Text readable (16px minimum)
+  [ ] Close button accessible
+  [ ] Form responsive
+
+[ ] 15:10: Select Android (360x720)
+
+Android Test:
+  [ ] Modal appears correctly
+  [ ] All elements visible
+  [ ] Touch targets adequate
+  [ ] No layout breaks
+  [ ] Responsive
+
+[ ] 15:40: Select iPad (768x1024)
+
+iPad Test:
+  [ ] Modal appears correctly
+  [ ] Spacing adequate
+  [ ] All elements visible
+  [ ] Responsive
+
+[ ] 16:10: Test touch interactions
+  [ ] Tap checkboxes (works)
+  [ ] Tap submit button (works)
+  [ ] Tap close button (works)
+  [ ] Tap form fields (no issues)
+
+[ ] 16:25: Document: "Mobile testing complete ✅"
+
+CHECKLIST:
+  [ ] iPhone 12 tested
+  [ ] Android tested
+  [ ] iPad tested
+  [ ] All interactions work
+  [ ] No layout breaks
+  [ ] Touch targets adequate
+
+
+16:30-17:00: Documentation (30 MIN)
+───────────────────────────────────
+[ ] 16:30: Create: TUESDAY_LEGAL_COMPLETE.txt
+[ ] 16:35: Document:
+      - Database migration: ✅ Complete
+      - Endpoint connection: ✅ Complete
+      - Tests: ✅ All passing
+      - Frontend integration: ✅ Working
+      - Mobile testing: ✅ All devices tested
+
+[ ] 16:45: Record confidence level: __ / 10
+[ ] 16:50: Note any issues found and how you fixed them
+[ ] 16:55: Document: "Legal Integration 100% COMPLETE ✅"
+
+CHECKLIST:
+  [ ] All steps documented
+  [ ] Confidence level recorded
+  [ ] Issues documented
+  [ ] Final status: COMPLETE
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ CRITICAL WATCHOUTS FOR TERÇA
+═══════════════════════════════════════════════════════════════════════════════
+
+🚨 Database Migration Fails:
+  FIX: Check Alembic config
+  FIX: Check PostgreSQL is running
+  FIX: Check migration file syntax
+
+🚨 Endpoint Returns 500 Error:
+  FIX: Check database connection
+  FIX: Check auth is working
+  FIX: Check imports are correct
+
+🚨 Frontend Modal Doesn't Post:
+  FIX: Check CORS enabled on backend
+  FIX: Check endpoint URL correct
+  FIX: Check auth token being sent
+
+🚨 Mobile Layout Broken:
+  FIX: Check responsive classes applied
+  FIX: Check viewport meta tag
+  FIX: Check Tailwind rebuilt
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎁 FILES READY FOR TERÇA
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ backend/migrations/003_add_consent_fields.py
+   → Ready to run: alembic upgrade head
+
+✅ backend/app/api/v1/user_consent_production.py
+   → Copy to user_consent.py when ready
+
+✅ backend/tests/test_user_consent.py
+   → Run: pytest backend/tests/test_user_consent.py -v
+
+✅ frontend/src/components/RiskDisclaimerModal.tsx
+   → Already integrated in login/page.tsx
+
+✅ frontend/src/app/login/page.tsx
+   → Modal already imported and ready
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 SUCCESS CRITERIA - TERÇA
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Database migration runs without errors
+✅ 3 columns added to users table
+✅ Endpoint receives POST requests
+✅ Endpoint validates input correctly
+✅ Tests pass (all scenarios)
+✅ User can register
+✅ Modal appears after registration
+✅ Both checkboxes required
+✅ POST sent with correct data
+✅ Database updated with consent flags
+✅ User redirected to dashboard
+✅ Mobile responsive on all sizes
+✅ No console errors
+✅ Full workflow tested end-to-end
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💪 YOU CAN DO THIS!
+═══════════════════════════════════════════════════════════════════════════════
+
+Terça is just execution:
+
+✅ All code is ready
+✅ All tests are written
+✅ All steps are clear
+✅ All documentation exists
+
+Just follow the checklist.
+Just execute each step.
+Just document results.
+
+Confidence: 90% ✅
+
+═══════════════════════════════════════════════════════════════════════════════

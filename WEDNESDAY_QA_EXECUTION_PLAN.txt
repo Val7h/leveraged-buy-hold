@@ -1,0 +1,225 @@
+═══════════════════════════════════════════════════════════════════════════════
+✔️ QUARTA - QA TESTING EXECUTION PLAN ✔️
+═══════════════════════════════════════════════════════════════════════════════
+
+DATE: Wednesday June 19, 2026
+TIME: 9:00 AM - 5:00 PM BRT
+ROLE: QA Engineer
+DURATION: 8 hours of focused testing
+GOAL: QA 100% COMPLETE - Ready for GO/NO-GO Decision
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 QUARTA - TIMELINE COMPLETO
+═══════════════════════════════════════════════════════════════════════════════
+
+09:00-10:00: Lighthouse Audit (1 HOUR)
+──────────────────────────────────────
+[ ] 09:00: Open Chrome
+[ ] 09:05: Go to http://localhost:3000
+[ ] 09:10: Open DevTools (F12)
+[ ] 09:15: Go to Lighthouse tab
+[ ] 09:20: Run Lighthouse audit (Mobile)
+
+Mobile Lighthouse Audit:
+  [ ] Performance: Target 85+
+  [ ] Accessibility: Target 90+
+  [ ] Best Practices: Target 90+
+  [ ] SEO: Target 90+
+
+[ ] 09:35: Screenshot the results
+[ ] 09:40: Check each page:
+      [ ] Home page (/dashboard)
+      [ ] Pricing page (/pricing)
+      [ ] Login page (/login)
+
+[ ] 09:55: Document lighthouse results
+
+Desktop Lighthouse:
+[ ] 10:00: Run Lighthouse (Desktop mode in DevTools)
+  [ ] Target: 90+ all categories
+
+CHECKLIST:
+  [ ] Mobile audit complete
+  [ ] Mobile scores documented
+  [ ] Desktop audit complete
+  [ ] Desktop scores documented
+  [ ] All pages tested
+
+
+10:00-11:00: Performance Verification (1 HOUR)
+───────────────────────────────────────────────
+[ ] 10:00: Backend health check
+[ ] 10:05: Test: GET /api/v1/health
+      → Should respond < 100ms
+[ ] 10:10: Test: GET /api/v1/user/profile
+      → Should respond < 500ms
+[ ] 10:20: Load test: 50 concurrent users
+      → Use: Apache Bench or similar
+      → Command: ab -n 1000 -c 50 http://localhost:8000/api/v1/health
+      → Check: p90 latency < 2000ms
+[ ] 10:40: Response time analysis
+      [ ] p50 latency?
+      [ ] p90 latency?
+      [ ] p99 latency?
+      [ ] Any timeouts?
+
+[ ] 10:55: Document performance results
+
+CHECKLIST:
+  [ ] Health check responding
+  [ ] API endpoints responsive
+  [ ] Load test completed
+  [ ] p90 < 2s verified
+  [ ] No timeouts
+
+
+11:00-12:00: End-to-End Testing (1 HOUR)
+────────────────────────────────────────
+[ ] 11:00: Start both servers (frontend + backend)
+[ ] 11:05: Test: Complete User Journey
+
+Full Registration Flow:
+[ ] 11:05: Go to http://localhost:3000/login
+[ ] 11:10: Click: "Criar Conta"
+[ ] 11:15: Fill form:
+      - Email: qa@example.com
+      - Password: QA123!
+      - Name: QA Tester
+      - Risk: balanced
+[ ] 11:20: Submit
+[ ] 11:25: Verify: Modal appears
+[ ] 11:30: Check: Both checkboxes
+[ ] 11:35: Submit consent
+[ ] 11:40: Verify: Dashboard loads
+[ ] 11:45: Verify: User profile correct
+[ ] 11:55: Document: "Full flow works ✅"
+
+CHECKLIST:
+  [ ] Registration succeeds
+  [ ] Modal appears
+  [ ] Consent logs correctly
+  [ ] User created in database
+  [ ] Dashboard accessible
+  [ ] Profile data correct
+
+
+12:00-13:00: LUNCH
+───────────────────
+[ ] Take a real break
+
+
+13:00-16:00: Full Mobile Device Testing (3 HOURS)
+──────────────────────────────────────────────────
+
+iPhone 12 Test:
+[ ] 13:00: Select iPhone 12 in DevTools
+[ ] 13:05: Test all pages:
+      [ ] /dashboard (responsive, all features work)
+      [ ] /pricing (cards visible, button clickable)
+      [ ] /login (form inputs responsive, modal works)
+[ ] 13:20: Test user flow on iPhone:
+      [ ] Can register
+      [ ] Can fill modal
+      [ ] Can see dashboard
+      [ ] All interactive elements work
+
+Android (Pixel 5) Test:
+[ ] 13:30: Select Android (360x720)
+[ ] 13:35: Repeat all tests
+[ ] 13:50: Verify everything works
+
+iPad Test:
+[ ] 14:00: Select iPad (768x1024)
+[ ] 14:05: Repeat all tests
+[ ] 14:20: Verify everything works
+
+Real Device Testing (if available):
+[ ] 14:30: Physical iPhone:
+      [ ] Test real device if available
+      [ ] Test real touch interactions
+      [ ] Test real network conditions
+[ ] 14:50: Physical Android:
+      [ ] Test if available
+      [ ] Check any device-specific issues
+
+Performance on Mobile:
+[ ] 15:10: Test performance on mobile
+      [ ] Page load time < 3s
+      [ ] No layout shift
+      [ ] Smooth animations
+[ ] 15:30: Document all results
+
+CHECKLIST:
+  [ ] iPhone 12 tested
+  [ ] Android tested
+  [ ] iPad tested
+  [ ] All pages responsive
+  [ ] All interactions work
+  [ ] Real devices tested (if available)
+  [ ] Performance acceptable
+
+
+16:00-17:00: Bug Fixes + Final Report (1 HOUR)
+──────────────────────────────────────────────
+[ ] 16:00: Analyze all test results
+[ ] 16:05: List any bugs found:
+      [ ] Bug 1: _________ → FIX: _________
+      [ ] Bug 2: _________ → FIX: _________
+      [ ] Bug 3: _________ → FIX: _________
+
+[ ] 16:15: Fix any bugs found:
+      [ ] Retest after each fix
+      [ ] Verify fix doesn't break other things
+
+[ ] 16:45: Create: WEDNESDAY_QA_COMPLETE.txt
+      - Lighthouse scores
+      - Performance metrics
+      - Mobile testing results
+      - Bugs found and fixed
+      - Final verdict: READY or NOT READY
+
+[ ] 16:55: Document: "QA 100% COMPLETE ✅"
+
+CHECKLIST:
+  [ ] All bugs documented
+  [ ] All bugs fixed
+  [ ] All fixes tested
+  [ ] Final report complete
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 SUCCESS CRITERIA - QUARTA
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Lighthouse Mobile: 85+
+✅ Lighthouse Desktop: 90+
+✅ Backend p90 latency: < 2 seconds
+✅ No API timeouts
+✅ Full user flow works end-to-end
+✅ Mobile responsive on all sizes
+✅ No console errors
+✅ All interactive elements work
+✅ All bugs fixed
+✅ Ready for GO/NO-GO decision
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💪 YOU'RE ALMOST THERE!
+═══════════════════════════════════════════════════════════════════════════════
+
+Quarta is the final test run:
+
+✅ Monday: Finance ✅
+✅ Terça: Legal ✅
+✅ Quarta: QA (final verification)
+→ Quinta: Decision + Launch!
+
+Just test everything.
+Just document results.
+Just fix any bugs.
+
+Confidence: 95% ✅
+
+═══════════════════════════════════════════════════════════════════════════════
