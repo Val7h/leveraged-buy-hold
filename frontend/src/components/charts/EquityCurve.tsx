@@ -1,9 +1,17 @@
 "use client";
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend,
-} from "recharts";
+import React, { useMemo } from "react";
+import dynamic from "next/dynamic";
 import { formatCurrency } from "@/lib/utils";
+
+const EquityCurveRenderer = dynamic(
+  () => import("./renderers/EquityCurveRenderer"),
+  {
+    loading: () => (
+      <div className="bg-surface-2 rounded-lg h-80 animate-pulse" />
+    ),
+    ssr: false,
+  }
+);
 
 const STRATEGY_CONFIG: Record<string, { color: string; label: string }> = {
   adaptive:      { color: "#00D4FF", label: "Adaptativo" },
@@ -35,55 +43,37 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-export default function EquityCurve({ data, title = "Curva de Patrimônio", height = 340 }: EquityCurveProps) {
+function EquityCurve({ data, title = "Curva de Patrimônio", height = 340 }: EquityCurveProps) {
   if (!data || Object.keys(data).length === 0) return null;
 
-  const strategies = Object.keys(data);
-  const allDates = [...new Set(strategies.flatMap((s) => data[s].map((d) => d.date)))].sort();
+  const memoizedData = useMemo(() => {
+    const strategies = Object.keys(data);
+    const allDates = [...new Set(strategies.flatMap((s) => data[s].map((d) => d.date)))].sort();
 
-  const merged: DataPoint[] = allDates.map((date) => {
-    const point: DataPoint = { date: date.slice(0, 7) };
-    strategies.forEach((s) => {
-      const d = data[s].find((x) => x.date === date);
-      if (d) point[s] = d.value;
+    const merged: DataPoint[] = allDates.map((date) => {
+      const point: DataPoint = { date: date.slice(0, 7) };
+      strategies.forEach((s) => {
+        const d = data[s].find((x) => x.date === date);
+        if (d) point[s] = d.value;
+      });
+      return point;
     });
-    return point;
-  });
 
-  const sample = merged.filter((_, i) => i % 15 === 0 || i === merged.length - 1);
+    return merged.filter((_, i) => i % 15 === 0 || i === merged.length - 1);
+  }, [data]);
+
+  const strategies = Object.keys(data);
 
   return (
     <div className="card">
       <h3 className="text-sm font-semibold text-text-primary mb-4">{title}</h3>
-      <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={sample} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-          <defs>
-            {strategies.map((s) => (
-              <linearGradient key={s} id={`grad-${s}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={STRATEGY_CONFIG[s]?.color || "#888"} stopOpacity={0.2} />
-                <stop offset="95%" stopColor={STRATEGY_CONFIG[s]?.color || "#888"} stopOpacity={0} />
-              </linearGradient>
-            ))}
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1E2730" />
-          <XAxis dataKey="date" tick={{ fill: "#475569", fontSize: 11 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-          <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fill: "#475569", fontSize: 11 }} tickLine={false} axisLine={false} width={55} />
-          <Tooltip content={<CustomTooltip />} />
-          <Legend formatter={(v) => <span style={{ color: "#94A3B8", fontSize: 12 }}>{STRATEGY_CONFIG[v]?.label || v}</span>} />
-          {strategies.map((s) => (
-            <Area
-              key={s}
-              type="monotone"
-              dataKey={s}
-              stroke={STRATEGY_CONFIG[s]?.color || "#888"}
-              strokeWidth={s === "adaptive" ? 2.5 : 1.5}
-              fill={`url(#grad-${s})`}
-              dot={false}
-              connectNulls
-            />
-          ))}
-        </AreaChart>
-      </ResponsiveContainer>
+      <EquityCurveRenderer
+        data={memoizedData}
+        strategies={strategies}
+        height={height}
+      />
     </div>
   );
 }
+
+export default React.memo(EquityCurve);

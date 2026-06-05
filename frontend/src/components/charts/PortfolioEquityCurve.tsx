@@ -1,11 +1,20 @@
 "use client";
-import { useState } from "react";
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
-} from "recharts";
+import { useState, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+
+const PortfolioChartRenderer = dynamic(
+  () => import("./renderers/PortfolioChartRenderer"),
+  {
+    loading: () => (
+      <div className="flex items-center justify-center h-52">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    ),
+    ssr: false,
+  }
+);
 
 interface CurvePoint { date: string; equity: number; }
 
@@ -37,25 +46,33 @@ export default function PortfolioEquityCurve({
 }: Props) {
   const [activeDays, setActiveDays] = useState(365);
 
-  // Filter curve client-side based on selected period
-  const filtered = activeDays >= 99999
-    ? curve
-    : curve.slice(-activeDays);
+  // Memoize filtered curve to prevent unnecessary re-renders
+  const filtered = useMemo(() => {
+    return activeDays >= 99999
+      ? curve
+      : curve.slice(-activeDays);
+  }, [curve, activeDays]);
 
-  const lastEquity  = filtered.at(-1)?.equity ?? 0;
-  const firstEquity = filtered[0]?.equity ?? 0;
-  const periodPnl   = firstEquity > 0 ? ((lastEquity / firstEquity) - 1) * 100 : 0;
+  const lastEquity  = useMemo(() => filtered.at(-1)?.equity ?? 0, [filtered]);
+  const firstEquity = useMemo(() => filtered[0]?.equity ?? 0, [filtered]);
+  const periodPnl   = useMemo(() =>
+    firstEquity > 0 ? ((lastEquity / firstEquity) - 1) * 100 : 0,
+    [firstEquity, lastEquity]
+  );
   const isPositive  = periodPnl >= 0;
   const strokeColor = isPositive ? "#00E676" : "#EF4444";
 
-  // Max drawdown within the filtered window
-  let peak = 0;
-  let windowMaxDD = 0;
-  for (const p of filtered) {
-    if (p.equity > peak) peak = p.equity;
-    const dd = peak > 0 ? ((peak - p.equity) / peak) * 100 : 0;
-    if (dd > windowMaxDD) windowMaxDD = dd;
-  }
+  // Memoize max drawdown calculation to prevent unnecessary re-renders
+  const windowMaxDD = useMemo(() => {
+    let peak = 0;
+    let maxDD = 0;
+    for (const p of filtered) {
+      if (p.equity > peak) peak = p.equity;
+      const dd = peak > 0 ? ((peak - p.equity) / peak) * 100 : 0;
+      if (dd > maxDD) maxDD = dd;
+    }
+    return maxDD;
+  }, [filtered]);
 
   return (
     <div className="card">
@@ -129,56 +146,12 @@ export default function PortfolioEquityCurve({
           Dados insuficientes para o período selecionado
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={filtered} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id="portfolioGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={strokeColor} stopOpacity={0.2} />
-                <stop offset="95%" stopColor={strokeColor} stopOpacity={0}   />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1E2730" />
-            <XAxis
-              dataKey="date"
-              tickFormatter={fmtDate}
-              tick={{ fill: "#475569", fontSize: 10 }}
-              tickLine={false}
-              axisLine={false}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-              tick={{ fill: "#475569", fontSize: 10 }}
-              tickLine={false}
-              axisLine={false}
-              width={44}
-            />
-            <Tooltip
-              formatter={(v: any) => [formatCurrency(v, "USD", true), "Patrimônio"]}
-              labelFormatter={(l) => new Date(l + "T12:00:00").toLocaleDateString("pt-BR")}
-              contentStyle={{
-                background: "#161C24", border: "1px solid #1F2937",
-                borderRadius: 8, fontSize: 12,
-              }}
-            />
-            {/* Cost reference line */}
-            <ReferenceLine
-              y={totalInvested}
-              stroke="#475569"
-              strokeDasharray="4 4"
-              label={{ value: "Custo", fill: "#475569", fontSize: 9, position: "insideTopRight" }}
-            />
-            <Area
-              type="monotone"
-              dataKey="equity"
-              stroke={strokeColor}
-              strokeWidth={2}
-              fill="url(#portfolioGrad)"
-              dot={false}
-              activeDot={{ r: 4, fill: strokeColor }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        <PortfolioChartRenderer
+          filtered={filtered}
+          strokeColor={strokeColor}
+          totalInvested={totalInvested}
+          fmtDate={fmtDate}
+        />
       )}
     </div>
   );

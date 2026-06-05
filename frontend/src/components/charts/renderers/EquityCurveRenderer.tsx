@@ -1,0 +1,112 @@
+"use client";
+import React from "react";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend,
+} from "recharts";
+import { formatCurrency } from "@/lib/utils";
+
+interface DataPoint { date: string; [key: string]: number | string }
+
+const STRATEGY_CONFIG: Record<string, { color: string; label: string }> = {
+  adaptive: { color: "#00D4FF", label: "Adaptativo" },
+  buy_hold_1x: { color: "#94A3B8", label: "B&H Normal" },
+  buy_hold_2x: { color: "#FFB800", label: "B&H 2x Fixo" },
+  sp500: { color: "#A78BFA", label: "S&P 500" },
+};
+
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-surface-3 border border-border rounded-lg p-3 shadow-card text-xs">
+      <p className="text-text-muted mb-1.5">{label}</p>
+      {payload.map((entry: any) => (
+        <div key={entry.dataKey} className="flex justify-between gap-4">
+          <span style={{ color: entry.color }}>
+            {STRATEGY_CONFIG[entry.dataKey]?.label || entry.dataKey}
+          </span>
+          <span className="font-mono font-medium text-text-primary">
+            {formatCurrency(entry.value, "USD", true)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface Props {
+  data: DataPoint[];
+  strategies: string[];
+  height: number;
+}
+
+const EquityCurveRenderer = React.memo(
+  ({ data, strategies, height }: Props) => (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+        <defs>
+          {strategies.map((s) => (
+            <linearGradient key={s} id={`grad-${s}`} x1="0" y1="0" x2="0" y2="1">
+              <stop
+                offset="5%"
+                stopColor={STRATEGY_CONFIG[s]?.color || "#888"}
+                stopOpacity={0.2}
+              />
+              <stop
+                offset="95%"
+                stopColor={STRATEGY_CONFIG[s]?.color || "#888"}
+                stopOpacity={0}
+              />
+            </linearGradient>
+          ))}
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="#1E2730" />
+        <XAxis
+          dataKey="date"
+          tick={{ fill: "#475569", fontSize: 11 }}
+          tickLine={false}
+          axisLine={false}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+          tick={{ fill: "#475569", fontSize: 11 }}
+          tickLine={false}
+          axisLine={false}
+          width={55}
+        />
+        <Tooltip content={<CustomTooltip />} />
+        <Legend
+          formatter={(v) => (
+            <span style={{ color: "#94A3B8", fontSize: 12 }}>
+              {STRATEGY_CONFIG[v]?.label || v}
+            </span>
+          )}
+        />
+        {strategies.map((s) => (
+          <Area
+            key={s}
+            type="monotone"
+            dataKey={s}
+            stroke={STRATEGY_CONFIG[s]?.color || "#888"}
+            strokeWidth={s === "adaptive" ? 2.5 : 1.5}
+            fill={`url(#grad-${s})`}
+            dot={false}
+            connectNulls
+          />
+        ))}
+      </AreaChart>
+    </ResponsiveContainer>
+  ),
+  (prev, next) => {
+    return (
+      JSON.stringify(prev.data) === JSON.stringify(next.data) &&
+      JSON.stringify(prev.strategies) === JSON.stringify(next.strategies) &&
+      prev.height === next.height
+    );
+  }
+);
+
+EquityCurveRenderer.displayName = "EquityCurveRenderer";
+
+export default EquityCurveRenderer;

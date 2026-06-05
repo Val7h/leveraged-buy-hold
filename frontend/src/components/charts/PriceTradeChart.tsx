@@ -1,9 +1,17 @@
 "use client";
-import {
-  ComposedChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend,
-} from "recharts";
+import React, { useMemo } from "react";
+import dynamic from "next/dynamic";
 import type { TradeMarker, TradeMarkerType } from "@/types";
+
+const PriceTradeChartRenderer = dynamic(
+  () => import("./renderers/PriceTradeChartRenderer"),
+  {
+    loading: () => (
+      <div className="bg-surface-2 rounded-lg h-80 animate-pulse" />
+    ),
+    ssr: false,
+  }
+);
 
 interface PricePoint { date: string; value: number }
 
@@ -113,7 +121,7 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function PriceTradeChart({
+function PriceTradeChart({
   priceData,
   trades = [],
   ticker = "Ativo",
@@ -121,19 +129,23 @@ export default function PriceTradeChart({
 }: PriceTradeChartProps) {
   if (!priceData || priceData.length === 0) return null;
 
-  // Build trade map (date → trade)
-  const tradeMap = new Map(trades.map((t) => [t.date, t]));
+  const memoizedData = useMemo(() => {
+    // Build trade map (date → trade)
+    const tradeMap = new Map(trades.map((t) => [t.date, t]));
 
-  // Merge trade info into price data
-  const chartData = priceData.map((p) => ({
-    date:   p.date.slice(0, 7),   // YYYY-MM for display
-    _date:  p.date,                // full date for lookup
-    price:  p.value,
-    _trade: tradeMap.get(p.date) ?? null,
-  }));
+    // Merge trade info into price data
+    const chartData = priceData.map((p) => ({
+      date: p.date.slice(0, 7),   // YYYY-MM for display
+      _date: p.date,               // full date for lookup
+      price: p.value,
+      _trade: tradeMap.get(p.date) ?? null,
+    }));
 
-  // Legend entries for trade types present in this run
-  const presentTypes = [...new Set(trades.map((t) => t.type))];
+    // Legend entries for trade types present in this run
+    const presentTypes = [...new Set(trades.map((t) => t.type))];
+
+    return { chartData, presentTypes };
+  }, [priceData, trades]);
 
   return (
     <div className="card">
@@ -142,7 +154,7 @@ export default function PriceTradeChart({
           Gráfico de Preço — {ticker} + Operações
         </h3>
         <div className="flex flex-wrap gap-3">
-          {presentTypes.map((type) => (
+          {memoizedData.presentTypes.map((type) => (
             <div key={type} className="flex items-center gap-1">
               <span
                 className="inline-block w-2 h-2 rounded-full"
@@ -154,36 +166,11 @@ export default function PriceTradeChart({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1E2730" />
-          <XAxis
-            dataKey="date"
-            tick={{ fill: "#475569", fontSize: 11 }}
-            tickLine={false}
-            axisLine={false}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            tickFormatter={(v) => `$${v.toFixed(0)}`}
-            tick={{ fill: "#475569", fontSize: 11 }}
-            tickLine={false}
-            axisLine={false}
-            width={55}
-          />
-          <Tooltip content={<CustomTooltip />} />
-          <Line
-            type="monotone"
-            dataKey="price"
-            stroke="#00D4FF"
-            strokeWidth={1.5}
-            dot={<CustomDot />}
-            activeDot={{ r: 4, fill: "#00D4FF" }}
-            connectNulls
-            name={ticker}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
+      <PriceTradeChartRenderer
+        chartData={memoizedData.chartData}
+        ticker={ticker}
+        height={height}
+      />
 
       {trades.length > 0 && (
         <p className="text-xs text-text-muted mt-2 text-right">
@@ -198,3 +185,5 @@ export default function PriceTradeChart({
     </div>
   );
 }
+
+export default React.memo(PriceTradeChart);
