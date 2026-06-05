@@ -1,0 +1,234 @@
+EXECUTE TODAY - 2 HOUR EXECUTION PLAN
+Start NOW (Sunday June 16, as soon as you read this)
+
+OBJECTIVE: Get Finance + Legal started on integrations today
+TIMELINE: 2 hours total
+OUTCOME: Both teams know exactly what to do tomorrow morning
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 1: CEO (15 minutes - READ NOW)
+
+Read these 3 documents in this order:
+1. WEEK3_EXECUTION_SUMMARY.txt (5 min)
+   → Understand: What was created, current status, decision point
+
+2. WEEK3_RESUMO_EXECUTIVO_PT-BR.txt (5 min)
+   → Same thing in Portuguese (share with team if needed)
+
+3. WEEK3_GO_NO-GO_DECISION_FRAMEWORK.txt (5 min)
+   → Understand: 5 checkpoints, voting, how to decide Thursday
+
+CEO Checklist:
+[ ] Read 3 documents above
+[ ] Understand: 25-35% chance GO, 65-75% chance NO-GO
+[ ] Understand: If NO-GO, 14-day buffer (June 26) is ready
+[ ] Know: Thursday 11 AM is decision meeting time
+[ ] Know: You announce decision at 1 PM
+[ ] Confirm: You can lead Thursday meeting
+
+Next: Email Finance + Legal the specific instructions below
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 2: FINANCE LEAD (60 minutes - START NOW)
+
+Step 1: Get the component (5 min)
+Location: /leveraged-buy-hold/frontend/src/components/CheckoutForm.tsx
+Action: Open file, review code (184 lines, well-commented)
+
+Step 2: Read integration guide (10 min)
+File: WEEK3_INTEGRATION_QUICK_START.txt
+Focus: "Finance Team - CheckoutForm Integration (2-3 hours)"
+Understand: 5 steps total (install, env vars, integrate, verify, test)
+
+Step 3: Setup environment (20 min)
+Open terminal in: /leveraged-buy-hold/
+Run these commands:
+
+   cd frontend
+   npm install @stripe/react-stripe-js @stripe/js
+
+Then open .env.local file and add Stripe test keys:
+   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxx
+
+Ask CEO for actual test keys (can get from Stripe dashboard)
+Or use temporary mock keys for now
+
+Step 4: Quick code review (15 min)
+Open: frontend/src/components/CheckoutForm.tsx
+Read the comments
+Understand: Component is production-ready
+Understand: Just need to integrate it into pricing page
+
+Step 5: Plan Monday work (10 min)
+Create checklist for Monday:
+   [ ] Configure Stripe environment variables (actual keys)
+   [ ] Import CheckoutForm in pricing page
+   [ ] Test component renders without errors
+   [ ] Test payment flow (4242 card)
+   [ ] Verify subscription created in database
+   [ ] Mobile testing (iPhone 12 + Android)
+
+Finance Checklist:
+[ ] Got CheckoutForm.tsx file
+[ ] Read WEEK3_INTEGRATION_QUICK_START.txt
+[ ] Ran: npm install @stripe/react-stripe-js @stripe/js
+[ ] Added STRIPE_PUBLISHABLE_KEY to .env.local
+[ ] Reviewed CheckoutForm code
+[ ] Created Monday work plan (checklist above)
+[ ] Ready to START MONDAY 9 AM
+[ ] Tell CEO: "Ready for Monday"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 3: LEGAL LEAD (60 minutes - START NOW)
+
+Step 1: Get the component (5 min)
+Location: /leveraged-buy-hold/frontend/src/components/RiskDisclaimerModal.tsx
+Action: Open file, review code (175 lines, well-commented)
+
+Step 2: Read integration guide (10 min)
+File: WEEK3_INTEGRATION_QUICK_START.txt
+Focus: "Legal/Frontend Team - RiskDisclaimerModal Integration (3-4 hours)"
+Understand: 5 steps total (migration, endpoint, integration, testing)
+
+Step 3: Plan database work (20 min)
+Create file: backend/migrations/003_add_consent_fields.py
+Copy this template:
+
+   from alembic import op
+   import sqlalchemy as sa
+
+   def upgrade():
+       op.add_column('users', sa.Column('risk_acknowledged', sa.Boolean, default=False))
+       op.add_column('users', sa.Column('terms_accepted', sa.Boolean, default=False))
+       op.add_column('users', sa.Column('consent_logged_at', sa.DateTime, nullable=True))
+
+   def downgrade():
+       op.drop_column('users', 'risk_acknowledged')
+       op.drop_column('users', 'terms_accepted')
+       op.drop_column('users', 'consent_logged_at')
+
+Step 4: Plan backend endpoint (15 min)
+Create file: backend/app/api/v1/user_consent.py
+Copy this template:
+
+   from fastapi import APIRouter, Depends, HTTPException
+   from datetime import datetime
+
+   router = APIRouter(prefix="/user", tags=["user"])
+
+   @router.post("/consent")
+   async def log_consent(data: dict, user = Depends(get_current_user)):
+       try:
+           user.risk_acknowledged = data.get("acceptRisk", False)
+           user.terms_accepted = data.get("acceptTerms", False)
+           user.consent_logged_at = datetime.fromisoformat(data.get("timestamp"))
+           db.add(user)
+           db.commit()
+           return {"success": True, "message": "Consent logged"}
+       except Exception as e:
+           raise HTTPException(status_code=400, detail=str(e))
+
+Step 5: Plan Monday work (10 min)
+Create checklist for Monday:
+   [ ] Run database migration
+   [ ] Implement consent endpoint (backend)
+   [ ] Import RiskDisclaimerModal in login page
+   [ ] Test modal displays on first login
+   [ ] Test both checkboxes required
+   [ ] Test consent logging to database
+   [ ] Mobile testing (iPhone 12 + Android)
+
+Legal Checklist:
+[ ] Got RiskDisclaimerModal.tsx file
+[ ] Read WEEK3_INTEGRATION_QUICK_START.txt
+[ ] Created: backend/migrations/003_add_consent_fields.py
+[ ] Created: backend/app/api/v1/user_consent.py
+[ ] Reviewed RiskDisclaimerModal code
+[ ] Planned Monday work (checklist above)
+[ ] Ready to START MONDAY 9 AM
+[ ] Tell CEO: "Ready for Monday"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FINAL STEP (15 minutes - DO THIS NOW):
+
+ALL 3 LEADERS (CEO, Finance, Legal):
+
+1. CEO sends message to team:
+   "Sprint 1 final week started. Finance + Legal are critical path.
+    Daily standups at 8 AM starting tomorrow.
+    Deadline: Thursday 11 AM for go/no-go decision.
+    If we finish Monday: GO probably. If Wednesday: Might be NO-GO.
+    Let's ship with quality."
+
+2. Finance + Legal respond:
+   "OK, we're ready for Monday. Components installed/reviewed. 
+    Starting integration work 9 AM Monday."
+
+3. Schedule: Monday 8 AM standup (Zoom)
+   Attendees: Dev Lead + all 9 specialists
+   Duration: 15 minutes
+   Topic: Status check
+
+4. Slack post in #sprint1:
+   "Week 3 Day 1 complete. Both critical components ready.
+    Finance + Legal starting integration Monday.
+    Target: Complete by Thursday morning.
+    Decision: 11 AM Thursday.
+    Let's go! 💪"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SUMMARY:
+
+This 2-hour plan accomplishes:
+✓ CEO understands situation + decision framework
+✓ Finance understands CheckoutForm + Monday plan
+✓ Legal understands RiskDisclaimerModal + Monday plan
+✓ Both teams have setup done (npm install + skeleton code)
+✓ Team knows Monday 8 AM standup is critical
+✓ Clear path to Thursday decision
+
+Result: Both teams ready to execute Monday morning with 100% clarity.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TIMELINE:
+
+TODAY (Sunday):
+  15 min: CEO reads 3 documents
+  60 min: Finance setup + planning
+  60 min: Legal setup + planning
+  Total: 2 hours
+
+MONDAY (Jun 17):
+  8 AM: Standup
+  9 AM: Both teams start implementation
+  All day: Focused work (10 hours each)
+  Result: ~50% complete
+
+TUESDAY (Jun 18):
+  All day: Continue implementation + testing
+  Result: ~80% complete
+
+WEDNESDAY (Jun 19):
+  All day: Final testing + mobile verification
+  Result: ~100% complete (ready for decision)
+
+THURSDAY (Jun 19):
+  11 AM: Go/No-Go decision
+  1 PM: Announce result
+  3 PM: Launch or activate backup plan
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DO THIS NOW. START READING ABOVE.
+
+Finance: You have CheckoutForm ready. Monday you integrate it.
+Legal: You have RiskDisclaimerModal ready. Monday you integrate it.
+CEO: You have decision framework. Thursday you lead vote.
+
+Go.

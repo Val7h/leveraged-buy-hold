@@ -1,0 +1,108 @@
+JUNE 20-26 DAILY EXECUTION PLAN (IF NO-GO)
+
+CRITICAL PATH: Finance CheckoutForm + Legal RiskDisclaimerModal
+Both must be 100% done by Wednesday June 24
+
+FRIDAY JUNE 20 (Recovery Day 1) - Foundation Setup
+Finance Lead:
+  - Review CheckoutForm component (already created)
+  - Install Stripe libraries
+  - Configure environment variables (.env)
+  - Begin pricing page integration
+  Target: Foundation ready by EOD
+
+Legal/Frontend:
+  - Review RiskDisclaimerModal component (already created)
+  - Write database migration script
+  - Begin consent endpoint design
+  - Begin login page integration
+  Target: Foundation ready by EOD
+
+SATURDAY JUNE 21 (Recovery Day 2) - Integration
+Finance:
+  - Configure Stripe keys
+  - Import CheckoutForm in pricing page
+  - Verify page loads without errors
+  - Begin Stripe API testing
+  Target: Component integrated by EOD
+
+Legal/Frontend:
+  - Run database migration (locally first)
+  - Write consent endpoint code
+  - Import RiskDisclaimerModal in login
+  - Verify modal displays on first login
+  Target: Component integrated by EOD
+
+SUNDAY JUNE 22 (Recovery Day 3) - Testing
+Finance:
+  - Test Stripe API connection
+  - Create test payment (4242 card)
+  - Verify subscription in database
+  - Check trial end date calculation
+  Target: Payment flow working end-to-end
+
+Legal/Frontend:
+  - Deploy consent endpoint
+  - Test with curl/Postman
+  - Verify user field updates
+  - Test modal form submission
+  Target: Full flow working locally
+
+MONDAY JUNE 23 (Mobile Testing)
+Finance:
+  - Deploy CheckoutForm to staging
+  - Test iPhone 12 + Android
+  - Test desktop browsers
+  - Verify error handling
+  Target: All mobile tests passing
+
+Legal/Frontend:
+  - Deploy RiskDisclaimerModal to staging
+  - Test iPhone 12 + Android
+  - Test consent logging
+  - Verify legal doc links work
+  Target: All mobile tests passing
+
+QA Team:
+  - Full regression testing
+  - Smoke testing on staging
+  - Performance verification
+
+TUESDAY JUNE 24 (Final Go/No-Go Decision)
+10 AM: Final verification meeting
+
+Checklist:
+  OK CheckoutForm 100% working
+  OK RiskDisclaimerModal 100% working
+  OK All mobile tests passing
+  OK Database migrations complete
+  OK Payment flow verified
+  OK Consent logging verified
+  OK Performance <2s p90
+  OK Legal approval
+
+Decision:
+  IF all checks pass + all 9 vote GO: Proceed June 26
+  ELSE: No-go or conditional delay
+
+WEDNESDAY JUNE 25 (Launch Prep)
+All teams:
+  - Final code review
+  - Final security scan
+  - Final staging deployment
+  - Prepare rollback plan
+  - Load test (50 users)
+  - Growth content scheduled
+  - Monitoring alerts configured
+
+By 9 PM: All code ready, staging tested, production ready
+
+THURSDAY JUNE 26 - LAUNCH DAY!
+9 AM: Deploy to production
+10 AM: QA monitoring
+12 PM: Growth announces
+1 PM: Team celebration
+3 PM: Open to 50 beta users
+6 PM: EOD metrics
+
+This is the backup plan. Execute it if needed.

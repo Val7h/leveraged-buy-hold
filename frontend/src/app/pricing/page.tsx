@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check } from 'lucide-react';
+import CheckoutForm from '@/components/CheckoutForm';
 
 interface PricingTier {
   name: string;
@@ -129,14 +130,15 @@ const faqItems = [
 export default function PricingPage() {
   const router = useRouter();
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [showCheckout, setShowCheckout] = useState(false);
 
   const handleCTA = (tierName: string) => {
     if (tierName === 'Free') {
       // Redirect to login/signup
       router.push('/login');
     } else if (tierName === 'Pro') {
-      // Redirect to trial signup
-      router.push('/login?trial=true');
+      // Show CheckoutForm modal
+      setShowCheckout(true);
     } else if (tierName === 'Enterprise') {
       // Open contact form or email
       window.location.href = 'mailto:sales@lbhsystem.com?subject=Enterprise%20Pricing%20Inquiry';
@@ -144,7 +146,25 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+    <>
+      {/* Checkout Modal */}
+      {showCheckout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 relative">
+            <button
+              onClick={() => setShowCheckout(false)}
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+            >
+              ✕
+            </button>
+            <div className="p-6">
+              <CheckoutForm tier="pro" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       {/* Hero Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
@@ -397,5 +417,6 @@ export default function PricingPage() {
         </div>
       </section>
     </div>
+    </>
   );
 }

@@ -1,212 +1,182 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState } from "react";
+import { useStripe, useElements, CardElement } from "@stripe/react-stripe-js";
 
 interface CheckoutFormProps {
-  userEmail?: string;
-  onSuccess?: () => void;
+  onSuccess?: (subscriptionId: string) => void;
   onError?: (error: string) => void;
+  tier?: "pro" | "enterprise";
+  className?: string;
 }
 
-export const CheckoutForm: React.FC<CheckoutFormProps> = ({
-  userEmail,
+const CheckoutForm: React.FC<CheckoutFormProps> = ({
   onSuccess,
   onError,
+  tier = "pro",
+  className = "",
 }) => {
   const stripe = useStripe();
   const elements = useElements();
-
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [email, setEmail] = useState("");
+  const [cardComplete, setCardComplete] = useState(false);
+
+  const prices = {
+    pro: { amount: 1900, currency: "usd", label: "Pro - $19/mo" },
+    enterprise: { amount: 29900, currency: "usd", label: "Enterprise - $299/mo" },
+  };
+
+  const selectedPrice = prices[tier];
+
+  const cardElementOptions = {
+    style: {
+      base: { fontSize: "16px", color: "#424770", "::placeholder": { color: "#aab7c4" } },
+      invalid: { color: "#fa755a", iconColor: "#fa755a" },
+    },
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!stripe || !elements) {
-      setError('Payment system not loaded. Please refresh and try again.');
+      setError("Stripe failed to load");
+      return;
+    }
+    if (!cardComplete) {
+      setError("Please enter valid card information");
+      return;
+    }
+    if (!email) {
+      setError("Please enter your email address");
       return;
     }
 
-    if (!agreedToTerms) {
-      setError('Please agree to the terms and conditions.');
-      return;
-    }
-
-    setLoading(true);
+    setIsLoading(true);
     setError(null);
 
     try {
-      // Create payment method
       const cardElement = elements.getElement(CardElement);
-      if (!cardElement) {
-        throw new Error('Card element not found');
-      }
+      if (!cardElement) throw new Error("Card element not found");
 
-      const { error: paymentError, paymentMethod } =
-        await stripe.createPaymentMethod({
-          type: 'card',
-          card: cardElement,
-          billing_details: {
-            email: userEmail,
-          },
-        });
+      const { error: pmError, paymentMethod } = await stripe.createPaymentMethod({
+        type: "card",
+        card: cardElement,
+        billing_details: { email },
+      });
 
-      if (paymentError) {
-        setError(paymentError.message || 'Payment failed');
-        onError?.(paymentError.message || 'Payment failed');
-        setLoading(false);
-        return;
-      }
+      if (pmError) throw new Error(pmError.message || "Payment method failed");
 
-      // Send to backend to create subscription
-      const response = await fetch('/api/v1/billing/create-subscription', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
+      const response = await fetch("/api/v1/billing/create-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethodId: paymentMethod?.id, email, tier }),
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Subscription creation failed');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Subscription creation failed");
       }
 
-      const result = await response.json();
+      const data = await response.json();
 
-      setSuccess(true);
-      setError(null);
-      onSuccess?.();
-
-      // Show success message with trial details
-      setTimeout(() => {
-        window.location.href = '/dashboard?trial=active';
-      }, 2000);
+      if (data.client_secret) {
+        const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
+          data.client_secret,
+          { payment_method: paymentMethod?.id }
+        );
+        if (confirmError) throw new Error(confirmError.message);
+        if (paymentIntent?.status === "succeeded") {
+          if (onSuccess) onSuccess(data.subscription_id);
+          window.location.href = "/dashboard";
+        }
+      } else {
+        if (onSuccess) onSuccess(data.subscription_id);
+        window.location.href = "/dashboard";
+      }
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : 'An unexpected error occurred';
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setError(errorMessage);
-      onError?.(errorMessage);
+      if (onError) onError(errorMessage);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md mx-auto p-6 bg-white rounded-lg shadow-lg">
-      <h2 className="text-2xl font-bold text-slate-900 mb-2">Start Your 14-Day Trial</h2>
-      <p className="text-slate-600 mb-6">
-        No charge today. Your card will be charged $19.00 on day 15.
-      </p>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Email Display */}
-        {userEmail && (
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <p className="text-sm text-slate-600">Billing email</p>
-            <p className="font-semibold text-slate-900">{userEmail}</p>
-          </div>
-        )}
-
-        {/* Card Element */}
-        <div className="border border-slate-300 rounded-lg p-4 bg-white">
-          <CardElement
-            options={{
-              style: {
-                base: {
-                  fontSize: '16px',
-                  color: '#1e293b',
-                  '::placeholder': {
-                    color: '#94a3b8',
-                  },
-                },
-                invalid: {
-                  color: '#ef4444',
-                },
-              },
-            }}
-          />
-        </div>
-
-        {/* Trial Info */}
-        <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-          <div className="flex gap-2">
-            <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-blue-900 text-sm">
-                14-day free trial
-              </p>
-              <p className="text-sm text-blue-800">
-                Full Pro access. No charge until day 15. Cancel anytime.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Terms Agreement */}
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={agreedToTerms}
-            onChange={(e) => setAgreedToTerms(e.target.checked)}
-            className="w-4 h-4 mt-1"
-          />
-          <span className="text-sm text-slate-600">
-            I agree to the{' '}
-            <a href="/terms" className="text-blue-600 hover:underline">
-              Terms of Service
-            </a>
-            {' '}and{' '}
-            <a href="/privacy" className="text-blue-600 hover:underline">
-              Privacy Policy
-            </a>
-          </span>
-        </label>
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 p-4 rounded-lg flex gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-red-900 text-sm">Error</p>
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Success Message */}
-        {success && (
-          <div className="bg-green-50 border border-green-200 p-4 rounded-lg flex gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-green-900 text-sm">Success!</p>
-              <p className="text-sm text-green-800">
-                Your trial is activated. Redirecting to dashboard...
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={loading || !stripe || !agreedToTerms || success}
-          className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading && 'Processing...'}
-          {!loading && success && 'Trial Activated!'}
-          {!loading && !success && 'Start Free 14-Day Trial'}
-        </button>
-
-        {/* Disclaimer */}
-        <p className="text-xs text-slate-500 text-center">
-          This is a secure payment processed by Stripe. Your card details are encrypted.
+    <div className={`w-full max-w-md mx-auto p-4 sm:p-6 ${className}`}>
+      <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6">
+        <h2 className="text-xl sm:text-2xl font-bold mb-2">
+          Upgrade to {tier === "pro" ? "Pro" : "Enterprise"}
+        </h2>
+        <p className="text-sm sm:text-base text-gray-600 mb-6">
+          {tier === "pro" ? "14-day free trial, then $19/month" : "Custom pricing"}
         </p>
-      </form>
+
+        {error && (
+          <div className="mb-4 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-800 text-xs sm:text-sm">{error}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+              Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              disabled={isLoading}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+              Card Details
+            </label>
+            <div className="border border-gray-300 rounded-md p-3 bg-white">
+              <CardElement
+                options={cardElementOptions}
+                onChange={(e) => {
+                  setCardComplete(e.complete);
+                  setError(e.error?.message || null);
+                }}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Charged ${selectedPrice.amount / 100}.00 on Day 15.
+            </p>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+            <p className="text-xs sm:text-sm text-blue-900 font-semibold">
+              ✅ 14-day free trial
+            </p>
+            <p className="text-xs text-blue-700 mt-2">No charge until Day 15. Cancel anytime.</p>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading || !stripe || !cardComplete}
+            className={`w-full py-2 sm:py-3 px-4 rounded-md font-semibold text-white text-sm sm:text-base transition ${
+              isLoading || !stripe || !cardComplete
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {isLoading ? "Processing..." : `Start Trial — ${selectedPrice.label}`}
+          </button>
+
+          <p className="text-xs text-gray-500 text-center">
+            By proceeding, you agree to our Terms and Privacy Policy.
+          </p>
+        </form>
+      </div>
     </div>
   );
 };

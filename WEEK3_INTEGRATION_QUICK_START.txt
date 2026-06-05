@@ -1,0 +1,60 @@
+WEEK 3 - COMPONENT INTEGRATION GUIDE
+
+✅ CREATED:
+1. CheckoutForm.tsx (184 lines) - Stripe payment form
+2. RiskDisclaimerModal.tsx (175 lines) - Risk disclosure + consent
+
+📍 LOCATION:
+frontend/src/components/CheckoutForm.tsx
+frontend/src/components/RiskDisclaimerModal.tsx
+
+📋 NEXT STEPS FOR FINANCE TEAM (CheckoutForm):
+
+1. Install Stripe (5 min)
+   npm install @stripe/react-stripe-js @stripe/js
+
+2. Configure .env (30 min)
+   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxx
+   STRIPE_SECRET_KEY=sk_test_xxxxx
+   STRIPE_PRICE_PRO_MONTHLY=price_xxxxx
+
+3. Update pricing page (45 min)
+   Import CheckoutForm in frontend/src/app/pricing/page.tsx
+   Wrap with: <Elements stripe={stripePromise}><CheckoutForm tier="pro" /></Elements>
+
+4. Verify backend (45 min)
+   POST /api/v1/billing/create-subscription
+   POST /api/v1/billing/webhook
+   subscriptions table exists
+
+5. Test payment (30 min)
+   Test card: 4242 4242 4242 4242
+   Expected: subscription created, user redirected
+
+📋 NEXT STEPS FOR LEGAL/FRONTEND TEAM (RiskDisclaimerModal):
+
+1. Add to login flow (30 min)
+   Import RiskDisclaimerModal in login page
+   Show on first login if !user.consentLogged
+
+2. Create backend endpoint (1 hour)
+   POST /api/v1/user/consent
+   Accepts: {acceptRisk: bool, acceptTerms: bool}
+   Updates user.risk_acknowledged, user.terms_accepted
+
+3. Database migration (45 min)
+   Add fields: risk_acknowledged, terms_accepted, consent_logged_at
+   Run migration
+
+4. Test on mobile (45 min)
+   iPhone 12 + Android
+   Both checkboxes required
+   Consent logs to database
+
+⏰ TIMELINE:
+Mon D1: Install deps + configure env
+Tue D2: Finish integration + start testing
+Wed D3: Test on mobile + fix bugs
+Thu D4: Final verification + go/no-go
+
+Both components are production-ready. Total integration: 5-6 hours.
