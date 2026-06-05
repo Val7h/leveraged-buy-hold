@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { authApi } from "@/lib/api";
+import RiskDisclaimerModal from "@/components/RiskDisclaimerModal";
 
 export default function LoginPage() {
   const [tab, setTab] = useState<"login" | "register">("login");
@@ -12,6 +13,8 @@ export default function LoginPage() {
   const [riskProfile, setRiskProfile] = useState("balanced");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showRiskModal, setShowRiskModal] = useState(false);
+  const [hasAcceptedRisk, setHasAcceptedRisk] = useState(false);
   const { login } = useAuthStore();
   const router = useRouter();
 
@@ -36,7 +39,8 @@ export default function LoginPage() {
     try {
       await authApi.register({ email, password, full_name: name, risk_profile: riskProfile });
       await login(email, password);
-      router.push("/dashboard");
+      // Show risk disclaimer modal instead of redirecting immediately
+      setShowRiskModal(true);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(msg || "Erro ao criar conta. Tente novamente.");
@@ -45,9 +49,21 @@ export default function LoginPage() {
     }
   };
 
+  const handleRiskAccepted = () => {
+    setHasAcceptedRisk(true);
+    setShowRiskModal(false);
+    router.push("/dashboard");
+  };
+
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <>
+      {/* Risk Disclaimer Modal */}
+      {showRiskModal && !hasAcceptedRisk && (
+        <RiskDisclaimerModal onAccept={handleRiskAccepted} />
+      )}
+
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
@@ -120,5 +136,6 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+    </>
   );
 }
