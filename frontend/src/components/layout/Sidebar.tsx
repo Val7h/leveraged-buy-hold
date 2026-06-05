@@ -48,7 +48,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
           <div>
             <p className="text-sm font-semibold text-text-primary leading-none">LBH System</p>
-            <p className="text-xs text-text-muted mt-0.5">Quantfury Pro</p>
+            <p className="text-xs text-text-muted mt-0.5">Sistema Quantitativo</p>
           </div>
         </div>
         {/* Close button — mobile only */}

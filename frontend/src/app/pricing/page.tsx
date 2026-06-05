@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check } from 'lucide-react';
+import { Check, X, ShieldCheck, TrendingUp, BarChart3, FlaskConical, Zap } from 'lucide-react';
 import CheckoutForm from '@/components/CheckoutForm';
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
@@ -11,125 +11,108 @@ const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
 );
 
-interface PricingTier {
-  name: string;
-  price: string;
-  description: string;
-  period: string;
-  cta: string;
-  highlight?: boolean;
-  features: { text: string; included: boolean }[];
-}
-
-const pricingTiers: PricingTier[] = [
+const pricingTiers = [
   {
-    name: 'Free',
-    price: '$0',
-    description: 'Perfect for beginners exploring algorithmic investing',
-    period: '/month',
-    cta: 'Get Started',
+    name: 'Gratuito',
+    price: 'R$ 0',
+    period: '/mês',
+    description: 'Para começar a explorar a estratégia LBH',
+    cta: 'Criar conta grátis',
+    highlight: false,
     features: [
-      { text: 'Screen up to 5 assets per month', included: true },
-      { text: '1 backtest (5-year history)', included: true },
-      { text: '1 portfolio folder', included: true },
-      { text: 'Community support', included: true },
-      { text: 'Basic CSV export', included: true },
-      { text: 'Unlimited screening', included: false },
-      { text: 'Monte Carlo analysis', included: false },
-      { text: 'Email support', included: false },
-      { text: 'PDF export & reports', included: false },
-      { text: 'API access', included: false },
+      { text: 'Screening de até 5 ativos/mês', included: true },
+      { text: '1 backtest (histórico de 5 anos)', included: true },
+      { text: '1 carteira', included: true },
+      { text: 'Suporte pela comunidade', included: true },
+      { text: 'Exportação CSV básica', included: true },
+      { text: 'Screening ilimitado', included: false },
+      { text: 'Análise Monte Carlo', included: false },
+      { text: 'Suporte por email', included: false },
+      { text: 'Relatórios em PDF', included: false },
+      { text: 'Acesso à API', included: false },
     ],
   },
   {
     name: 'Pro',
-    price: '$19',
-    description: 'For active investors who need advanced tools',
-    period: '/month, billed monthly',
-    cta: 'Start 14-day Trial',
+    price: 'R$ 19',
+    period: '/mês',
+    description: 'Para investidores ativos com estratégia quantitativa',
+    cta: 'Testar grátis por 14 dias',
     highlight: true,
     features: [
-      { text: 'Unlimited asset screening', included: true },
-      { text: '10 backtests per month (20-year history)', included: true },
-      { text: '5 portfolio folders', included: true },
-      { text: 'Price & value alerts (20 max)', included: true },
-      { text: 'Monte Carlo simulation', included: true },
-      { text: 'PDF export & reports', included: true },
-      { text: 'Email support (24h response)', included: true },
-      { text: 'Ad-free experience', included: true },
-      { text: 'REST API access', included: false },
-      { text: 'White-label & custom branding', included: false },
+      { text: 'Screening ilimitado de ativos', included: true },
+      { text: '10 backtests/mês (histórico de 20 anos)', included: true },
+      { text: '5 carteiras', included: true },
+      { text: 'Alertas de preço e valor (até 20)', included: true },
+      { text: 'Simulação Monte Carlo', included: true },
+      { text: 'Relatórios em PDF', included: true },
+      { text: 'Suporte por email (resp. em 24h)', included: true },
+      { text: 'Sem anúncios', included: true },
+      { text: 'Acesso à API REST', included: false },
+      { text: 'Marca branca', included: false },
     ],
   },
   {
     name: 'Enterprise',
-    price: '$299',
-    description: 'For advisors, RIAs, and professional teams',
-    period: '/month+, custom',
-    cta: 'Contact Sales',
+    price: 'Sob consulta',
+    period: '',
+    description: 'Para assessores e gestoras profissionais',
+    cta: 'Falar com vendas',
+    highlight: false,
     features: [
-      { text: 'All Pro features included', included: true },
-      { text: 'Unlimited backtests (unlimited history)', included: true },
-      { text: 'Unlimited portfolios & folders', included: true },
-      { text: 'Unlimited custom alerts (100+)', included: true },
-      { text: 'White-label & custom branding', included: true },
-      { text: 'REST API access (full)', included: true },
-      { text: 'Webhooks & integrations', included: true },
-      { text: 'Dedicated account manager', included: true },
-      { text: 'Phone & Slack support (priority)', included: true },
-      { text: '99.9% uptime SLA', included: true },
+      { text: 'Tudo do plano Pro incluído', included: true },
+      { text: 'Backtests ilimitados (histórico total)', included: true },
+      { text: 'Carteiras e pastas ilimitadas', included: true },
+      { text: 'Alertas ilimitados (100+)', included: true },
+      { text: 'Marca branca e personalização', included: true },
+      { text: 'Acesso completo à API REST', included: true },
+      { text: 'Webhooks e integrações', included: true },
+      { text: 'Gerente de conta dedicado', included: true },
+      { text: 'Suporte via Slack e telefone', included: true },
+      { text: 'SLA de 99,9% de disponibilidade', included: true },
     ],
   },
 ];
 
+const features = [
+  { icon: FlaskConical, title: 'Backtest Quantitativo', desc: 'Teste sua estratégia em até 20 anos de dados históricos com métricas profissionais (Sharpe, Drawdown, CAGR).' },
+  { icon: TrendingUp, title: 'Alavancagem Adaptativa', desc: 'Algoritmo que ajusta automaticamente o nível de alavancagem com base nas condições de mercado.' },
+  { icon: BarChart3, title: 'Monte Carlo', desc: 'Simule milhares de cenários futuros para entender o risco real da sua carteira.' },
+  { icon: Zap, title: 'Sinais em Tempo Real', desc: 'Alertas automáticos de entrada e saída com base nos indicadores quantitativos da estratégia.' },
+];
+
 const faqItems = [
   {
-    question: 'How does the 14-day free trial work?',
-    answer: 'Sign up for Pro, and we\'ll give you full access to all Pro features for 14 days. Your credit card is required but you won\'t be charged. After 14 days, we\'ll automatically charge your card $19. You can cancel anytime before then.',
+    question: 'Como funciona o período de teste grátis?',
+    answer: 'Ao assinar o Pro, você tem 14 dias de acesso completo a todas as funcionalidades sem nenhuma cobrança. O cartão é solicitado no cadastro, mas só é debitado a partir do 15º dia. Cancele a qualquer momento antes disso sem custo.',
   },
   {
-    question: 'Why $19 per month?',
-    answer: '$19 reflects the professional-grade tools and analysis you get. This price point signals quality and attracts serious investors while remaining accessible. We\'ve stress-tested it with hundreds of potential users.',
+    question: 'Por que R$ 19 por mês?',
+    answer: 'O valor foi definido para equilibrar acessibilidade com qualidade. Ferramentas equivalentes para investidores profissionais custam centenas de reais. Nosso objetivo é democratizar o acesso a estratégias quantitativas para o investidor brasileiro.',
   },
   {
-    question: 'Can I cancel my subscription?',
-    answer: 'Yes, anytime. If you cancel before Day 15, you won\'t be charged. If you\'re a paid subscriber, your features remain active until the end of your billing cycle.',
+    question: 'Posso cancelar a qualquer momento?',
+    answer: 'Sim, sem burocracia. Cancele diretamente no painel de configurações da sua conta. Se cancelar antes do 15º dia, não há cobrança. Assinantes pagos mantêm acesso até o fim do ciclo atual.',
   },
   {
-    question: 'Do you offer annual billing or discounts?',
-    answer: 'We\'re launching with monthly billing. Annual billing (with 10% discount) comes in Q3 2026. Early adopters might get special pricing—watch your email!',
+    question: 'O sistema funciona com qualquer corretora?',
+    answer: 'O LBH System é uma plataforma de análise e sinais — você executa as operações na sua corretora preferida. Funciona com qualquer corretora que ofereça alavancagem (ex: corretoras internacionais com acesso a ETFs alavancados).',
   },
   {
-    question: 'What payment methods do you accept?',
-    answer: 'We accept all major credit cards (Visa, Mastercard, Amex) via Stripe. We also support Apple Pay and Google Pay for mobile users.',
+    question: 'Quais formas de pagamento são aceitas?',
+    answer: 'Aceitamos cartões de crédito e débito (Visa, Mastercard, Amex) via Stripe. O pagamento é seguro, criptografado e certificado PCI DSS.',
   },
   {
-    question: 'What if my payment fails?',
-    answer: 'We\'ll retry your payment automatically. If it continues to fail, we\'ll email you within 24 hours. You have a grace period to update your payment method before losing Pro access.',
+    question: 'O que acontece se meu pagamento falhar?',
+    answer: 'Tentamos automaticamente por 3 dias. Se o pagamento não for processado, você recebe um email para atualizar os dados. Há um período de carência antes de perder o acesso Pro.',
   },
   {
-    question: 'Do you offer refunds?',
-    answer: 'Yes. If you cancel within 7 days of your first charge, we\'ll refund it in full. After 7 days, no refunds—but you can cancel anytime.',
+    question: 'Vocês oferecem reembolso?',
+    answer: 'Sim. Se cancelar em até 7 dias após a primeira cobrança, reembolsamos integralmente. Após esse período, não há reembolso — mas você pode cancelar a renovação.',
   },
   {
-    question: 'Is there a contract or lock-in?',
-    answer: 'No. Monthly billing with no commitments. Cancel anytime (no phone calls or support tickets required).',
-  },
-  {
-    question: 'What\'s included in Enterprise pricing?',
-    answer: 'Enterprise is fully customized based on your needs: white-label branding, API access, dedicated manager, custom SLAs, integrations, and more. Contact our sales team for a tailored quote.',
-  },
-  {
-    question: 'Do you offer discounts for nonprofits or students?',
-    answer: 'Contact us at sales@lbhsystem.com and we\'ll discuss options. We support financial education and may have special programs.',
-  },
-  {
-    question: 'Can I upgrade or downgrade mid-cycle?',
-    answer: 'Yes. Upgrade anytime and we\'ll prorate. Downgrade and we\'ll credit your account. Changes take effect immediately.',
-  },
-  {
-    question: 'What happens after my trial ends?',
-    answer: 'Your card is charged $19 on Day 15. Pro features remain active. You can cancel anytime to revert to Free tier (limited features only).',
+    question: 'Posso fazer upgrade ou downgrade do plano?',
+    answer: 'Sim, a qualquer momento. Upgrades são cobrados proporcionalmente. Downgrades entram em vigor no próximo ciclo de cobrança.',
   },
 ];
 
@@ -139,15 +122,12 @@ export default function PricingPage() {
   const [showCheckout, setShowCheckout] = useState(false);
 
   const handleCTA = (tierName: string) => {
-    if (tierName === 'Free') {
-      // Redirect to login/signup
+    if (tierName === 'Gratuito') {
       router.push('/login');
     } else if (tierName === 'Pro') {
-      // Show CheckoutForm modal
       setShowCheckout(true);
-    } else if (tierName === 'Enterprise') {
-      // Open contact form or email
-      window.location.href = 'mailto:sales@lbhsystem.com?subject=Enterprise%20Pricing%20Inquiry';
+    } else {
+      window.location.href = 'mailto:contato@lbhsystem.com?subject=Plano%20Enterprise';
     }
   };
 
@@ -155,13 +135,14 @@ export default function PricingPage() {
     <>
       {/* Checkout Modal */}
       {showCheckout && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-surface border border-border rounded-xl shadow-2xl max-w-md w-full relative">
             <button
               onClick={() => setShowCheckout(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+              className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-surface-2 text-text-muted hover:text-text-primary transition-colors"
+              aria-label="Fechar"
             >
-              ✕
+              <X size={16} />
             </button>
             <div className="p-6">
               <Elements stripe={stripePromise}>
@@ -172,259 +153,159 @@ export default function PricingPage() {
         </div>
       )}
 
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Hero Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-5xl font-bold text-slate-900 mb-6">
-            Simple, Transparent Pricing
-          </h1>
-          <p className="text-xl text-slate-600 mb-8">
-            Choose the plan that fits your investing style. Start free, upgrade anytime.
-          </p>
-          <div className="flex justify-center gap-8 text-sm text-slate-600">
-            <div>✓ No credit card required for Free</div>
-            <div>✓ 14-day Pro trial included</div>
-            <div>✓ Cancel anytime</div>
+      <div className="min-h-screen bg-background text-text-primary">
+
+        {/* Hero */}
+        <section className="py-20 px-4 sm:px-6 lg:px-8 text-center border-b border-border">
+          <div className="max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 text-xs text-primary font-medium mb-6">
+              <ShieldCheck size={13} /> Plataforma quantitativa para investidor brasileiro
+            </div>
+            <h1 className="text-4xl sm:text-5xl font-bold text-text-primary mb-4 leading-tight">
+              Preços simples e<br />transparentes
+            </h1>
+            <p className="text-lg text-text-secondary mb-8">
+              Comece gratuitamente. Faça upgrade quando precisar de mais poder.
+            </p>
+            <div className="flex flex-wrap justify-center gap-6 text-sm text-text-secondary">
+              <span className="flex items-center gap-1.5"><Check size={14} className="text-success" /> 14 dias grátis no Pro</span>
+              <span className="flex items-center gap-1.5"><Check size={14} className="text-success" /> Cancele quando quiser</span>
+              <span className="flex items-center gap-1.5"><Check size={14} className="text-success" /> Pagamento seguro via Stripe</span>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Pricing Cards */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-4">
-            {pricingTiers.map((tier, idx) => (
-              <div
-                key={idx}
-                className={`relative rounded-2xl transition-all duration-300 ${
-                  tier.highlight
-                    ? 'ring-2 ring-blue-500 transform scale-105 shadow-2xl bg-white'
-                    : 'bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-lg'
-                }`}
-              >
-                {tier.highlight && (
-                  <div className="absolute -top-4 left-0 right-0 flex justify-center">
-                    <span className="bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-semibold">
-                      Most Popular
-                    </span>
-                  </div>
-                )}
-
-                <div className="p-8">
-                  {/* Tier Name */}
-                  <h3 className="text-2xl font-bold text-slate-900 mb-2">
-                    {tier.name}
-                  </h3>
-                  <p className="text-sm text-slate-600 mb-6 min-h-10">
-                    {tier.description}
-                  </p>
-
-                  {/* Price */}
-                  <div className="mb-6">
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-5xl font-bold text-slate-900">
-                        {tier.price}
-                      </span>
-                      <span className="text-slate-600">{tier.period}</span>
-                    </div>
-                  </div>
-
-                  {/* CTA Button */}
-                  <button
-                    onClick={() => handleCTA(tier.name)}
-                    className={`w-full py-3 px-6 rounded-lg font-semibold transition-all mb-8 ${
-                      tier.highlight
-                        ? 'bg-blue-500 text-white hover:bg-blue-600 active:scale-95'
-                        : 'bg-slate-200 text-slate-900 hover:bg-slate-300 active:scale-95'
-                    }`}
-                  >
-                    {tier.cta}
-                  </button>
-
-                  {/* Features List */}
-                  <ul className="space-y-4">
-                    {tier.features.map((feature, fidx) => (
-                      <li key={fidx} className="flex items-start gap-3">
-                        {feature.included ? (
-                          <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        ) : (
-                          <div className="w-5 h-5 border border-slate-300 rounded flex-shrink-0 mt-0.5" />
-                        )}
-                        <span
-                          className={`text-sm ${
-                            feature.included
-                              ? 'text-slate-700'
-                              : 'text-slate-400 line-through'
-                          }`}
-                        >
-                          {feature.text}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Feature Comparison Table */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-slate-50">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-bold text-slate-900 text-center mb-12">
-            Detailed Feature Comparison
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b-2 border-slate-300">
-                  <th className="text-left py-4 px-4 font-semibold text-slate-900">
-                    Feature
-                  </th>
-                  <th className="text-center py-4 px-4 font-semibold text-slate-900">
-                    Free
-                  </th>
-                  <th className="text-center py-4 px-4 font-semibold text-slate-900">
-                    Pro
-                  </th>
-                  <th className="text-center py-4 px-4 font-semibold text-slate-900">
-                    Enterprise
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                <tr className="bg-white">
-                  <td className="py-4 px-4 text-slate-900 font-semibold">
-                    Asset Screening
-                  </td>
-                  <td className="text-center py-4 px-4">5/mo</td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="w-5 h-5 text-green-500 mx-auto" />
-                  </td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="w-5 h-5 text-green-500 mx-auto" />
-                  </td>
-                </tr>
-                <tr className="bg-slate-50">
-                  <td className="py-4 px-4 text-slate-900 font-semibold">
-                    Backtests
-                  </td>
-                  <td className="text-center py-4 px-4">1 (5yr)</td>
-                  <td className="text-center py-4 px-4">10/mo (20yr)</td>
-                  <td className="text-center py-4 px-4">Unlimited</td>
-                </tr>
-                <tr className="bg-white">
-                  <td className="py-4 px-4 text-slate-900 font-semibold">
-                    Monte Carlo
-                  </td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="w-5 h-5 text-green-500 mx-auto" />
-                  </td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="w-5 h-5 text-green-500 mx-auto" />
-                  </td>
-                </tr>
-                <tr className="bg-slate-50">
-                  <td className="py-4 px-4 text-slate-900 font-semibold">
-                    Alerts
-                  </td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4">20</td>
-                  <td className="text-center py-4 px-4">100+</td>
-                </tr>
-                <tr className="bg-white">
-                  <td className="py-4 px-4 text-slate-900 font-semibold">
-                    API Access
-                  </td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="w-5 h-5 text-green-500 mx-auto" />
-                  </td>
-                </tr>
-                <tr className="bg-slate-50">
-                  <td className="py-4 px-4 text-slate-900 font-semibold">
-                    Support
-                  </td>
-                  <td className="text-center py-4 px-4">Community</td>
-                  <td className="text-center py-4 px-4">Email (24h)</td>
-                  <td className="text-center py-4 px-4">
-                    Slack + Phone
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-3xl font-bold text-slate-900 text-center mb-12">
-            Frequently Asked Questions
-          </h2>
-          <div className="space-y-4">
-            {faqItems.map((item, idx) => (
-              <div
-                key={idx}
-                className="border border-slate-200 rounded-lg overflow-hidden"
-              >
-                <button
-                  onClick={() =>
-                    setExpandedFaq(expandedFaq === idx ? null : idx)
-                  }
-                  className="w-full px-6 py-4 text-left font-semibold text-slate-900 hover:bg-slate-50 flex justify-between items-center transition-colors"
+        {/* Pricing Cards */}
+        <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {pricingTiers.map((tier, idx) => (
+                <div
+                  key={idx}
+                  className={`relative rounded-xl flex flex-col transition-all duration-200 ${
+                    tier.highlight
+                      ? 'ring-2 ring-primary bg-surface shadow-xl shadow-primary/10'
+                      : 'bg-surface border border-border hover:border-border/80'
+                  }`}
                 >
-                  {item.question}
-                  <span
-                    className={`transition-transform ${
-                      expandedFaq === idx ? 'rotate-180' : ''
-                    }`}
-                  >
-                    ▼
-                  </span>
-                </button>
-                {expandedFaq === idx && (
-                  <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 text-slate-700">
-                    {item.answer}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+                  {tier.highlight && (
+                    <div className="absolute -top-3.5 left-0 right-0 flex justify-center">
+                      <span className="bg-primary text-background px-3 py-1 rounded-full text-xs font-bold">
+                        Mais popular
+                      </span>
+                    </div>
+                  )}
 
-      {/* CTA Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-blue-50">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl font-bold text-slate-900 mb-4">
-            Ready to get started?
-          </h2>
-          <p className="text-lg text-slate-600 mb-8">
-            No credit card required to start with Free. Upgrade to Pro anytime.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={() => handleCTA('Free')}
-              className="px-8 py-3 bg-slate-200 text-slate-900 rounded-lg font-semibold hover:bg-slate-300 transition-colors"
-            >
-              Start Free
-            </button>
-            <button
-              onClick={() => handleCTA('Pro')}
-              className="px-8 py-3 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors"
-            >
-              Try Pro Free for 14 Days
-            </button>
+                  <div className="p-6 flex-1">
+                    <h3 className="text-lg font-bold text-text-primary mb-1">{tier.name}</h3>
+                    <p className="text-xs text-text-muted mb-5 min-h-[2.5rem]">{tier.description}</p>
+
+                    <div className="mb-6">
+                      <span className="text-4xl font-bold text-text-primary">{tier.price}</span>
+                      <span className="text-text-muted text-sm ml-1">{tier.period}</span>
+                    </div>
+
+                    <button
+                      onClick={() => handleCTA(tier.name)}
+                      className={`w-full py-2.5 px-4 rounded-lg font-semibold text-sm transition-all mb-6 ${
+                        tier.highlight
+                          ? 'bg-primary text-background hover:bg-primary/90 active:scale-[0.98]'
+                          : 'bg-surface-2 text-text-primary hover:bg-surface border border-border'
+                      }`}
+                    >
+                      {tier.cta}
+                    </button>
+
+                    <ul className="space-y-2.5">
+                      {tier.features.map((f, fi) => (
+                        <li key={fi} className="flex items-start gap-2.5 text-xs">
+                          {f.included
+                            ? <Check className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                            : <X className="w-4 h-4 text-text-muted flex-shrink-0 mt-0.5 opacity-40" />}
+                          <span className={f.included ? 'text-text-secondary' : 'text-text-muted opacity-50 line-through'}>
+                            {f.text}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
-    </div>
+        </section>
+
+        {/* Features */}
+        <section className="py-16 px-4 sm:px-6 lg:px-8 bg-surface border-y border-border">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-2xl font-bold text-center text-text-primary mb-10">
+              O que você obtém com o LBH System
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {features.map(({ icon: Icon, title, desc }, i) => (
+                <div key={i} className="flex gap-4 p-4 rounded-xl bg-background border border-border">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+                    <Icon size={16} className="text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-text-primary mb-1">{title}</h3>
+                    <p className="text-xs text-text-secondary leading-relaxed">{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold text-text-primary text-center mb-8">Perguntas frequentes</h2>
+            <div className="space-y-2">
+              {faqItems.map((item, idx) => (
+                <div key={idx} className="border border-border rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
+                    className="w-full px-5 py-4 text-left text-sm font-medium text-text-primary hover:bg-surface-2 flex justify-between items-center transition-colors"
+                  >
+                    {item.question}
+                    <span className={`text-text-muted transition-transform duration-200 ${expandedFaq === idx ? 'rotate-180' : ''}`}>▾</span>
+                  </button>
+                  {expandedFaq === idx && (
+                    <div className="px-5 py-4 bg-surface border-t border-border text-sm text-text-secondary leading-relaxed">
+                      {item.answer}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* CTA Bottom */}
+        <section className="py-16 px-4 sm:px-6 lg:px-8 bg-primary/5 border-t border-primary/10">
+          <div className="max-w-xl mx-auto text-center">
+            <h2 className="text-2xl font-bold text-text-primary mb-3">Pronto para começar?</h2>
+            <p className="text-text-secondary text-sm mb-6">
+              Crie sua conta gratuita ou experimente o Pro por 14 dias sem custo.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                onClick={() => router.push('/login')}
+                className="px-6 py-3 bg-surface border border-border text-text-primary rounded-lg font-semibold text-sm hover:bg-surface-2 transition-colors"
+              >
+                Começar gratuitamente
+              </button>
+              <button
+                onClick={() => setShowCheckout(true)}
+                className="px-6 py-3 bg-primary text-background rounded-lg font-semibold text-sm hover:bg-primary/90 transition-colors"
+              >
+                Testar Pro — 14 dias grátis
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
     </>
   );
 }
