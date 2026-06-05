@@ -158,7 +158,7 @@ export default function SharpeComparePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 mb-4">
             <div>
               <label className="label">Início</label>
               <input className="input" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
@@ -330,7 +330,7 @@ export default function SharpeComparePage() {
               <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">
                 Interpretação do Sharpe Ratio
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-2 md:gap-3 text-xs">
                 {[
                   { range: "< 0",   label: "Negativo",   desc: "Pior que a taxa livre de risco",     cls: "text-danger" },
                   { range: "0 – 1", label: "Aceitável",  desc: "Retorno modesto para o risco",       cls: "text-warning" },

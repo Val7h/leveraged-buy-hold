@@ -91,7 +91,7 @@ export default function HistoryPage() {
 
         {/* Summary cards */}
         {history.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-5">
             {[
               { label: "Total de Operações", value: history.length.toString(), color: "text-text-primary" },
               { label: "Ativos Operados",    value: uniqueTickers.toString(),  color: "text-primary" },

@@ -57,7 +57,7 @@ export default function BacktestPage() {
 
         {/* Config */}
         <div className="card mb-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4">
             <div>
               <label className="label">Ticker principal</label>
               <input className="input font-mono uppercase" value={tickers} onChange={(e) => setTickers(e.target.value)} placeholder="NEE" />
@@ -162,7 +162,7 @@ export default function BacktestPage() {
                   {result.crisis_analysis.map((crisis: any, i) => (
                     <div key={i} className="bg-surface-2 rounded-lg p-3">
                       <p className="text-xs font-semibold text-text-primary mb-2">{crisis.name}</p>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
                         {Object.entries(STRATEGY_LABELS).map(([key, label]) => {
                           const data = crisis[key] as { return_pct: number; max_drawdown_pct: number } | undefined;
                           if (!data) return null;

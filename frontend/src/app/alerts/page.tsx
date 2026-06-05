@@ -106,7 +106,7 @@ export default function AlertsPage() {
         {showForm && (
           <div className="card mb-6 border-primary/20">
             <h3 className="text-sm font-semibold text-text-primary mb-4">Criar Alerta</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4">
               <div>
                 <label className="label">Ticker</label>
                 <input className="input font-mono uppercase" placeholder="NEE" value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value })} />

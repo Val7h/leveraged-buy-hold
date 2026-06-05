@@ -203,7 +203,7 @@ export default function DashboardPage() {
         {/* ── Portfolio Metrics ─────────────────────────────── */}
         {metrics && (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4">
               <MetricCard label="Patrimônio (Equity)" value={formatCurrency(metrics.equity, "USD", true)}
                 accent="primary" icon={<DollarSign size={16} className="text-primary" />} large />
               <MetricCard label="Exposição Total"
@@ -223,7 +223,7 @@ export default function DashboardPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-5">
               <MetricCard label="Drawdown Atual"
                 value={formatPercent(metrics.current_drawdown)}
                 subValue={`Máx. histórico: ${formatPercent(metrics.max_drawdown)}`}

@@ -128,7 +128,7 @@ export default function SimulatorPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-2 sm:gap-3 md:gap-4 mb-4">
             <div>
               <label className="label">Equity Inicial ($)</label>
               <input className="input font-mono" type="number" value={initialEquity} onChange={(e) => setInitialEquity(Number(e.target.value))} />
@@ -208,7 +208,7 @@ export default function SimulatorPage() {
         {result && !loading && (
           <div className="space-y-5">
             {/* Key metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
               {[
                 {
                   label: `Patrimônio Mediano (${horizonYears}a)`,

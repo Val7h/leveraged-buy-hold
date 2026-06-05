@@ -116,7 +116,7 @@ export default function PortfolioPage() {
         {showAddForm && (
           <div className="card mb-6 border-primary/20">
             <h3 className="text-sm font-semibold text-text-primary mb-4">Nova Posição</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4">
               <div>
                 <label className="label">Ticker</label>
                 <input
@@ -163,7 +163,7 @@ export default function PortfolioPage() {
 
         {/* Metrics summary */}
         {metrics && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-6">
             {[
               { label: "Patrimônio", value: formatCurrency(metrics.equity, "USD", true) },
               { label: "Alavancagem Efetiva", value: formatLeverage(metrics.effective_leverage), color: getLeverageColor(metrics.effective_leverage) },
