@@ -23,6 +23,11 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    # Consent fields (legal compliance)
+    risk_acknowledged = Column(Boolean, default=False, nullable=False, server_default="false")
+    terms_accepted = Column(Boolean, default=False, nullable=False, server_default="false")
+    consent_logged_at = Column(DateTime(timezone=True), nullable=True)
+
     portfolios = relationship("Portfolio", back_populates="owner")
     alerts = relationship("Alert", back_populates="user")
     subscription = relationship("Subscription", back_populates="user", uselist=False)

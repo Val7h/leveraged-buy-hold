@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from app.core.config import settings
-from app.core.database import create_tables
+from app.core.database import create_tables, engine
 from app.api.v1 import auth, assets, portfolio, backtest, simulator, alerts, watchlist, logos, moderation, moderation_admin_dashboard, billing
 from app.api.v1 import user_consent
 
@@ -23,9 +24,32 @@ app.add_middleware(
 )
 
 
+def run_migrations():
+    """Add new columns to existing tables (idempotent via IF NOT EXISTS)"""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS risk_acknowledged BOOLEAN NOT NULL DEFAULT FALSE
+            """))
+            conn.execute(text("""
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN NOT NULL DEFAULT FALSE
+            """))
+            conn.execute(text("""
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS consent_logged_at TIMESTAMPTZ NULL
+            """))
+            conn.commit()
+    except Exception as e:
+        # Columns may already exist — safe to ignore
+        pass
+
+
 @app.on_event("startup")
 def startup():
     create_tables()
+    run_migrations()
 
 
 app.include_router(auth.router, prefix="/api/v1")
