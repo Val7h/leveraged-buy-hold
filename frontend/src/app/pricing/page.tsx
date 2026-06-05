@@ -4,6 +4,12 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check } from 'lucide-react';
 import CheckoutForm from '@/components/CheckoutForm';
+import { Elements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
+
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
+);
 
 interface PricingTier {
   name: string;
@@ -158,7 +164,9 @@ export default function PricingPage() {
               ✕
             </button>
             <div className="p-6">
-              <CheckoutForm tier="pro" />
+              <Elements stripe={stripePromise}>
+                <CheckoutForm tier="pro" />
+              </Elements>
             </div>
           </div>
         </div>
