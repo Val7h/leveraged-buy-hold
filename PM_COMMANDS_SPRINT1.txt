@@ -1,0 +1,292 @@
+================================================================================
+                    LBH SYSTEM - SPRINT 1 COMANDO EXECUTIVO
+                        (Junho 5-19, 2026)
+================================================================================
+
+SITUAÇÃO: MVP em produção. Agora: Compliance + Monetização + Performance.
+
+PRÓXIMAS AÇÕES (TODAY - June 5):
+================================================================================
+
+1. ENVIAR BRIEFING EXECUTIVO
+   - Arquivo: BRIEFING_EXECUTIVO_SPRINT1.md
+   - Público: Todos 9 especialistas + Executivos
+   - Formato: Forward no email + Slack
+
+2. AGENDAR KICKOFF (Monday 9 AM)
+   - Duração: 90 min
+   - Attendees: Legal, Risk, Finance, Quant, Backend, Frontend, Growth, DevOps, PM
+   - Agenda: Briefing, dependências, blockers
+   - Arquivo para apresentar: SPRINT_PLAN_H2_2026.md
+
+3. BRIEFINGS 1:1 (15 min cada)
+   - Objetivo: Confirmar entendimento, clarificar dúvidas
+   - Usar: TASK_TEMPLATES_SPRINT1.md (copy-paste tarefas para seu sistema)
+
+4. ATIVAR MONITORAMENTO
+   - Setup: Slack #lbh-sprint-updates
+   - Daily: 9 AM + 6 PM async updates (cada especialista)
+   - Mid-sprint sync: Dia 7 (revisar bloqueadores)
+
+================================================================================
+                          MATRIZ DE RESPONSABILIDADE
+================================================================================
+
+LEGAL OFFICER
+├─ Entregar: ToS + Privacy + Disclaimer (Dia 7, 5)
+└─ Impacto: Sem isso, não podemos lançar features de leverage
+
+RISK OFFICER
+├─ Entregar: Risk matrix + model validation (Dia 3, 8)
+└─ Impacto: Validar que modelo backtest funciona na realidade
+
+FINANCE OFFICER
+├─ Entregar: Pricing decisão (Dia 7) + Projections (Dia 7)
+└─ Impacto: Toda a estratégia crescimento depende disso
+
+QUANT LEAD
+├─ Entregar: Backtest validation + Indicator tuning (Dia 10)
+└─ Impacto: Se mudamos Kelly/RSI, toda estratégia muda
+
+BACKEND LEAD
+├─ Entregar: Performance <2s + VaR daily + APIs (Dia 8, 6, 10)
+└─ Impacto: Se backtest queries lentas, produto inutilizável
+
+FRONTEND LEAD
+├─ Entregar: Disclaimer modal + Mobile UX (Dia 7, 10)
+└─ Impacto: Legal precisa, Growth precisa, Compliance precisa
+
+GROWTH OFFICER
+├─ Entregar: Playbook + CAC/LTV + Channels (Dia 4, 7, 9)
+└─ Impacto: Define viabilidade do modelo de negócio
+
+DEVOPS LEAD
+├─ Entregar: Prod readiness + Cost audit (Dia 8, 6)
+└─ Impacto: Infra tem que escalar com crescimento
+
+PM (Você)
+├─ Decisões: Pricing (D8), Channels (D10), Leverage (D12)
+└─ Síntese: Roadmap H2, Risk synthesis, Daily monitoring
+
+================================================================================
+                         BLOQUEADORES CRÍTICOS
+================================================================================
+
+BLOCKER 1: Legal → Disclaimer Modal
+  Status: Not started
+  Risk: Se não pronto Dia 5, Frontend não consegue integrar
+  Mitigação: Contate Legal TODAY para confirmar timeline
+
+BLOCKER 2: Finance → Pricing Decision
+  Status: In progress (análise 3 opções)
+  Risk: Se não decidido Dia 8, Growth não consegue medir CAC
+  Mitigação: Validar com beta testers Dia 6-7
+
+BLOCKER 3: Backend → Performance Optimization
+  Status: Not started
+  Risk: Se backtest queries >3s, produto é inutilizável
+  Mitigação: Profile D2, start indexing D3, test D7
+
+BLOCKER 4: Product → Regulatory Check (CVM)
+  Status: Not started
+  Risk: Brasil pode proibir leverage (regulação)
+  Mitigação: Email CVM TODAY + tenha Opção B (SaaS puro)
+
+================================================================================
+                         TIMELINE EM DASHBOARD
+================================================================================
+
+SEMANA 1 (June 5-12):
+  Mon 5  → Kickoff + Product: jurisdição decision
+  Tue 6  → Risk: matrix v1 + Quant: comece backtest
+  Wed 7  → Legal: disclaimer pronto
+  Thu 8  → Finance: pricing recomendação pronto
+  Fri 12 → End of Week 1 checks
+
+SEMANA 2 (June 13-19):
+  Mon 13 → Product DECIDE pricing
+  Wed 15 → Product DECIDE growth channels
+  Thu 17 → Backend perf validation
+  Fri 19 → SPRINT REVIEW + RETRO (120 min)
+
+================================================================================
+                        MÉTRICAS DE SUCESSO
+================================================================================
+
+COMPLIANCE:
+  ✓ ToS + Privacy assinável
+  ✓ Risk disclaimer modal live
+  ✓ 0 gaps LGPD/GDPR
+
+BUSINESS:
+  ✓ Pricing model escolhido
+  ✓ CAC/LTV >3:1 (healthy)
+  ✓ Break-even claro (<12 months)
+
+PRODUCT:
+  ✓ Backtest queries <2s p90
+  ✓ Mobile Lighthouse >85
+  ✓ VaR daily computed
+
+RISK:
+  ✓ Risk matrix (top 20 risks)
+  ✓ Model drift <5%
+  ✓ Stress tests documented
+
+================================================================================
+                    COMO USAR ESTES DOCUMENTOS
+================================================================================
+
+1. BRIEFING_EXECUTIVO_SPRINT1.md
+   → Mostrar em Kickoff (Monday 9 AM)
+   → Forward via email para todos 9
+
+2. SPRINT_PLAN_H2_2026.md
+   → Detalhe completo (guardado para referência)
+   → Consultar quando dependências surgem
+   → Update ao final cada sprint
+
+3. TASK_TEMPLATES_SPRINT1.md
+   → Copy-paste tarefas para seu sistema (Jira, Linear, Asana)
+   → Passar para cada especialista após kickoff
+   → Track progress via sistema
+
+4. PM_COMMANDS_SPRINT1.txt (este arquivo)
+   → Seu checklist para executar diariamente
+   → Paste em Slack para referência rápida
+
+================================================================================
+                         PRÓXIMOS PASSOS (PM)
+================================================================================
+
+HOJE (June 5):
+  [ ] Forward BRIEFING_EXECUTIVO_SPRINT1.md + SPRINT_PLAN_H2_2026.md via email
+  [ ] Post PM_COMMANDS_SPRINT1.txt em #lbh-sprint-updates
+  [ ] Call Legal (15 min) → Confirm ToS timeline
+  [ ] Call Finance (15 min) → Confirm pricing options status
+  [ ] Call Risk (15 min) → Confirm risk matrix structure
+  [ ] Call Backend (15 min) → Confirm perf baseline (backtest latency?)
+
+ANTES DO KICKOFF (Mon 9 AM):
+  [ ] Confirm jurisdição decision (é Brasil, USA, Global?)
+  [ ] Schedule CVM contact (Growth, Risk, Legal)
+  [ ] Setup Slack #lbh-sprint-updates
+  [ ] Create GitHub Projects board para Sprint 1
+
+DURANTE KICKOFF:
+  [ ] Apresentar timeline + dependencies
+  [ ] Responder questions
+  [ ] Confirmar que todos entendem tarefas
+  [ ] Set daily standup expectations (9 AM + 6 PM Slack)
+
+APÓS KICKOFF:
+  [ ] Send 1:1 links para task templates (copy-paste para Jira)
+  [ ] Setup 1x per week Risk stand-up (Fridays 2 PM?)
+  [ ] Setup 1x per week Technical stand-up (Thursdays 10 AM?)
+
+================================================================================
+                    LINKS RÁPIDOS / CHECKLIST
+================================================================================
+
+PRÉ-KICKOFF (TODAY):
+  [ ] Email: BRIEFING_EXECUTIVO_SPRINT1.md → All 9
+  [ ] Email: SPRINT_PLAN_H2_2026.md → All 9
+  [ ] Slack: #lbh-sprint-updates criado
+  [ ] Calendar: Kickoff Monday 9 AM agendado
+  [ ] Call: Legal 15 min TODAY
+  [ ] Call: Finance 15 min TODAY
+  [ ] Call: Risk 15 min TODAY
+  [ ] Call: Backend 15 min TODAY (latency baseline?)
+
+MID-SPRINT (Dia 7):
+  [ ] PM: Revisar status cada especialista (1:1 calls 15 min each)
+  [ ] PM: Identificar bloqueadores
+  [ ] PM: Decidir se precisa scope adjustment
+
+FIM SPRINT (Dia 14):
+  [ ] PM: Todos deliverables entregues?
+  [ ] PM: Sprint review meeting (120 min, Friday)
+  [ ] PM: Sprint retro discussion
+  [ ] PM: Prep Sprint 2 planning
+
+================================================================================
+                    CONTATOS EXTERNOS (Schedule NOW)
+================================================================================
+
+CVM (Brasil):
+  → Email: regulacao@cvm.gov.br (ou descobrir contato correto)
+  → Assunto: Plataforma de investimento alavancado - consulta regulatória
+  → Turnaround: 5-10 dias úteis
+  → DL: Dia 3 (enviar), Dia 10+ (resposta esperada)
+
+Quantfury Compliance:
+  → Contact Risk Officer
+  → Assunto: Verificação solvência + liquidação de emergência
+  → Turnaround: 2-3 dias
+  → DL: Dia 5 (solicitar), Dia 7 (resposta)
+
+Consultoria Legal Fintech (se aplicável):
+  → Procurar: Especialista em CVM + LGPD
+  → Se: ToS muito complexo (considerar)
+  → Budget: $X/hour (discuss com Finance)
+  → DL: Dia 1 (contato), Dia 5 (briefing)
+
+================================================================================
+                    RISCOS CRÍTICOS (Seu radar)
+================================================================================
+
+RISCO 1: CVM bloqueia leverage
+  Prob: Alta | Impacto: Crítico
+  Mitigação: Contate CVM Dia 1 + Opção B (SaaS puro)
+
+RISCO 2: Quantfury latência > esperado
+  Prob: Média | Impacto: Alto
+  Mitigação: Cache local + fallback yfinance
+
+RISCO 3: Backtest queries não otimizam <2s
+  Prob: Média | Impacto: Alto
+  Mitigação: Índices DB Day 4, Redis cache Day 6
+
+RISCO 4: Equipe não completa sprint
+  Prob: Baixa | Impacto: Médio
+  Mitigação: Daily standups, mid-sprint sync
+
+RISCO 5: Regulatory requer documentação extra (CVM)
+  Prob: Baixa | Impacto: Alto
+  Mitigação: Budget 2-3 semanas para compliance se needed
+
+================================================================================
+                    NOTAS PARA O PM
+================================================================================
+
+1. Você tem 9 especialistas trabalhando EM PARALELO.
+   → Não é sequencial.
+   → Múltiplas coisas acontecem ao mesmo tempo.
+   → Seu trabalho é remover bloqueadores rapidamente.
+
+2. Decisões críticas (Pricing, Channels, Leverage) requerem PM input.
+   → Não delegue completamente.
+   → Mantenha direção estratégica clara.
+
+3. Risk management é prioridade.
+   → CVM pode bloquear (Brasil).
+   → Leverage model validation é crítico.
+   → Weekly risk stand-up recomendado.
+
+4. Communication is key.
+   → Daily async updates (Slack).
+   → Mid-sprint sync se houver blockers.
+   → Clear escalation path.
+
+5. Sprint 1 é foundation para H2.
+   → Compliance → Monetização → Growth.
+   → Se Sprint 1 falhar, todo H2 sofre.
+   → Invista em clareza + execução.
+
+================================================================================
+
+Criado: June 5, 2026
+Próxima revisão: June 19, 2026 (fim sprint)
+Versão: 1.0
+
+================================================================================

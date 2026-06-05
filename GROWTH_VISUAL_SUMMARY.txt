@@ -1,0 +1,293 @@
+═══════════════════════════════════════════════════════════════════════════
+  LBH SYSTEM - GROWTH STRATEGY AT A GLANCE
+  June 5 - August 31, 2026
+═══════════════════════════════════════════════════════════════════════════
+
+THE OPPORTUNITY
+
+  Market:  Defensive buy-and-hold investors who want leverage
+  Size:    1.5M+ potential users (Brazil + USA)
+  Timing:  Rising rates → defensive strategies in demand
+  Window:  12-18 months before bigger players enter
+
+CUSTOMER PROFILE - "Bruno"
+
+  Age:       35-55 years old
+  Income:    $100k-500k USD/year
+  Assets:    $500k-$5M invested
+
+  Pain Points:
+    1. Manual leverage sizing = risky
+    2. Portfolio monitoring = tedious
+    3. CDI (9%) returns not enough
+
+  Goal: 10-15% annual returns (CAGR) without stress
+
+VALUE PROPOSITION
+
+  "The smart way to invest with leverage—automated, safe, defensively."
+
+  Smart Leverage      → RSI-based, not manual guessing
+  Proven Backtest     → 20 years of historical data
+  Simple Dashboard    → Real-time alerts + export
+  Defensive Focus     → Dividend stocks, stable sectors
+
+═══════════════════════════════════════════════════════════════════════════
+  12-WEEK GROWTH PROJECTION
+═══════════════════════════════════════════════════════════════════════════
+
+Week:           1-2             3-4             5-8             9-12
+Phase:          LAUNCH          SCALE 1x        SCALE 4x        SCALE 10x
+Timeline:       Jun 5-19        Jun 20-Jul3     Jul 4-Aug1      Aug 1-31
+
+Users:          120→225         350→485         1,200           2,000
+Paid Users:     32              65              240             400
+MRR:            $4.2k           $6.1k           $18k            $25k
+DAU:            80              140             350             600
+
+Milestone:      Beta Launch     Public Launch   1st Advisors    Target Reached
+Growth By:      Community       Blog+Organic    Advisors+Blog   All 3 Channels
+
+═══════════════════════════════════════════════════════════════════════════
+  3 GROWTH CHANNELS (PRIORITIES)
+═══════════════════════════════════════════════════════════════════════════
+
+CHANNEL 1: ORGANIC (Blog + SEO)
+  Start:        Day 2
+  CAC:          $0-200
+  Timeline:     3 months (SEO ramping)
+  Users:        150-200/month by Month 3
+  Effort:       8-10 blog posts, 4 videos
+  Payoff:       Passive, forever
+  Risk:         Slow initial ramp (1-3mo)
+  Mitigation:   Guest posts, Reddit
+
+CHANNEL 2: DIRECT SALES (Advisors + Brokers)
+  Start:        Day 3
+  CAC:          $0 (founder-led)
+  Timeline:     4-6 weeks (close cycle)
+  Users:        20-30 per advisor × 3 = 90
+  Effort:       50 emails, 5-10 calls
+  Payoff:       High-value, repeatable
+  Risk:         Long sales cycle
+  Mitigation:   Pilot offers, white-label
+
+CHANNEL 3: COMMUNITY (Discord + Referrals)
+  Start:        Day 1
+  CAC:          $50-100
+  Timeline:     2 weeks (viral loop)
+  Users:        100-200 direct, 50+ viral
+  Effort:       Daily engagement, AMAs
+  Payoff:       Brand advocates, feedback
+  Risk:         Engagement drops
+  Mitigation:   Weekly live demos, rewards
+
+═══════════════════════════════════════════════════════════════════════════
+  UNIT ECONOMICS (The Math That Works)
+═══════════════════════════════════════════════════════════════════════════
+
+Pricing Model:
+  Free:         5 assets, no backtest      → 80% of signups
+  Pro:          $29/month                  → 15-18% convert
+  Premium:      $99/month                  → 2-3% convert
+  Blended ARPU: $45/month
+
+The Math:
+  Revenue per user:    $45/month
+  Gross profit:        $45 × 85% = $38.25/month
+  CAC:                 $50 (one-time)
+  Payback period:      $50 / $38.25 = 1.3 months ✓ HEALTHY!
+
+  LTV (36-month, 5% churn):  $1,230
+  LTV:CAC Ratio:             24.6:1 ✓ EXCELLENT!
+
+KEY THRESHOLDS:
+  If CAC > $100  → Unit econ breaks down
+  If CAC < $30   → Printing money
+  If churn > 10% → LTV drops dangerously
+  If D30 < 50%   → Product issue, not growth issue
+
+═══════════════════════════════════════════════════════════════════════════
+  RETENTION STRATEGY (Keep Them Sticky)
+═══════════════════════════════════════════════════════════════════════════
+
+Day 0 (Signup)
+  Disclaimer popup
+  Welcome email (2-min video)
+  5-step interactive tutorial
+  "You're ready!" celebration
+
+Day 1-7 (First Week)
+  Day 1: "Quick wins" email (top 3 stocks)
+  Day 3: "Run your backtest" email
+  Day 7: "Next level: Simulator" email + NPS survey
+  Goal: 70% complete tutorial, 85% D7 retention
+
+Week 2-4 (Activation)
+  Feature usage tracking
+  Alerts created (target: >3 per user)
+  Free → paid conversion (target: 15%)
+  Goal: 75% D30 retention
+
+Week 5-12 (Retention)
+  Weekly: "Your top 3 scoring assets"
+  Monthly: Feature updates, leaderboard, AMAs
+  Goal: 50% D90 retention, NPS > 45
+
+═══════════════════════════════════════════════════════════════════════════
+  14-DAY LAUNCH TIMELINE
+═══════════════════════════════════════════════════════════════════════════
+
+WEEK 1: FOUNDATION (Jun 5-12)
+
+  Day 1:  Kickoff + advisor list building
+  Day 2:  Blog outline + Discord setup
+  Day 3:  Email templates + pitch deck
+  Day 4:  Landing page live
+  Day 5:  Disclaimer + legal pages live
+  Day 6:  Beta launch (100 users)
+  Day 7:  First metrics check + pricing decision
+
+  Goal: 100+ beta users, analytics ready
+
+WEEK 2: LAUNCH (Jun 13-19)
+
+  Day 8:  Advisor outreach begins (50 emails)
+  Day 9:  YouTube channel launched
+  Day 10: Blog post #1 published
+  Day 12: Mid-sprint checkpoint
+  Day 14: Feature finalization + payment live
+  Day 19: PUBLIC LAUNCH
+
+  Goal: 225+ users, public announced
+
+═══════════════════════════════════════════════════════════════════════════
+  SUCCESS GATES (GO / NO-GO)
+═══════════════════════════════════════════════════════════════════════════
+
+GATE 1: Sprint 1 End (June 19)
+  GO if:
+    • 200+ users signed up
+    • D7 retention >80%
+    • CAC <$100
+    • MRR >$3k
+    • No critical bugs
+
+  NO-GO if:
+    • CVM blocks leverage pricing
+    • D30 retention <50%
+    • Server downtime >2 hours
+
+GATE 2: Mid-Month (July 15)
+  GO if:
+    • 600+ users (2x growth)
+    • 1+ advisor pilot active
+    • 50+ organic signups
+    • MRR >$10k
+
+  NO-GO if:
+    • Conversion drops <10%
+    • Churn spikes >8%
+
+GATE 3: Month End (August 1)
+  GO if:
+    • 2,000 users
+    • 3+ advisors active
+    • $25k MRR
+    • CAC <$50, LTV:CAC >3:1
+
+  NO-GO if:
+    • Organic stalled <100/week
+    • Churn trending up
+
+═══════════════════════════════════════════════════════════════════════════
+  RESOURCE NEEDS & BUDGET
+═══════════════════════════════════════════════════════════════════════════
+
+Team to Hire (by Day 2):
+  • Content Writer (0.5 FTE): $2k/month
+  • Sales Dev (0.5 FTE): $2k/month
+  • Growth Lead (1.0 FTE): $6k/month
+  • Community Manager (0.25 FTE): $800/month
+  Total: 2.5 FTE, $10.8k/month
+
+Budget (3 months June-August):
+  Content creation:        $3k
+  Marketing tools:         $2k
+  Paid ads (optional):     $5k
+  Community incentives:    $1k
+  Partnerships:            $2k
+  Payroll:                 $32.4k
+  ─────────────────────────────
+  Total Investment:        $45.4k
+  Expected ROI:            $25k MRR by Month 3 = 6.6x payback
+
+═══════════════════════════════════════════════════════════════════════════
+  KEY METRICS TO CHECK DAILY
+═══════════════════════════════════════════════════════════════════════════
+
+Morning (9 AM):
+  Signups yesterday:     __ users (target: 15+/day)
+  MRR:                   $__ (target: $4.2k by Day 7)
+  D7 retention:          _% (target: >80%)
+
+Evening (6 PM):
+  Feature adoption:      Screening _%, Backtest _%
+  Support tickets:       __ (any blockers?)
+  Advisor responses:     __ calls booked
+
+Weekly (Friday):
+  DAU:                   __ users
+  Conversion (F→P):      _% (target: 15%)
+  CAC blended:           $__ (target: <$50)
+  NPS:                   __ (target: >40)
+
+═══════════════════════════════════════════════════════════════════════════
+  TOP 3 RISKS & MITIGATIONS
+═══════════════════════════════════════════════════════════════════════════
+
+RISK 1: CVM blocks leverage fees (Regulatory)
+  Likelihood:  HIGH (40%)
+  Impact:      CRITICAL
+  Mitigation:  Have Plan B (SaaS puro); contact CVM Day 1
+  Owner:       Legal officer
+
+RISK 2: Advisor sales take 6+ weeks (Sales cycle)
+  Likelihood:  MEDIUM (50%)
+  Impact:      MEDIUM
+  Mitigation:  Pilot offers, white-label, affiliate fallback
+  Owner:       Growth lead
+
+RISK 3: Churn > 10% monthly (Product)
+  Likelihood:  MEDIUM (25%)
+  Impact:      MEDIUM
+  Mitigation:  Monitor D7/D30 daily, fix onboarding, email drip
+  Owner:       Product + Growth
+
+═══════════════════════════════════════════════════════════════════════════
+  THE BIG PICTURE
+═══════════════════════════════════════════════════════════════════════════
+
+June 2026:      Beta launch → Foundation built
+July 2026:      Public launch → Growth traction
+August 2026:    Scaling → Advisors leading → 2,000 users
+
+By Sept 30:     $25k MRR, 2,000 users, organic ranking, viral loop
+By Dec 31:      $50k+ MRR, 5,000 users, enterprise features, seed funding
+By June 2027:   $200k+ MRR, profitability in sight, Series A ready
+
+═══════════════════════════════════════════════════════════════════════════
+  YOUR MANTRA
+═══════════════════════════════════════════════════════════════════════════
+
+  Focus > Breadth        (3 channels, not 10)
+  Metrics > Vanity       (CAC, LTV, retention)
+  Users > Revenue        (1 retained > 10 new)
+  Launch > Perfect       (June 19 ship > June 30 polish)
+  Advisors > Ads         (10x leverage on referrals)
+
+═══════════════════════════════════════════════════════════════════════════
+  Last Updated: June 5, 2026
+  Owner: Growth Lead
+  Status: READY TO EXECUTE
+═══════════════════════════════════════════════════════════════════════════

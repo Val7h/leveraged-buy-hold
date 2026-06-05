@@ -1,0 +1,347 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║            SPRINT 1 QUICK REFERENCE - PASTE IN SLACK DAILY                 ║
+║                      (June 5-19, 2026)                                      ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 TODAY'S FOCUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Messaging for each day:
+
+[Day 1 - Mon 5 Jun]   "Product: Jurisdiction decision ✓ | Kickoff @ 9 AM"
+[Day 2 - Tue 6 Jun]   "Risk matrix 50% | Quant backtest 40% | Finance pricing 60%"
+[Day 3 - Wed 7 Jun]   "Risk matrix DONE ✓ | Legal disclaimer outline | Quant 60%"
+[Day 4 - Thu 8 Jun]   "Growth playbook DONE ✓ | Finance pricing 95%"
+[Day 5 - Fri 9 Jun]   "Legal disclaimer DONE ✓ | Backend rate limit DONE ✓"
+[Day 6 - Sat 10 Jun]  "Weekend (no work)"
+[Day 7 - Sun 11 Jun]  "Weekend (no work)"
+[Day 8 - Mon 12 Jun]  "Finance PRICING DECISION → Product decides ✓"
+[Day 9 - Tue 13 Jun]  "Legal ToS DONE ✓ | Growth CAC/LTV DONE ✓"
+[Day 10 - Wed 14 Jun] "Quant BACKTEST DONE ✓ | Frontend Analytics DONE ✓"
+[Day 11 - Thu 15 Jun] "Risk model validation DONE ✓"
+[Day 12 - Fri 16 Jun] "Product LEVERAGE DECISION ✓"
+[Day 13 - Sat 17 Jun] "Weekend (no work)"
+[Day 14 - Sun 18 Jun] "Weekend (no work)"
+[Day 15 - Fri 19 Jun] "SPRINT REVIEW + RETRO @ 9 AM"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 9 SPECIALISTS - STATUS TEMPLATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Copy this daily at 9 AM:
+
+```
+📊 SPRINT 1 DAILY UPDATE - [DATE]
+
+🏛️  LEGAL OFFICER
+   Yesterday: [status]
+   Today: 🎯 [focus]
+   Blockers: 🚧 [any issues]
+
+⚠️  RISK OFFICER
+   Yesterday: [status]
+   Today: 🎯 [focus]
+   Blockers: 🚧 [any issues]
+
+💰 FINANCE OFFICER
+   Yesterday: [status]
+   Today: 🎯 [focus]
+   Blockers: 🚧 [any issues]
+
+📐 QUANT LEAD
+   Yesterday: [status]
+   Today: 🎯 [focus]
+   Blockers: 🚧 [any issues]
+
+🚀 BACKEND LEAD
+   Yesterday: [status]
+   Today: 🎯 [focus]
+   Blockers: 🚧 [any issues]
+
+🎨 FRONTEND LEAD
+   Yesterday: [status]
+   Today: 🎯 [focus]
+   Blockers: 🚧 [any issues]
+
+📈 GROWTH OFFICER
+   Yesterday: [status]
+   Today: 🎯 [focus]
+   Blockers: 🚧 [any issues]
+
+⚙️  DEVOPS LEAD
+   Yesterday: [status]
+   Today: 🎯 [focus]
+   Blockers: 🚧 [any issues]
+
+👨‍💼 PM (YOU)
+   Yesterday: [decisions/meetings]
+   Today: 🎯 [focus]
+   Blockers: 🚧 [escalations needed]
+```
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚧 CRITICAL BLOCKERS (Check daily)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+| Blocker                      | Owner    | Status  | DL  | Action         |
+|------------------------------|----------|---------|-----|----------------|
+| Disclaimer modal (D5)        | Legal    | ✓ DONE  | 5/9 | Integrate FE   |
+| Backend rate limiting (D5)   | Backend  | ✓ DONE  | 5/9 | Deploy         |
+| Pricing recommendation (D7)  | Finance  | ⏳ WAIT | 6/8 | Beta feedback  |
+| Backtest performance <2s     | Backend  | ⏳ WAIT | 6/8 | Optimize query |
+| Risk matrix (D3)             | Risk     | ✓ DONE  | 6/5 | PM reviews     |
+| Growth playbook (D4)         | Growth   | ✓ DONE  | 6/6 | PM approves    |
+| Quant backtest (D10)         | Quant    | ⏳ WAIT | 6/14| Validation     |
+| CVM response (async)         | Legal    | ⏳ WAIT | 6/12| Follow up      |
+| Database indices             | DevOps   | ⏳ WAIT | 6/6 | Install        |
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 CRITICAL DECISIONS (You make these)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DECISION #1: Jurisdiction (Day 1)
+  Input needed: None (your call)
+  Options: Brazil | USA | Global | Brazil + USA
+  Decision: [ ] Made | [ ] Pending
+  Date made: ________
+  Communicated to: Legal, Risk, Finance ✓/✗
+
+DECISION #2: Pricing Model (Day 8)
+  Input from: Finance (recommendation), Beta testers (feedback)
+  Options: A (SaaS) | B (Performance fee) | C (Hybrid)
+  Decision: [ ] Made | [ ] Pending
+  Date made: ________
+  Communicated to: All 9 team members ✓/✗
+
+DECISION #3: Growth Channels (Day 10)
+  Input from: Growth (deep dive), Finance (CAC/LTV)
+  Options: Organic | Paid | Partnerships | Mix
+  Top 2 to launch: ______________ | ______________
+  Decision: [ ] Made | [ ] Pending
+  Date made: ________
+  Communicated to: Growth, Marketing ✓/✗
+
+DECISION #4: Leverage Model Adjustments (Day 12)
+  Input from: Quant (validation), Risk (stress tests)
+  Changes needed: Kelly % | RSI period | Scoring weights | None
+  Decision: [ ] Proceed with changes | [ ] Keep current | [ ] Test in shadow
+  Date made: ________
+  Communicated to: Quant, Backend ✓/✗
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📞 1:1 CALL SCHEDULE (Mid-sprint - Day 7)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Day 7 (Sun 11 June):
+  [ ] Legal Officer - 15 min - 10:00 AM
+  [ ] Risk Officer - 15 min - 10:20 AM
+  [ ] Finance Officer - 15 min - 10:40 AM
+  [ ] Quant Lead - 15 min - 11:00 AM
+  [ ] Backend Lead - 15 min - 11:20 AM
+  [ ] Frontend Lead - 15 min - 11:40 AM
+  [ ] Growth Officer - 15 min - 12:00 PM
+  [ ] DevOps Lead - 15 min - 12:20 PM
+
+Template for each call:
+  "Hi [Name]. Quick check: On track for [Deadline]? Any blockers I can help remove?"
+  Listen for: Technical issues, Resource constraints, Dependency problems
+  Action: Escalate/unblock immediately
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ SUCCESS CRITERIA (Must achieve to GO to Sprint 2)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COMPLIANCE ✓
+  [ ] ToS + Privacy Policy ready
+  [ ] Risk Disclaimer modal live in production
+  [ ] Data privacy audit (0 critical gaps)
+  [ ] Counterparty risk (Quantfury) documented
+
+BUSINESS ✓
+  [ ] Pricing model chosen + communicated
+  [ ] Financial projections (30/60/90)
+  [ ] CAC/LTV framework validated (LTV:CAC >3:1)
+  [ ] Break-even point identified
+
+PRODUCT ✓
+  [ ] Backtest queries <2s (p90)
+  [ ] Mobile UX Lighthouse >85
+  [ ] VaR daily monitoring active
+  [ ] H2 roadmap documented
+
+RISK ✓
+  [ ] Risk matrix (top 20 risks)
+  [ ] Model validation drift <5%
+  [ ] Stress tests (3 scenarios)
+  [ ] Mitigation ownership assigned
+
+GROWTH ✓
+  [ ] Growth playbook v1 documented
+  [ ] 2 acquisition channels selected
+  [ ] User onboarding flow spec
+  [ ] Landing page conversion >3%
+
+SCORE: __/15 (all 15 = GO)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 IF BLOCKER OCCURS - Escalation Path
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Blocker: ______________________
+
+Owned by: ______________________
+
+Severity: [ ] Low | [ ] Medium | [ ] High | [ ] Critical
+
+First action (within 2 hours):
+  ____________________________________________________________
+
+If first action doesn't work (escalate to):
+  ____________________________________________________________
+
+Go/No-Go impact:
+  ____________________________________________________________
+
+Decision needed from PM:
+  [ ] Resources | [ ] Scope cut | [ ] Timeline extend | [ ] Other
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 WEEKLY METRICS (Track these)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Week 1 (5-12 June):
+  Team velocity: ____/15 tasks completed
+  Blocker count: ____
+  PM decisions made: ____/4
+  Escalations: ____
+
+Week 2 (12-19 June):
+  Team velocity: ____/15 tasks completed
+  Blocker count: ____
+  PM decisions made: ____/4
+  Escalations: ____
+
+Overall:
+  Sprint completion: ____%
+  Success criteria met: ____/15
+  Go/No-Go decision: [ ] GO | [ ] NO-GO | [ ] CONDITIONAL
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📧 MESSAGING TEMPLATES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DAILY STANDUP (Post in #lbh-sprint-updates @ 9 AM):
+───────────────────────────────────────────────────
+📊 SPRINT 1 DAILY UPDATE - [DATE]
+
+[All 9 specialists fill in:]
+🎯 Yesterday: [what was done]
+🚀 Today: [what's the focus]
+🚧 Blockers: [any issues]
+
+[PM adds:]
+💬 Decisions: [any decisions made]
+🔄 Calls scheduled: [any 1:1s]
+
+
+MID-SPRINT SYNC MESSAGE (Slack @ 2 PM on Day 7):
+───────────────────────────────────────────────
+Quick check-in with everyone today:
+• Legal: Disclaimer ready? ToS on track?
+• Risk: Matrix done? Anything concerning?
+• Finance: Pricing feedback good? Runway clear?
+• Quant: Backtest validation progressing?
+• Backend: Performance target achievable?
+• Frontend: Mobile audit complete?
+• Growth: Channels narrowed down?
+• DevOps: Prod readiness on track?
+
+Let me know if anyone is stuck.
+
+
+PRICING DECISION ANNOUNCEMENT (Email - Day 8):
+───────────────────────────────────────────────
+Subject: 💰 PRICING MODEL DECIDED - Option [A/B/C]
+
+Hi team,
+
+After reviewing Finance's recommendation and beta tester feedback,
+we're going with Option [X].
+
+Why: [1-2 bullets]
+Impact: [growth roadmap, revenue model, etc.]
+Next: Backend + Frontend start implementation Monday.
+
+More details: [link to decision doc]
+
+Thanks,
+[Your name]
+
+
+GROWTH LAUNCH MESSAGE (Slack - Day 10):
+───────────────────────────────────────
+🚀 GROWTH CHANNELS SELECTED:
+
+#1: [Channel name] - [Why chosen]
+#2: [Channel name] - [Why chosen]
+
+Growth team: Let's start Day 1 Sprint 2.
+Finance: These are your CAC targets.
+PM: Weekly growth reviews Thursdays.
+
+
+SPRINT REVIEW INVITE (Calendar - Day 14):
+──────────────────────────────────────────
+Sprint 1 Review + Retro
+Friday 19 June, 9:00 AM - 11:00 AM
+📍 [Zoom link]
+
+Agenda:
+• Demo: Each team 5 min on 2-3 deliverables
+• Metrics: Success criteria check
+• Retro: What went well? What to improve?
+• Sprint 2: Quick preview
+
+See you there!
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 REFERENCE DOCS (Save locally)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Primary:
+  • BRIEFING_EXECUTIVO_SPRINT1.md (Share with team)
+  • SPRINT_PLAN_H2_2026.md (Full plan)
+  • TASK_TEMPLATES_SPRINT1.md (Task list)
+  • DEPENDENCY_MAP_VISUAL.md (Dependencies)
+  • PM_COMMANDS_SPRINT1.txt (Your checklist)
+
+Recommended reading:
+  ✓ Read BRIEFING first (5 min)
+  ✓ Skim SPRINT_PLAN (15 min)
+  ✓ Check DEPENDENCY_MAP daily
+  ✓ Use QUICK_REFERENCE (this file) for daily ops
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Created: June 5, 2026
+Print or bookmark this page.
+Update daily.
+Review at end of sprint.
+
+Good luck! 🚀
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

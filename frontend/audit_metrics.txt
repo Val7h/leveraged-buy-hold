@@ -1,0 +1,30 @@
+=== ESTRUTURA DE ARQUIVOS ===
+Total de páginas: 9 (dashboard, watchlist, portfolio, history, assets, backtest, sharpe-compare, simulator, alerts, login)
+Total de componentes UI: 3 base components (MetricCard, ScoreGauge, TickerLogo)
+Total de componentes domain: 12+ (charts, assets, dashboard, portfolio components)
+
+=== DEPENDÊNCIAS INSTALADAS ===
+- Next.js 14.0.3
+- React 18.2.0
+- Recharts 2.10.1 (gráficos)
+- Zustand 4.4.7 (state management)
+- Axios 1.6.2 (HTTP client)
+- Radix UI v1 (dialog, select, tabs, tooltip, progress, switch)
+- Lucide React (ícones)
+- Date-fns (data)
+- TailwindCSS 3.3.5
+- React Hot Toast (notificações)
+
+=== CONFIGURAÇÃO NEXT.js ===
+- Output: standalone
+- TypeScript: ignores build errors (RED FLAG!)
+- ESLint: ignores during builds (RED FLAG!)
+- NEXT_PUBLIC_API_URL: env-based
+
+=== CONFIGURAÇÃO TAILWIND ===
+- Responsive breakpoints padrão (sm, md, lg, xl)
+- Cores customizadas (theme extension)
+- Dark mode nativo
+- Sombras e animações customizadas
+
+=== ANÁLISE VISUAL ===

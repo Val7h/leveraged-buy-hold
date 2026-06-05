@@ -1,0 +1,50 @@
+{
+  "AUDIT_SUMMARY.json": {
+    "performance": 0,
+    "accessibility": 0,
+    "best-practices": 0,
+    "seo": 0
+  },
+  "dashboard_desktop": {
+    "performance": 83,
+    "accessibility": 93,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "dashboard_mobile": {
+    "performance": 70,
+    "accessibility": 93,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "homepage_desktop": {
+    "performance": 77,
+    "accessibility": 93,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "homepage_mobile": {
+    "performance": 78,
+    "accessibility": 93,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "portfolio_desktop": {
+    "performance": 62,
+    "accessibility": 93,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "watchlist_desktop": {
+    "performance": 93,
+    "accessibility": 93,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "watchlist_mobile": {
+    "performance": 78,
+    "accessibility": 93,
+    "best-practices": 96,
+    "seo": 100
+  }
+}

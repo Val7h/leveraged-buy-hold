@@ -1,0 +1,27 @@
+LBH System Frontend - Lighthouse Audit Report
+Timestamp: 20260605_115120
+===============================================
+
+PAGE,DEVICE,PERFORMANCE,ACCESSIBILITY,BEST_PRACTICES,SEO
+/,Desktop,,,,
+/,Mobile,,,,
+/dashboard,Desktop,,,,
+/dashboard,Mobile,,,,
+/watchlist,Desktop,,,,
+/watchlist,Mobile,,,,
+/portfolio,Desktop,,,,
+/portfolio,Mobile,,,,
+/history,Desktop,,,,
+/history,Mobile,,,,
+/assets,Desktop,,,,
+/assets,Mobile,,,,
+/backtest,Desktop,,,,
+/backtest,Mobile,,,,
+/sharpe-compare,Desktop,,,,
+/sharpe-compare,Mobile,,,,
+/simulator,Desktop,,,,
+/simulator,Mobile,,,,
+/alerts,Desktop,,,,
+/alerts,Mobile,,,,
+/login,Desktop,,,,
+/login,Mobile,,,,
