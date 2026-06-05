@@ -25,3 +25,4 @@ class User(Base):
 
     portfolios = relationship("Portfolio", back_populates="owner")
     alerts = relationship("Alert", back_populates="user")
+    subscription = relationship("Subscription", back_populates="user", uselist=False)

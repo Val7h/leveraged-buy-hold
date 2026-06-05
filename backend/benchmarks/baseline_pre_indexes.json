@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-06-05T15:43:16.391427",
+  "phase": "baseline_pre_indexes",
+  "data": {
+    "rows": 5000,
+    "date_range": "2012-09-26 to 2026-06-04",
+    "note": "Synthetic data for benchmarking"
+  },
+  "benchmark": {
+    "equity_curve": {
+      "min": 0.2505479999817908,
+      "mean": 0.2592731599987019,
+      "median": 0.25931590000982396,
+      "p90": 0.2671044000016991,
+      "p99": 0.2671044000016991,
+      "max": 0.2671044000016991,
+      "iterations": 5,
+      "timestamp": "2026-06-05T15:43:16.389517"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-06-05T15:44:38.899624",
+  "tests": {
+    "small": {
+      "days": 250,
+      "description": "Sequential expected (250 < 500)",
+      "sequential_mean": 0.02504870000120718,
+      "hybrid_mean": 0.025788400002056733,
+      "speedup": 0.971316560903718,
+      "recommendation": "Equivalent or hybrid slower"
+    },
+    "medium": {
+      "days": 1000,
+      "description": "Sequential/Parallel neutral (500 < 1000 < 2000)",
+      "sequential_mean": 0.05961240001488477,
+      "hybrid_mean": 0.0810825499938801,
+      "speedup": 0.7352062807519517,
+      "recommendation": "Equivalent or hybrid slower"
+    },
+    "large": {
+      "days": 5000,
+      "description": "Parallel expected (5000 > 2000)",
+      "sequential_mean": 0.26049079999211244,
+      "hybrid_mean": 0.2915101499966113,
+      "speedup": 0.8935908406453105,
+      "recommendation": "Equivalent or hybrid slower"
+    }
+  }
+}

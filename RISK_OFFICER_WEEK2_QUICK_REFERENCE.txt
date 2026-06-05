@@ -1,0 +1,258 @@
+================================================================================
+RISK OFFICER - WEEK 2 QUICK REFERENCE CARD
+Sprint 1 Risk Mitigation | June 9-15, 2026
+================================================================================
+
+CRITICAL PATH: INSURANCE (BLOCKING)
+────────────────────────────────────────────────────────────────────────────
+
+Status: RFQ sent June 5, waiting for quotes from Marsh, Aon, Willis
+
+MON JUNE 9 @ 10 AM → Call Marsh broker
+  └─ Confirm receipt of RFQ
+  └─ Ask: When can we expect quote? (Target: June 11)
+  └─ Mention: High priority, decision Friday
+
+TUE JUNE 10 @ 9 AM → Follow-up calls to Aon + Willis
+  └─ Same questions as Marsh
+  └─ Email all 3 brokers (cc each other - apply pressure)
+
+WED JUNE 11 → Insurance quotes expected
+  └─ Evaluate using scorecard (coverage, price, reputation, timeline)
+  └─ Prepare recommendation memo for CEO
+  └─ Likely winner: Marsh (R$45k/year, 5-day issuance)
+
+THU JUNE 12 → Process payment + receive policy
+  └─ CEO/CFO approve decision
+  └─ Wire R$45k to broker (25% upfront typically)
+  └─ Receive policy document (PDF)
+  └─ Forward to Legal team
+
+FRI JUNE 13 → LAUNCH DAY - INSURANCE MUST BE ACTIVE
+  └─ Confirm: Policy effective June 13? YES
+  └─ Confirm: Legal has policy document? YES
+  └─ Announce: "Insurance ✅ CLEARED for launch"
+
+DEADLINE: Policy document in hand by 5 PM Thursday (June 12)
+
+================================================================================
+WORKSTREAM OWNERS & CONTACTS
+================================================================================
+
+INSURANCE (Critical Path)
+  Owner: CFO
+  Contacts: Marsh, Aon, Willis brokers
+  Decision: CEO approval needed
+  Status: Waiting for quotes
+
+MONITORING DASHBOARD
+  Owner: DevOps Lead
+  Contacts: [DevOps team]
+  Decision: Automated daily report design
+  Status: Development starts Monday
+
+INCIDENT RESPONSE
+  Owner: Risk Officer
+  Contacts: CEO, Backend Lead, Legal, Product Lead
+  Decision: Team training Thursday 10 AM-12 PM
+  Status: Materials ready
+
+FAIL-SAFE MECHANISMS
+  Owner: Backend Lead + Risk Officer
+  Contacts: [Engineering team]
+  Decision: Final spec sign-off Friday
+  Status: Framework complete, decisions pending
+
+================================================================================
+WEEKLY STANDUPS
+================================================================================
+
+Daily: 8:00 AM BRT (15 minutes)
+Participants: All team leads + Risk Officer
+Cadence: Mon-Fri
+
+Standup Template:
+  1. What happened yesterday?
+  2. What are we doing today?
+  3. Any blockers?
+
+Weekly sync: Friday 5 PM (30 minutes) - full status review
+
+================================================================================
+DELIVERABLES CHECKLIST (EOD FRIDAY JUNE 14)
+================================================================================
+
+INSURANCE
+  [ ] Quotes received from all 3 brokers
+  [ ] Comparison matrix completed
+  [ ] Carrier selected (Marsh preferred)
+  [ ] Payment authorized + processed
+  [ ] Policy document received (PDF)
+  [ ] Legal clearance confirmed
+  [ ] Risk score reduction: 127 → 115 (target)
+
+MONITORING DASHBOARD
+  [ ] Grafana installed + configured
+  [ ] 8 KPIs reporting real data
+  [ ] Alert thresholds set (RED/YELLOW/GREEN)
+  [ ] Automated daily report @ 8 AM BRT
+  [ ] Email distribution working
+  [ ] Slack notifications working
+  [ ] Performance validated (<3 sec load time)
+
+INCIDENT RESPONSE PROCEDURES
+  [ ] Team training session completed (Thu 10 AM-12 PM)
+  [ ] Scenario 1: Margin call walkthrough executed
+  [ ] Scenario 2: Data breach walkthrough executed
+  [ ] Team feedback collected
+  [ ] Improvements documented
+  [ ] Procedures finalized
+
+FAIL-SAFE MECHANISMS
+  [ ] 6 specifications documented in detail
+  [ ] Backend Lead sign-off: "I can implement"
+  [ ] CEO approval: "Authorized for implementation"
+  [ ] Testing strategy defined
+  [ ] Implementation timeline confirmed (Week 3)
+
+================================================================================
+EMERGENCY ESCALATION
+================================================================================
+
+If insurance delayed beyond June 12:
+  Escalate to: CEO
+  Decision: Launch delay or use Aon backup?
+  Contact: [CEO phone]
+
+If monitoring dashboard not ready by June 12:
+  Escalate to: DevOps Lead + CEO
+  Fallback: Manual daily reports via email
+  Contact: [DevOps Lead]
+
+If incident response workshop fails:
+  Reschedule: Monday June 16 (Week 3)
+  Impact: LOW (not critical-path)
+
+If fail-safe specs not finalized by Friday:
+  Escalate to: Risk Officer + CEO
+  Decision: Prioritize top 3, defer others to post-launch
+  Contact: [CEO]
+
+================================================================================
+BUDGET TRACKING
+================================================================================
+
+Insurance:          R$45,000  (payment Thu)
+Development:        R$15,000  (dashboard + misc)
+Legal:              R$10,000  (CVM opinion + review)
+External Services:  R$5,000   (monitoring tool if SaaS)
+Contingency:        R$10,000  (buffer)
+────────────────
+WEEK 2 TOTAL:       R$85,000
+
+Sprint 1 Budget: R$150,000 (Week 1: R$15k + Week 2: R$85k + Week 3: R$35k remaining)
+
+Status: ON TRACK
+
+================================================================================
+KEY PHONE NUMBERS (UPDATE WITH ACTUAL)
+================================================================================
+
+CEO: [_______________]
+CFO: [_______________]
+Legal Counsel: [_______________]
+DevOps Lead: [_______________]
+Backend Lead: [_______________]
+Risk Officer (24/7): [_______________]
+
+INSURANCE BROKER CONTACTS:
+Marsh: [_______________]
+Aon: [_______________]
+Willis: [_______________]
+
+================================================================================
+CRITICAL DATES
+================================================================================
+
+Mon June 9:  Insurance outreach begins ← START HERE
+Tue June 10: Follow-up calls to all brokers
+Wed June 11: Quotes expected, dashboard live
+Thu June 12: Insurance decision + payment, incident response workshop
+Fri June 13: LAUNCH DAY (insurance must be active)
+Fri June 14: All Week 2 deliverables due
+
+RED LINE: If insurance not confirmed by EOD June 12 → launch delayed
+
+================================================================================
+RISK SCORE TARGETS
+================================================================================
+
+Current (Week 1 end):     127 (CRITICAL 🔴)
+Week 2 target:           85 (HIGH 🟡)
+Week 3 target:           56 (MEDIUM 🟡)
+Post-launch target:      <40 (ACCEPTABLE 🟢)
+
+Success = 33% risk reduction by Friday
+
+================================================================================
+MEETING SCHEDULE (WEEK 2)
+================================================================================
+
+DAILY: 8:00-8:15 AM BRT
+  Daily standup (all team leads)
+  Location: Slack #risk-office or Zoom link
+  Host: Risk Officer
+
+MON JUNE 9: 10:00 AM → INSURANCE CALL (Marsh)
+  Attendees: CFO, Risk Officer
+  Duration: 15-30 min
+  Agenda: Confirm RFQ, ask ETA
+
+WED JUNE 11: 3:00 PM → INSURANCE DECISION MEETING
+  Attendees: CEO, CFO, Risk Officer
+  Duration: 30 min
+  Agenda: Review quotes, approve recommendation
+
+THU JUNE 12: 10:00 AM-12:00 PM → INCIDENT RESPONSE WORKSHOP
+  Attendees: CEO, Backend Lead, DevOps, Legal, Product, CFO, Risk Officer
+  Duration: 2 hours
+  Location: Zoom
+  Agenda: 2 scenario walkthroughs (margin call + data breach)
+
+FRI JUNE 14: 11:00 AM → FAIL-SAFE SPEC SIGN-OFF
+  Attendees: Backend Lead, Risk Officer, CEO
+  Duration: 30 min
+  Agenda: Final approval of 6 specifications
+
+FRI JUNE 14: 5:00 PM → WEEK 2 COMPLETION REVIEW
+  Attendees: CEO, all team leads, Risk Officer
+  Duration: 30 min
+  Agenda: Confirm all deliverables complete, approve next steps
+
+================================================================================
+DOCUMENT INDEX
+================================================================================
+
+👉 For detailed plan: RISK_OFFICER_WEEK2_OPERATION_PLAN.md (40 pages)
+👉 For executive brief: RISK_OFFICER_WEEK2_BRIEFING.md (2 pages)
+👉 For readiness check: RISK_OFFICER_WEEK2_READINESS_SUMMARY.md (5 pages)
+👉 For task details: RISK_SPRINT1_IMPLEMENTATION_CHECKLIST.md (40 pages)
+👉 For risk assessment: RISK_OFFICER_REPORT_SPRINT1_FINAL.md (80 pages)
+
+Print this card + keep in pocket for quick reference all week.
+
+================================================================================
+WEEK 2 MANTRA
+================================================================================
+
+"Insurance first, monitoring second, procedures third, specs last."
+(In order of impact on launch readiness)
+
+Get the insurance deal closed by Thursday EOD.
+Everything else is enablement.
+
+================================================================================
+END OF QUICK REFERENCE CARD
+Print & use this week!
+Last updated: June 5, 2026 | Risk Officer
+================================================================================

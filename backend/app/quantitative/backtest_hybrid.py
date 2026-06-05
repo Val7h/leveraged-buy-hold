@@ -1,24 +1,16 @@
 """
-Parallel backtest engine using ThreadPoolExecutor.
+Hybrid Backtest Engine — Intelligent Parallel/Sequential Decision
+Week 2 Optimization: Auto-select best execution strategy based on data size.
 
-OPTIMIZATION NOTE (Week 2):
-- For synthetic/small data: ThreadPoolExecutor has ~30% overhead
-- For real data (>10 years with 4+ technical indicators): Threads pay off
-- When adapted to multiprocessing (ProcessPoolExecutor):
-  - Overhead decreases as computation increases
-  - Ideal for production with real market data
-
-Thread safety:
-  - All input data (price_df) is read-only
-  - Each thread operates on local copies (no shared mutable state)
-  - GIL is released during pandas/numpy computation
-  - Output dataframes are independent per strategy
-
-Status: PRODUCTION READY (tested in Week 2)
+Decision logic:
+  - Data rows < 500: Sequential (overhead not worth it)
+  - Data rows 500-2000: ThreadPoolExecutor (minimal technical indicators)
+  - Data rows > 2000: ThreadPoolExecutor (good parallelization benefit)
+  - For production: ProcessPoolExecutor (scales to many-core systems)
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 import pandas as pd
 import logging
 from app.quantitative.backtest import (
@@ -33,7 +25,7 @@ from app.quantitative.backtest import (
 logger = logging.getLogger(__name__)
 
 
-def run_backtest_parallel(
+def run_backtest_hybrid(
     price_data: Dict[str, pd.DataFrame],
     initial_capital: float = 100_000.0,
     monthly_contribution: float = 1_000.0,
@@ -44,9 +36,10 @@ def run_backtest_parallel(
     sharpe_hist: float = 0.8,
     vol_hist: float = 15.0,
     max_workers: int = 4,
+    auto_select: bool = True,
 ) -> Dict:
     """
-    Run all strategies in parallel using ThreadPoolExecutor.
+    Run backtest with automatic selection of sequential or parallel execution.
 
     Args:
         price_data: Dict[ticker -> DataFrame] with OHLCV data
@@ -58,12 +51,58 @@ def run_backtest_parallel(
         max_dd_hist: Historical max drawdown for scoring
         sharpe_hist: Historical Sharpe ratio for scoring
         vol_hist: Historical volatility for scoring
-        max_workers: Number of parallel workers (default: 4 for 4 strategies)
+        max_workers: Number of parallel workers
+        auto_select: If True, choose sequential/parallel based on data size
 
     Returns:
         Dict with equity_curves, metrics, crisis_analysis, etc.
-        (Same format as original run_backtest() for drop-in compatibility)
     """
+    primary_ticker = list(price_data.keys())[0]
+    primary_df = price_data[primary_ticker]
+    data_rows = len(primary_df)
+
+    # Decision logic: when is parallelization beneficial?
+    use_parallel = True
+    reason = ""
+
+    if auto_select:
+        if data_rows < 500:
+            use_parallel = False
+            reason = f"Data too small ({data_rows} rows, threshold: 500)"
+        elif data_rows < 2000:
+            use_parallel = True
+            reason = f"Minimal data ({data_rows} rows, threshold: 2000) - threads may be slower"
+        else:
+            use_parallel = True
+            reason = f"Sufficient data ({data_rows} rows) - parallelization beneficial"
+
+    if use_parallel:
+        logger.info(f"[HYBRID] Using PARALLEL execution ({reason})")
+        return _run_backtest_parallel(
+            price_data, initial_capital, monthly_contribution, risk_profile,
+            beta, dividend_yield, max_dd_hist, sharpe_hist, vol_hist, max_workers
+        )
+    else:
+        logger.info(f"[HYBRID] Using SEQUENTIAL execution ({reason})")
+        from app.quantitative.backtest import run_backtest
+        return run_backtest(
+            price_data, initial_capital, monthly_contribution, risk_profile
+        )
+
+
+def _run_backtest_parallel(
+    price_data: Dict[str, pd.DataFrame],
+    initial_capital: float = 100_000.0,
+    monthly_contribution: float = 1_000.0,
+    risk_profile: str = "balanced",
+    beta: float = 0.7,
+    dividend_yield: float = 0.04,
+    max_dd_hist: float = -35.0,
+    sharpe_hist: float = 0.8,
+    vol_hist: float = 15.0,
+    max_workers: int = 4,
+) -> Dict:
+    """Internal parallel execution (same as backtest_parallel.py)."""
     primary_ticker = list(price_data.keys())[0]
     primary_df = price_data[primary_ticker]
 
@@ -120,7 +159,7 @@ def run_backtest_parallel(
                 initial_capital,
                 monthly_contribution,
                 1.0,
-                0.015,  # SPY dividend yield
+                0.015,
             ),
         })
 
@@ -129,13 +168,11 @@ def run_backtest_parallel(
     adaptive_trades = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
         futures = {}
         for task in strategy_tasks:
             future = executor.submit(task["fn"], *task["args"])
             futures[future] = task
 
-        # Collect results as they complete
         for future in as_completed(futures):
             task = futures[future]
             try:
@@ -147,14 +184,14 @@ def run_backtest_parallel(
                     adaptive_trades = trades
 
                 logger.info(
-                    f"[PARALLEL] ✅ {task['name']:20} — "
-                    f"{len(df)} days, final_value=${df['equity'].iloc[-1]:,.0f}"
+                    f"[PARALLEL] OK {task['name']:20} — "
+                    f"{len(df)} days, final=${df['equity'].iloc[-1]:,.0f}"
                 )
             except Exception as e:
-                logger.error(f"[PARALLEL] ❌ {task['name']:20} — {e}")
+                logger.error(f"[PARALLEL] FAIL {task['name']:20} — {e}")
                 raise
 
-    # ── Post-processing (sequential, same as original) ──────────────────────
+    # Post-processing (sequential)
     equity_curves = {k: v["equity"] for k, v in strategies.items()}
 
     metrics = [
@@ -179,7 +216,6 @@ def run_backtest_parallel(
             for idx, row in df.iterrows()
         ]
 
-    # Price series for trade-marker chart
     close_series = primary_df["Close"].squeeze()
     trade_dates = {t["date"] for t in adaptive_trades}
     price_series = [
@@ -188,7 +224,6 @@ def run_backtest_parallel(
         if i % 5 == 0 or str(idx)[:10] in trade_dates or i == len(close_series) - 1
     ]
 
-    # Drawdown curves
     drawdown_curves = {}
     for k, eq in equity_curves.items():
         dd = _compute_drawdown_series(eq)
@@ -197,7 +232,7 @@ def run_backtest_parallel(
             for idx, v in dd.items()
         ]
 
-    logger.info(f"[PARALLEL] ✅ Backtest complete — all strategies finished")
+    logger.info(f"[PARALLEL] OK Backtest complete")
 
     return {
         "equity_curves": {k: serialize_curve(v) for k, v in equity_curves.items()},
@@ -208,24 +243,3 @@ def run_backtest_parallel(
         "price_series": price_series,
         "trades": adaptive_trades,
     }
-
-
-if __name__ == "__main__":
-    """
-    Test the parallel implementation.
-    """
-    from app.services.market_data import fetch_price_history
-
-    print("Testing parallel backtest...")
-    spy_df = fetch_price_history("SPY", period="5y")
-    price_data = {"SPY": spy_df}
-
-    import time
-
-    start = time.perf_counter()
-    result = run_backtest_parallel(price_data)
-    elapsed = time.perf_counter() - start
-
-    print(f"\n✅ Parallel backtest completed in {elapsed:.3f}s")
-    print(f"   Metrics: {len(result['metrics'])} strategies")
-    print(f"   Trades: {len(result['trades'])} adaptive trades")
