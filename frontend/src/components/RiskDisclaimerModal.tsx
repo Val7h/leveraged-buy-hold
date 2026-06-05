@@ -5,12 +5,14 @@ import { AlertTriangle, X } from "lucide-react";
 
 interface RiskDisclaimerModalProps {
   onConfirm?: () => void;
+  onAccept?: () => void;
   isOpen?: boolean;
   title?: string;
 }
 
 const RiskDisclaimerModal: React.FC<RiskDisclaimerModalProps> = ({
   onConfirm,
+  onAccept,
   isOpen = true,
   title = "Important Risk Disclosure",
 }) => {
@@ -31,24 +33,39 @@ const RiskDisclaimerModal: React.FC<RiskDisclaimerModalProps> = ({
     setError(null);
 
     try {
+      const timestamp = new Date().toISOString();
+
       const response = await fetch("/api/v1/user/consent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           acceptRisk: true,
           acceptTerms: true,
-          timestamp: new Date().toISOString(),
+          timestamp: timestamp,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to log consent");
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.detail || `Failed to log consent (${response.status})`;
+        throw new Error(errorMessage);
       }
 
-      if (onConfirm) onConfirm();
-      window.location.href = "/dashboard";
+      const data = await response.json();
+      console.log("Consent logged successfully:", data);
+
+      // Call callbacks
+      if (onAccept) {
+        onAccept();
+      } else if (onConfirm) {
+        onConfirm();
+      } else {
+        // Default: redirect to dashboard
+        window.location.href = "/dashboard";
+      }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      const errorMessage = err instanceof Error ? err.message : "Unknown error occurred while logging consent";
+      console.error("Consent error:", errorMessage);
       setError(errorMessage);
     } finally {
       setIsSubmitting(false);
