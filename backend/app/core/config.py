@@ -4,7 +4,7 @@ import json
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "sqlite:///./lbh_test.db"
+    DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/leveraged_bh"
     SECRET_KEY: str = "change-this-secret-key-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440

@@ -1,6 +1,6 @@
 databases:
   - name: lbh-db
-    plan: free
+    plan: starter
     databaseName: leveraged_bh
     user: lbh_user
 
@@ -11,7 +11,7 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: free
+    plan: starter
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
@@ -28,6 +28,11 @@ services:
         value: production
       - key: BACKEND_CORS_ORIGINS
         value: '["https://lbh-frontend.onrender.com","https://lbh-frontend-val7h.onrender.com"]'
+      # Stripe (adicionar no dashboard do Render)
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
 
   # ── Frontend (Next.js) ────────────────────────────────────────
   - type: web
@@ -35,7 +40,10 @@ services:
     runtime: docker
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
-    plan: free
+    plan: starter
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: https://lbh-backend.onrender.com
+      # Stripe (adicionar no dashboard do Render)
+      - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+        sync: false
