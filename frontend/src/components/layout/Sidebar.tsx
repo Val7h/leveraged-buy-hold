@@ -11,18 +11,22 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  // Principais
-  { href: "/dashboard",      label: "Dashboard",  icon: LayoutDashboard, badge: null, section: "PRINCIPAIS", tooltip: "Visão geral do mercado e sinais de entrada em tempo real" },
-  { href: "/assets",         label: "Screening",  icon: Search,          badge: null, section: "PRINCIPAIS", tooltip: "Analise 20+ ativos defensivos com scores de qualidade e oportunidade" },
-  { href: "/portfolio",      label: "Carteira",   icon: Briefcase,       badge: null, section: "PRINCIPAIS", tooltip: "Acompanhe seu patrimônio, P&L, drawdown e sugestões de aporte" },
-  // Análise
-  { href: "/backtest",       label: "Backtest",   icon: FlaskConical,    badge: null, section: "ANÁLISE", tooltip: "Compare 4 estratégias de Buy & Hold com diferentes alavancagens" },
-  { href: "/simulator",      label: "Simulador",  icon: TrendingUp,      badge: null, section: "ANÁLISE", tooltip: "Simule 1.000 cenários futuros com Monte Carlo" },
-  { href: "/watchlist",      label: "Watchlist",  icon: Bookmark,        badge: "opportunities", section: "ANÁLISE", tooltip: "Monitore ativos favoritados com sinais de entrada atualizados" },
-  // Informações
-  { href: "/alerts",         label: "Alertas",    icon: Bell,            badge: null, section: "INFORMAÇÕES", tooltip: "Configure 7 tipos de alertas: RSI, Estocástico, Score, Drawdown, etc" },
-  { href: "/history",        label: "Histórico",  icon: History,         badge: null, section: "INFORMAÇÕES", tooltip: "Veja todas as suas compras, vendas e ajustes" },
-  { href: "/sharpe-compare", label: "Sharpe",     icon: BarChart3,       badge: null, section: "INFORMAÇÕES", tooltip: "Compare retorno ajustado ao risco (Sharpe) de 20+ ativos desde 2015" },
+  // ── CORE (Main workflow) ──────────────────────────────
+  { href: "/dashboard",      label: "Dashboard",  icon: LayoutDashboard, badge: null, section: "CORE", tooltip: "Estado do mercado, RSI SPY, e overview da carteira" },
+  { href: "/assets",         label: "Screening",  icon: Search,          badge: null, section: "CORE", tooltip: "Encontre ativos com scores de qualidade e oportunidade. Compare lado a lado" },
+  { href: "/portfolio",      label: "Carteira",   icon: Briefcase,       badge: null, section: "CORE", tooltip: "Gerencie posições, P&L, drawdown e composição por setor" },
+
+  // ── MANAGEMENT (Monitoring & Control) ──────────────────
+  { href: "/alerts",         label: "Alertas",    icon: Bell,            badge: null, section: "GERENCIAMENTO", tooltip: "Crie alertas: RSI, preço, drawdown, sinais automáticos" },
+  { href: "/watchlist",      label: "Watchlist",  icon: Bookmark,        badge: "opportunities", section: "GERENCIAMENTO", tooltip: "Monitore ativos favoritados. Alertas automáticos quando signal muda" },
+
+  // ── RESEARCH (Validation & Analysis) ──────────────────
+  { href: "/backtest",       label: "Backtest",   icon: FlaskConical,    badge: null, section: "PESQUISA", tooltip: "Valide estratégias com 20+ anos de dados. Compare alternativas" },
+  { href: "/simulator",      label: "Simulador",  icon: TrendingUp,      badge: null, section: "PESQUISA", tooltip: "Simule 1.000 cenários futuros. Veja distribuição de resultados" },
+  { href: "/sharpe-compare", label: "Sharpe",     icon: BarChart3,       badge: null, section: "PESQUISA", tooltip: "Ranking de ativos por Sharpe ratio desde 2015. Análise de sobrevivência" },
+
+  // ── HISTORY (Reference) ───────────────────────────────
+  { href: "/history",        label: "Histórico",  icon: History,         badge: null, section: "HISTÓRICO", tooltip: "Todas as operações, P&L, estatísticas de win rate" },
 ];
 
 interface SidebarProps {
@@ -67,7 +71,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Nav */}
       <nav className="flex-1 px-4 py-5 space-y-6 overflow-y-auto">
-        {["PRINCIPAIS", "ANÁLISE", "INFORMAÇÕES"].map((section) => (
+        {["CORE", "GERENCIAMENTO", "PESQUISA", "HISTÓRICO"].map((section) => (
           <div key={section}>
             <h3 className="text-xs font-bold text-text-muted/60 px-2 mb-2.5 tracking-widest">{section}</h3>
             <div className="space-y-1">
