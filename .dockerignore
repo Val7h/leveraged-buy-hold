@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+.github
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+.npm
+.eslintcache
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build
+dist/
+build/
+.next/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Docs
+*.md
+docs/
+
+# Tests
+.test/
+test/
+tests/
+
+# Logs
+logs/
+*.log
