@@ -61,7 +61,9 @@ function AssetCard({ asset, onSelect }: AssetCardProps) {
           </div>
         </div>
         <div className="text-right">
-          <p className="text-base font-semibold text-text-primary font-mono">{formatCurrency(asset.current_price)}</p>
+          <p className="text-base font-semibold text-text-primary font-mono">
+            {formatCurrency(asset.current_price, asset.currency || "USD")}
+          </p>
         </div>
       </div>
 
