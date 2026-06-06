@@ -10,6 +10,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   fetchMe: () => Promise<void>;
+  setToken: (token: string) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -45,6 +46,11 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           set({ user: null, token: null });
         }
+      },
+
+      setToken: (token: string) => {
+        localStorage.setItem("access_token", token);
+        set({ token });
       },
     }),
     {

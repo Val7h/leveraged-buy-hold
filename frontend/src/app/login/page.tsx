@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { authApi } from "@/lib/api";
 import RiskDisclaimerModal from "@/components/RiskDisclaimerModal";
+import GoogleLoginButton from "@/components/GoogleLoginButton";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
 export default function LoginPage() {
   const [tab, setTab] = useState<"login" | "register">("login");
@@ -55,6 +57,8 @@ export default function LoginPage() {
     router.push("/dashboard");
   };
 
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+
   return (
     <>
       {/* Risk Disclaimer Modal */}
@@ -62,7 +66,8 @@ export default function LoginPage() {
         <RiskDisclaimerModal onAccept={handleRiskAccepted} />
       )}
 
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <GoogleOAuthProvider clientId={googleClientId}>
+        <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -129,6 +134,16 @@ export default function LoginPage() {
               {tab === "login" ? "Entrar" : "Criar Conta"}
             </button>
           </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-6">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-text-muted">ou</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          {/* Google Login */}
+          <GoogleLoginButton />
         </div>
 
         <p className="text-center text-xs text-text-muted mt-6">
@@ -136,6 +151,7 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+      </GoogleOAuthProvider>
     </>
   );
 }

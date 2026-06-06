@@ -27,7 +27,8 @@
     "@radix-ui/react-switch": "^1.0.3",
     "react-hot-toast": "^2.4.1",
     "@stripe/react-stripe-js": "^2.4.0",
-    "@stripe/stripe-js": "^2.4.0"
+    "@stripe/stripe-js": "^2.4.0",
+    "@react-oauth/google": "^0.12.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
