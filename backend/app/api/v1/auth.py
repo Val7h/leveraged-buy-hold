@@ -121,22 +121,27 @@ def google_dev_login(request: GoogleDevLoginRequest, db: Session = Depends(get_d
     ⚠️ SECURITY: This endpoint should be removed or disabled in production!
     For now, enabled for demonstration purposes.
     """
-    email = request.email.strip()
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
+    try:
+        email = request.email.strip()
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
 
-    # Find or create user
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        user = User(
-            email=email,
-            full_name=request.full_name,
-            hashed_password=get_password_hash(os.urandom(32).hex()),
-            risk_profile="moderate",
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        # Find or create user
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            user = User(
+                email=email,
+                full_name=request.full_name,
+                hashed_password=get_password_hash(os.urandom(32).hex()),
+                risk_profile="moderate",
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
 
-    token = create_access_token(data={"sub": user.email})
-    return {"access_token": token, "token_type": "bearer"}
+        token = create_access_token(data={"sub": user.email})
+        return {"access_token": token, "token_type": "bearer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
