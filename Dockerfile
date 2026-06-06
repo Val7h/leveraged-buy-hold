@@ -1,5 +1,5 @@
 # Stage 1: Build Next.js (standalone mode)
-FROM node:18-alpine AS frontend-builder
+FROM node:18-slim AS frontend-builder
 
 WORKDIR /app/frontend
 COPY frontend/package*.json ./

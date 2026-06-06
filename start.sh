@@ -24,4 +24,6 @@ fi
 echo "[2/2] Starting Next.js standalone on port ${PORT:-3000}..."
 cd /app/frontend
 
+export HOSTNAME=0.0.0.0
+export PORT=${PORT:-3000}
 exec node server.js
