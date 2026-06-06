@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
+import SectorBreakdownWidget from "@/components/portfolio/SectorBreakdownWidget";
 import { usePortfolioStore } from "@/store/portfolioStore";
 import { portfolioApi, assetsApi } from "@/lib/api";
 import { formatCurrency, formatPercent, formatLeverage, getLeverageColor, getPnlColor } from "@/lib/utils";
@@ -189,6 +190,11 @@ export default function PortfolioPage() {
               loading={curveLoading}
             />
           </div>
+        )}
+
+        {/* Sector Breakdown */}
+        {positions.length > 0 && (
+          <SectorBreakdownWidget positions={positions} />
         )}
 
         {/* Positions table */}
