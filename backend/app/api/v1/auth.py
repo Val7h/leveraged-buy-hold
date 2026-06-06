@@ -116,29 +116,28 @@ class GoogleDevLoginRequest(BaseModel):
 def google_dev_login(request: GoogleDevLoginRequest, db: Session = Depends(get_db)):
     """
     TEST ONLY: Login via mock Google OAuth (no token verification).
+    Creates or finds user and returns JWT token.
     """
     email = request.email.strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
 
-    try:
-        # Find or get user
-        user = db.query(User).filter(User.email == email).first()
-        if not user:
-            pwd = get_password_hash(os.urandom(32).hex())
-            user = User(
-                email=email,
-                full_name=request.full_name or email,
-                hashed_password=pwd,
-                risk_profile="moderate",
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+    # Find or create user
+    user = db.query(User).filter(User.email == email).first()
 
-        # Create token
-        token = create_access_token(data={"sub": user.email})
-        return {"access_token": token, "token_type": "bearer"}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+    if not user:
+        # Create new user with random password
+        hashed_pwd = get_password_hash(os.urandom(32).hex())
+        user = User(
+            email=email,
+            full_name=request.full_name if request.full_name else email,
+            hashed_password=hashed_pwd,
+            risk_profile="moderate",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    # Create and return JWT token
+    token = create_access_token(data={"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
