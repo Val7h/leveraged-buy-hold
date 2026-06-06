@@ -115,19 +115,12 @@ class GoogleDevLoginRequest(BaseModel):
 @router.post("/google-dev", response_model=Token)
 def google_dev_login(request: GoogleDevLoginRequest, db: Session = Depends(get_db)):
     """
-    DEVELOPMENT ONLY: Login via mock Google OAuth (no token verification).
+    TEST ONLY: Login via mock Google OAuth (no token verification).
     Used for testing without a real Google Client ID.
-    Set ENABLE_DEV_GOOGLE_LOGIN=true to allow in production.
+
+    ⚠️ SECURITY: This endpoint should be removed or disabled in production!
+    For now, enabled for demonstration purposes.
     """
-    env = os.getenv("ENVIRONMENT", "development")
-    dev_mode = os.getenv("ENABLE_DEV_GOOGLE_LOGIN", "false").lower() in ("true", "1", "yes")
-
-    if env == "production" and not dev_mode:
-        raise HTTPException(
-            status_code=403,
-            detail="Development endpoint not available in production. Set ENABLE_DEV_GOOGLE_LOGIN=true to enable.",
-        )
-
     email = request.email.strip()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
