@@ -116,32 +116,29 @@ class GoogleDevLoginRequest(BaseModel):
 def google_dev_login(request: GoogleDevLoginRequest, db: Session = Depends(get_db)):
     """
     TEST ONLY: Login via mock Google OAuth (no token verification).
-    Used for testing without a real Google Client ID.
-
-    ⚠️ SECURITY: This endpoint should be removed or disabled in production!
-    For now, enabled for demonstration purposes.
     """
-    try:
-        email = request.email.strip()
-        if not email:
-            raise HTTPException(status_code=400, detail="Email is required")
+    email = request.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email required")
 
-        # Find or create user
+    try:
+        # Find or get user
         user = db.query(User).filter(User.email == email).first()
         if not user:
+            pwd = get_password_hash(os.urandom(32).hex())
             user = User(
                 email=email,
-                full_name=request.full_name,
-                hashed_password=get_password_hash(os.urandom(32).hex()),
+                full_name=request.full_name or email,
+                hashed_password=pwd,
                 risk_profile="moderate",
             )
             db.add(user)
             db.commit()
             db.refresh(user)
 
+        # Create token
         token = create_access_token(data={"sub": user.email})
         return {"access_token": token, "token_type": "bearer"}
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
