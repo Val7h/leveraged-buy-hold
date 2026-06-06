@@ -398,8 +398,16 @@ def analyze_asset(
     )
 
     score_breakdown = {**quality_breakdown, **opp_breakdown}
-    # Para tokenizadas, o preço real vem do último candle Bitget (mais preciso que yfinance)
-    current_price = float(close.iloc[-1]) if _is_tokenized(ticker) else (fund.get("current_price") or float(close.iloc[-1]))
+    # Para tokenizadas, o preço vem do Bitget (mais preciso)
+    # Para ações brasileiras (.SA), use histórico (yfinance bugado para BR)
+    # Caso contrário, tente fundamentals, senão use histórico
+    is_brazilian = ticker.upper().endswith(".SA")
+    if _is_tokenized(ticker):
+        current_price = float(close.iloc[-1])  # Bitget data
+    elif is_brazilian:
+        current_price = float(close.iloc[-1])  # Use price history, not yfinance fundamentals
+    else:
+        current_price = fund.get("current_price") or float(close.iloc[-1])  # US/Global: prefer fundamentals
 
     # Kelly Criterion
     kelly = compute_kelly_criterion(close)
