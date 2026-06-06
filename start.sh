@@ -9,7 +9,12 @@ echo "PORT: ${PORT:-3000}"
 # Start FastAPI backend em background
 echo "[1/2] Starting FastAPI backend on port 8001..."
 cd /app/backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --log-level info &
+
+# Testar se o backend completo importa sem erro
+python -c "from app.main import app; print('[OK] Full backend imports OK')" 2>&1 && BACKEND_MODULE="app.main:app" || BACKEND_MODULE="minimal_main:app"
+echo "[1/2] Using module: $BACKEND_MODULE"
+
+python -m uvicorn $BACKEND_MODULE --host 0.0.0.0 --port 8001 --log-level info &
 BACKEND_PID=$!
 
 sleep 5
