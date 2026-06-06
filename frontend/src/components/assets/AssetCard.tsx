@@ -10,6 +10,8 @@ import type { AssetScore } from "@/types";
 interface AssetCardProps {
   asset: AssetScore;
   onSelect?: (ticker: string) => void;
+  selected?: boolean;
+  onToggleSelect?: (ticker: string) => void;
 }
 
 const riskColors: Record<string, string> = {
@@ -28,7 +30,7 @@ const entryConfig: Record<string, { bg: string; border: string; text: string }> 
   "SEM DADOS":              { bg: "bg-surface-2",  border: "border-border",     text: "text-text-muted" },
 };
 
-function AssetCard({ asset, onSelect }: AssetCardProps) {
+function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetCardProps) {
   const [showChart, setShowChart] = useState(false);
   const tech  = asset.technicals;
   const entry = asset.entry_signal ? (entryConfig[asset.entry_signal] ?? entryConfig["SEM DADOS"]) : null;
@@ -38,9 +40,30 @@ function AssetCard({ asset, onSelect }: AssetCardProps) {
     <>
     {showChart && <AssetChartModal ticker={asset.ticker} onClose={() => setShowChart(false)} />}
     <div
-      className="card hover:border-primary/40 hover:shadow-card-lg hover:bg-surface/80 transition-all cursor-pointer group duration-300"
+      className={cn(
+        "card hover:border-primary/40 hover:shadow-card-lg hover:bg-surface/80 transition-all cursor-pointer group duration-300 relative",
+        selected && "border-primary/50 bg-primary/5 shadow-glow"
+      )}
       onClick={() => { onSelect?.(asset.ticker); setShowChart(true); }}
     >
+      {/* Selection Checkbox */}
+      {onToggleSelect && (
+        <div
+          className="absolute top-3 right-3 z-10"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect(asset.ticker);
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => {}}
+            className="w-4 h-4 cursor-pointer accent-primary"
+          />
+        </div>
+      )}
+
       {/* ── Header ──────────────────────────────────────── */}
       <div className="flex items-start justify-between mb-5 pb-4 border-b border-border/40">
         <div className="flex items-start gap-3">

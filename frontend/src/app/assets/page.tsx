@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import AssetCard from "@/components/assets/AssetCard";
+import AssetComparisonModal from "@/components/assets/AssetComparisonModal";
 import MarketStateWidget from "@/components/assets/MarketStateWidget";
 import { assetsApi } from "@/lib/api";
 import type { AssetScore, AssetScreenResult } from "@/types";
@@ -86,6 +87,8 @@ export default function AssetsPage() {
   const [result, setResult] = useState<AssetScreenResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
+  const [showComparison, setShowComparison] = useState(false);
 
   // Auto-run when navigated from Sharpe Compare with ?tickers=...&autorun=1
   useEffect(() => {
@@ -109,6 +112,7 @@ export default function AssetsPage() {
   const handleScreen = async () => {
     setLoading(true);
     setError("");
+    setSelectedAssets(new Set()); // Clear selection on new screen
     try {
       const res = await assetsApi.screen({ tickers: tickers.toUpperCase(), min_score: minScore });
       setResult(res.data);
@@ -117,6 +121,21 @@ export default function AssetsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleAssetSelection = (ticker: string) => {
+    const newSelected = new Set(selectedAssets);
+    if (newSelected.has(ticker)) {
+      newSelected.delete(ticker);
+    } else {
+      newSelected.add(ticker);
+    }
+    setSelectedAssets(newSelected);
+  };
+
+  const getSelectedAssets = () => {
+    if (!result) return [];
+    return result.assets.filter((asset) => selectedAssets.has(asset.ticker));
   };
 
   return (
@@ -178,10 +197,33 @@ export default function AssetsPage() {
               <p className="text-sm text-text-secondary">
                 <span className="text-text-primary font-semibold">{result.total_assets}</span> ativos encontrados
                 {" "}· ordenados por score composto
+                {selectedAssets.size > 0 && (
+                  <span className="ml-2 px-2 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold">
+                    {selectedAssets.size} selecionado{selectedAssets.size > 1 ? "s" : ""}
+                  </span>
+                )}
               </p>
-              <p className="text-xs text-text-muted">
-                Atualizado: {new Date(result.screened_at).toLocaleTimeString("pt-BR")}
-              </p>
+              <div className="flex gap-2">
+                {selectedAssets.size >= 2 && (
+                  <>
+                    <button
+                      onClick={() => setShowComparison(true)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-white hover:bg-primary/90 transition-colors"
+                    >
+                      🔍 Comparar ({selectedAssets.size})
+                    </button>
+                    <button
+                      onClick={() => setSelectedAssets(new Set())}
+                      className="px-2 py-2 rounded-lg text-xs font-medium text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors"
+                    >
+                      Limpar
+                    </button>
+                  </>
+                )}
+                <p className="text-xs text-text-muted self-center">
+                  Atualizado: {new Date(result.screened_at).toLocaleTimeString("pt-BR")}
+                </p>
+              </div>
             </div>
 
             {/* Summary bar */}
@@ -200,9 +242,22 @@ export default function AssetsPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {result.assets.map((asset) => (
-                <AssetCard key={asset.ticker} asset={asset} />
+                <AssetCard
+                  key={asset.ticker}
+                  asset={asset}
+                  selected={selectedAssets.has(asset.ticker)}
+                  onToggleSelect={toggleAssetSelection}
+                />
               ))}
             </div>
+
+            {/* Comparison Modal */}
+            {showComparison && (
+              <AssetComparisonModal
+                assets={getSelectedAssets()}
+                onClose={() => setShowComparison(false)}
+              />
+            )}
           </>
         )}
 
