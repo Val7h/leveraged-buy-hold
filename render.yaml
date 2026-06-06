@@ -27,7 +27,7 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: BACKEND_CORS_ORIGINS
-        value: '["https://lbh-frontend.onrender.com","https://lbh-frontend-val7h.onrender.com"]'
+        value: '["http://localhost:3000","https://lbh-frontend.onrender.com","https://lbh-frontend-val7h.onrender.com"]'
       # Stripe (adicionar no dashboard do Render)
       - key: STRIPE_SECRET_KEY
         sync: false
