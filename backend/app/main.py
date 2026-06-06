@@ -5,6 +5,8 @@ from app.core.config import settings
 from app.core.database import create_tables, engine
 from app.api.v1 import auth, assets, portfolio, backtest, simulator, alerts, watchlist, logos, moderation, moderation_admin_dashboard, billing
 from app.api.v1 import user_consent
+from app.api.v1 import notifications
+from app.api.v1 import news
 
 app = FastAPI(
     title="Leveraged Buy & Hold — Sistema Quantitativo",
@@ -24,7 +26,7 @@ app.add_middleware(
 )
 
 
-def run_migrations():
+def run_migrations():  # noqa: C901
     """Add new columns to existing tables (idempotent via IF NOT EXISTS)"""
     try:
         with engine.connect() as conn:
@@ -40,9 +42,37 @@ def run_migrations():
                 ALTER TABLE users
                 ADD COLUMN IF NOT EXISTS consent_logged_at TIMESTAMPTZ NULL
             """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    type VARCHAR(50) NOT NULL,
+                    title VARCHAR(200) NOT NULL,
+                    body TEXT NOT NULL,
+                    url VARCHAR(500),
+                    read BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications(user_id)
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    endpoint TEXT NOT NULL UNIQUE,
+                    p256dh TEXT NOT NULL,
+                    auth TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_push_subscriptions_user_id ON push_subscriptions(user_id)
+            """))
             conn.commit()
-    except Exception as e:
-        # Columns may already exist — safe to ignore
+    except Exception:
+        # Tables may already exist — safe to ignore
         pass
 
 
@@ -64,6 +94,8 @@ app.include_router(moderation.router, prefix="/api/v1")
 app.include_router(moderation_admin_dashboard.router, prefix="/api/v1")
 app.include_router(billing.router, prefix="/api/v1")
 app.include_router(user_consent.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(news.router, prefix="/api/v1")
 
 
 @app.get("/api/health")

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import Sidebar from "./Sidebar";
+import NotificationBell from "./NotificationBell";
 import { Menu } from "lucide-react";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -41,20 +42,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Content area */}
       <div className="flex-1 flex flex-col lg:ml-60 min-h-screen overflow-x-hidden">
         {/* Mobile top bar */}
-        <header className="lg:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 bg-surface border-b border-border">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-1.5 rounded-lg hover:bg-surface-2 text-text-secondary transition-colors"
-            aria-label="Abrir menu"
-          >
-            <Menu size={20} />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-primary/15 border border-primary/30 flex items-center justify-center flex-shrink-0">
-              <span className="text-primary font-bold text-xs">L</span>
+        <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-surface border-b border-border">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-1.5 rounded-lg hover:bg-surface-2 text-text-secondary transition-colors"
+              aria-label="Abrir menu"
+            >
+              <Menu size={20} />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-primary/15 border border-primary/30 flex items-center justify-center flex-shrink-0">
+                <span className="text-primary font-bold text-xs">L</span>
+              </div>
+              <span className="text-sm font-semibold text-text-primary">LBH System</span>
             </div>
-            <span className="text-sm font-semibold text-text-primary">LBH System</span>
           </div>
+          <NotificationBell />
         </header>
 
         <main className="flex-1">

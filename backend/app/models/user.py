@@ -31,3 +31,5 @@ class User(Base):
     portfolios = relationship("Portfolio", back_populates="owner")
     alerts = relationship("Alert", back_populates="user")
     subscription = relationship("Subscription", back_populates="user", uselist=False)
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    push_subscriptions = relationship("PushSubscription", back_populates="user", cascade="all, delete-orphan")
