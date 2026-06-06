@@ -117,12 +117,15 @@ def google_dev_login(request: GoogleDevLoginRequest, db: Session = Depends(get_d
     """
     DEVELOPMENT ONLY: Login via mock Google OAuth (no token verification).
     Used for testing without a real Google Client ID.
+    Set ENABLE_DEV_GOOGLE_LOGIN=true to allow in production.
     """
     env = os.getenv("ENVIRONMENT", "development")
-    if env == "production":
+    dev_mode = os.getenv("ENABLE_DEV_GOOGLE_LOGIN", "false").lower() in ("true", "1", "yes")
+
+    if env == "production" and not dev_mode:
         raise HTTPException(
             status_code=403,
-            detail="Development endpoint not available in production",
+            detail="Development endpoint not available in production. Set ENABLE_DEV_GOOGLE_LOGIN=true to enable.",
         )
 
     email = request.email.strip()
