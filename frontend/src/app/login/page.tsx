@@ -136,19 +136,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-6">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-text-muted">ou</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
-          {/* Google Login - Show Dev mode if no Client ID configured */}
-          {!googleClientId ? (
-            <DevGoogleLogin />
-          ) : (
-            <GoogleLoginButton />
-          )}
         </div>
 
         <p className="text-center text-xs text-text-muted mt-6">
