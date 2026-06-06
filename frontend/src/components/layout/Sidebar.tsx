@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useSignalStore } from "@/store/signalStore";
 import { cn } from "@/lib/utils";
+import Tooltip from "@/components/ui/Tooltip";
 import {
   LayoutDashboard, Briefcase, Search, FlaskConical,
   TrendingUp, Bell, LogOut, ChevronRight, Bookmark, History, BarChart3, X,
@@ -11,17 +12,17 @@ import {
 
 const navItems = [
   // Principais
-  { href: "/dashboard",      label: "Dashboard",  icon: LayoutDashboard, badge: null, section: "PRINCIPAIS" },
-  { href: "/assets",         label: "Screening",  icon: Search,          badge: null, section: "PRINCIPAIS" },
-  { href: "/portfolio",      label: "Carteira",   icon: Briefcase,       badge: null, section: "PRINCIPAIS" },
+  { href: "/dashboard",      label: "Dashboard",  icon: LayoutDashboard, badge: null, section: "PRINCIPAIS", tooltip: "Visão geral do mercado e sinais de entrada em tempo real" },
+  { href: "/assets",         label: "Screening",  icon: Search,          badge: null, section: "PRINCIPAIS", tooltip: "Analise 20+ ativos defensivos com scores de qualidade e oportunidade" },
+  { href: "/portfolio",      label: "Carteira",   icon: Briefcase,       badge: null, section: "PRINCIPAIS", tooltip: "Acompanhe seu patrimônio, P&L, drawdown e sugestões de aporte" },
   // Análise
-  { href: "/backtest",       label: "Backtest",   icon: FlaskConical,    badge: null, section: "ANÁLISE" },
-  { href: "/simulator",      label: "Simulador",  icon: TrendingUp,      badge: null, section: "ANÁLISE" },
-  { href: "/watchlist",      label: "Watchlist",  icon: Bookmark,        badge: "opportunities", section: "ANÁLISE" },
+  { href: "/backtest",       label: "Backtest",   icon: FlaskConical,    badge: null, section: "ANÁLISE", tooltip: "Compare 4 estratégias de Buy & Hold com diferentes alavancagens" },
+  { href: "/simulator",      label: "Simulador",  icon: TrendingUp,      badge: null, section: "ANÁLISE", tooltip: "Simule 1.000 cenários futuros com Monte Carlo" },
+  { href: "/watchlist",      label: "Watchlist",  icon: Bookmark,        badge: "opportunities", section: "ANÁLISE", tooltip: "Monitore ativos favoritados com sinais de entrada atualizados" },
   // Informações
-  { href: "/alerts",         label: "Alertas",    icon: Bell,            badge: null, section: "INFORMAÇÕES" },
-  { href: "/history",        label: "Histórico",  icon: History,         badge: null, section: "INFORMAÇÕES" },
-  { href: "/sharpe-compare", label: "Sharpe",     icon: BarChart3,       badge: null, section: "INFORMAÇÕES" },
+  { href: "/alerts",         label: "Alertas",    icon: Bell,            badge: null, section: "INFORMAÇÕES", tooltip: "Configure 7 tipos de alertas: RSI, Estocástico, Score, Drawdown, etc" },
+  { href: "/history",        label: "Histórico",  icon: History,         badge: null, section: "INFORMAÇÕES", tooltip: "Veja todas as suas compras, vendas e ajustes" },
+  { href: "/sharpe-compare", label: "Sharpe",     icon: BarChart3,       badge: null, section: "INFORMAÇÕES", tooltip: "Compare retorno ajustado ao risco (Sharpe) de 20+ ativos desde 2015" },
 ];
 
 interface SidebarProps {
@@ -72,12 +73,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <div className="space-y-1">
               {navItems
                 .filter((item) => item.section === section)
-                .map(({ href, label, icon: Icon, badge }) => {
+                .map(({ href, label, icon: Icon, badge, tooltip }) => {
                   const active = pathname.startsWith(href);
                   const showBadge = badge === "opportunities" && opportunityCount > 0;
-                  return (
+                  const navLink = (
                     <Link
-                      key={href}
                       href={href}
                       className={cn(
                         "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
@@ -95,6 +95,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                       )}
                       {active && !showBadge && <ChevronRight size={14} className="text-primary opacity-50" />}
                     </Link>
+                  );
+
+                  return (
+                    <Tooltip key={href} content={tooltip} side="right" delay={500}>
+                      {navLink}
+                    </Tooltip>
                   );
                 })}
             </div>

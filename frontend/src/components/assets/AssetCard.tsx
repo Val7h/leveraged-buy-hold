@@ -3,6 +3,7 @@ import React, { useState, memo } from "react";
 import { cn, formatCurrency, formatPercent, getScoreColor, getScoreBg, sectorIcon } from "@/lib/utils";
 import ScoreGauge from "@/components/ui/ScoreGauge";
 import TickerLogo from "@/components/ui/TickerLogo";
+import Tooltip from "@/components/ui/Tooltip";
 import AssetChartModal from "@/components/assets/AssetChartModal";
 import type { AssetScore } from "@/types";
 
@@ -78,13 +79,19 @@ function AssetCard({ asset, onSelect }: AssetCardProps) {
       {/* ── Scores ──────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3 py-4 mb-4 px-2 bg-surface-2/30 rounded-lg border border-border/20">
         <div className="text-center">
-          <ScoreGauge score={asset.quality_score}      label="Qualidade"   size="sm" />
+          <Tooltip content="Qualidade do ativo: beta baixo, drawdown baixo, dividendos altos, Sharpe, volatilidade" side="top" delay={300}>
+            <ScoreGauge score={asset.quality_score}      label="Qualidade"   size="sm" />
+          </Tooltip>
         </div>
         <div className="text-center border-l border-r border-border/20">
-          <ScoreGauge score={asset.opportunity_score}  label="Oportun." size="sm" />
+          <Tooltip content="Oportunidade de entrada: RSI semanal baixo, posição acima/abaixo das Bandas de Bollinger" side="top" delay={300}>
+            <ScoreGauge score={asset.opportunity_score}  label="Oportun." size="sm" />
+          </Tooltip>
         </div>
         <div className="text-center">
-          <ScoreGauge score={asset.composite_score}    label="Composto"    size="sm" />
+          <Tooltip content="Score composto: média ponderada de Qualidade (60%) e Oportunidade (40%)" side="top" delay={300}>
+            <ScoreGauge score={asset.composite_score}    label="Composto"    size="sm" />
+          </Tooltip>
         </div>
       </div>
 
@@ -181,45 +188,49 @@ function AssetCard({ asset, onSelect }: AssetCardProps) {
 
       {/* ── Kelly Criterion ─────────────────────────────── */}
       {kelly?.kelly_half != null && (
-        <div className="rounded-lg bg-surface-2 px-3 py-2 mb-3 flex items-center justify-between">
-          <div>
-            <p className="text-[10px] text-text-muted mb-0.5">Kelly Criterion</p>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-semibold text-primary">
-                ½K {kelly.kelly_half.toFixed(2)}x
-              </span>
-              <span className="text-[10px] text-text-muted">
-                · ¼K {kelly.kelly_quarter.toFixed(2)}x
-              </span>
+        <Tooltip content="Recomendação de alavancagem ótima baseada em histórico de wins/losses" side="top" delay={300}>
+          <div className="rounded-lg bg-surface-2 px-3 py-2 mb-3 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] text-text-muted mb-0.5">Kelly Criterion</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-semibold text-primary">
+                  ½K {kelly.kelly_half.toFixed(2)}x
+                </span>
+                <span className="text-[10px] text-text-muted">
+                  · ¼K {kelly.kelly_quarter.toFixed(2)}x
+                </span>
+              </div>
             </div>
+            {kelly.win_rate != null && (
+              <div className="text-right">
+                <p className="text-[10px] text-text-muted">Win rate</p>
+                <p className="text-xs font-mono font-semibold text-text-primary">{kelly.win_rate.toFixed(1)}%</p>
+              </div>
+            )}
           </div>
-          {kelly.win_rate != null && (
-            <div className="text-right">
-              <p className="text-[10px] text-text-muted">Win rate</p>
-              <p className="text-xs font-mono font-semibold text-text-primary">{kelly.win_rate.toFixed(1)}%</p>
-            </div>
-          )}
-        </div>
+        </Tooltip>
       )}
 
       {/* ── Leverage + Risk badges ───────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs text-text-muted mb-0.5">Alavancagem Recomendada</p>
-          <span className="text-base font-bold text-warning font-mono">
-            {asset.recommended_leverage.toFixed(2)}x
-          </span>
-          <span className="text-xs text-text-muted ml-1">
-            / máx {asset.max_recommended_leverage.toFixed(1)}x
-          </span>
+      <Tooltip content="Alavancagem recomendada pelo Kelly Criterion baseada no histórico" side="top" delay={300}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-text-muted mb-0.5">Alavancagem Recomendada</p>
+            <span className="text-base font-bold text-warning font-mono">
+              {asset.recommended_leverage.toFixed(2)}x
+            </span>
+            <span className="text-xs text-text-muted ml-1">
+              / máx {asset.max_recommended_leverage.toFixed(1)}x
+            </span>
+          </div>
+          <div className="flex flex-col gap-1 items-end">
+            <span className={cn("badge border text-xs", riskColors[asset.risk_rating] || "text-text-secondary")}>
+              Risco {asset.risk_rating}
+            </span>
+            <span className="text-xs text-text-muted">{asset.opportunity_rating}</span>
+          </div>
         </div>
-        <div className="flex flex-col gap-1 items-end">
-          <span className={cn("badge border text-xs", riskColors[asset.risk_rating] || "text-text-secondary")}>
-            Risco {asset.risk_rating}
-          </span>
-          <span className="text-xs text-text-muted">{asset.opportunity_rating}</span>
-        </div>
-      </div>
+      </Tooltip>
     </div>
     </>
   );

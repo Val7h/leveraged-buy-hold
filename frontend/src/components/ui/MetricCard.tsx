@@ -1,5 +1,6 @@
 import React, { memo } from "react";
 import { cn } from "@/lib/utils";
+import Tooltip from "@/components/ui/Tooltip";
 
 interface MetricCardProps {
   label: string;
@@ -36,12 +37,13 @@ function MetricCard({
   trend,
   accent = "default",
   icon,
+  tooltip,
   className,
   large = false,
 }: MetricCardProps) {
   const trendColor = trend === "up" ? "text-success" : trend === "down" ? "text-danger" : "text-text-secondary";
 
-  return (
+  const card = (
     <div className={cn("card relative overflow-hidden", accentClasses[accent], className)}>
       <div className={cn("absolute top-0 left-0 w-0.5 h-full", accentDot[accent])} />
       <div className="flex items-start justify-between">
@@ -62,6 +64,16 @@ function MetricCard({
       </div>
     </div>
   );
+
+  if (tooltip) {
+    return (
+      <Tooltip content={tooltip} side="top" delay={300}>
+        {card}
+      </Tooltip>
+    );
+  }
+
+  return card;
 }
 
 export default memo(MetricCard);
