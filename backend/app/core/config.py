@@ -19,9 +19,13 @@ class Settings(BaseSettings):
 
     def get_cors_origins(self) -> List[str]:
         try:
-            return json.loads(self.BACKEND_CORS_ORIGINS)
+            origins = json.loads(self.BACKEND_CORS_ORIGINS)
+            # Always allow localhost for development
+            if "http://localhost:3000" not in origins:
+                origins.append("http://localhost:3000")
+            return origins
         except Exception:
-            return ["http://localhost:3000"]
+            return ["http://localhost:3000", "http://localhost:8000", "http://localhost:8001"]
 
 
 settings = Settings()
