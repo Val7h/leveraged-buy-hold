@@ -1,4 +1,4 @@
-# Stage 1: Build Next.js frontend
+# Stage 1: Build Next.js (standalone mode)
 FROM node:18-alpine AS frontend-builder
 
 WORKDIR /app/frontend
@@ -7,13 +7,19 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Python + Node.js + supervisord
-FROM nikolaik/python-nodejs:python3.11-nodejs18
+# Stage 2: Python runtime + Node.js binary (copiado do stage 1)
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# supervisord para gerenciar múltiplos processos
-RUN pip install supervisor
+# Dependências sistema para psycopg2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar Node.js binary do stage 1 (sem instalar via apt!)
+COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
 
 # Python dependencies
 COPY backend/requirements.txt ./backend/requirements.txt
@@ -22,30 +28,15 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 # Backend source
 COPY backend/ ./backend/
 
-# Next.js built output
-COPY --from=frontend-builder /app/frontend/.next ./frontend/.next
+# Next.js standalone output (self-contained, inclui tudo necessário)
+COPY --from=frontend-builder /app/frontend/.next/standalone ./frontend/
+COPY --from=frontend-builder /app/frontend/.next/static ./frontend/.next/static
 COPY --from=frontend-builder /app/frontend/public ./frontend/public
-COPY --from=frontend-builder /app/frontend/node_modules ./frontend/node_modules
-COPY --from=frontend-builder /app/frontend/package.json ./frontend/package.json
-COPY --from=frontend-builder /app/frontend/next.config.mjs ./frontend/next.config.mjs
 
-# supervisord config
-COPY supervisord.conf ./supervisord.conf
-
-# Testar que o backend importa corretamente (sem DB)
-RUN cd /app/backend && python -c "
-import sys
-try:
-    # Testar imports básicos
-    from app.core.config import settings
-    from app.core.database import Base, engine
-    print('[BUILD] Config OK:', settings.ENVIRONMENT)
-except Exception as e:
-    print('[BUILD] Import error:', e)
-    sys.exit(0)  # nao falhar o build por isso
-"
+# Start script
+COPY start.sh ./start.sh
+RUN chmod +x ./start.sh
 
 EXPOSE 3000
 
-# Render define PORT como variável de ambiente
-CMD ["sh", "-c", "PORT=${PORT:-3000} supervisord -c /app/supervisord.conf"]
+CMD ["/app/start.sh"]
