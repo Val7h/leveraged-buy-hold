@@ -7,6 +7,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
+import os
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -46,3 +47,31 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+def get_current_user_or_demo(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """
+    Get current user, or return a demo user if DEMO_MODE is enabled.
+    Allows full testing of the app without authentication.
+    """
+    from app.models.user import User
+
+    demo_mode = os.getenv("DEMO_MODE", "false").lower() in ("true", "1", "yes")
+
+    if demo_mode and token.startswith("demo_token_"):
+        # Create or get a demo user
+        demo_user = db.query(User).filter(User.email == "demo@example.com").first()
+        if not demo_user:
+            demo_user = User(
+                email="demo@example.com",
+                full_name="Demo User",
+                hashed_password=get_password_hash("demo"),
+                risk_profile="balanced",
+            )
+            db.add(demo_user)
+            db.commit()
+            db.refresh(demo_user)
+        return demo_user
+
+    # Fall back to regular auth
+    return get_current_user(token, db)

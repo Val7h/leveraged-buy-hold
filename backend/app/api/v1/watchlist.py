@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user_or_demo as get_current_user
 from app.models.user import User
 from app.models.watchlist import WatchlistItem
 
@@ -102,3 +102,4 @@ def get_watchlist_signals(
         "opportunity_count": len(opportunities),
         "checked_at":        datetime.utcnow().isoformat(),
     }
+

@@ -14,11 +14,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem("access_token");
+    const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
     if (!stored) {
-      router.replace("/login");
-      return;
+      if (demoMode) {
+        // Demo mode: create a fake token to bypass auth
+        const fakeToken = "demo_token_" + Date.now();
+        localStorage.setItem("access_token", fakeToken);
+        // Set a demo user in auth store
+        if (!user) {
+          // Don't fetch from API, just continue with UI
+        }
+      } else {
+        // Production: require login
+        router.replace("/login");
+        return;
+      }
     }
-    if (!user) fetchMe();
+
+    if (!user && !demoMode) {
+      fetchMe();
+    }
   }, []);
 
   // Close sidebar on route change (mobile)

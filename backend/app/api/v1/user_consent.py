@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user_or_demo as get_current_user
 from app.models.user import User
 
 router = APIRouter(prefix="/user", tags=["user"])
@@ -101,3 +101,4 @@ async def get_consent_status(
             "has_consented": current_user.risk_acknowledged and current_user.terms_accepted,
         }
     )
+

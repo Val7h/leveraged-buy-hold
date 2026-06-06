@@ -3,7 +3,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user_or_demo as get_current_user
 from app.models.user import User
 from app.schemas.analysis import SimulationRequest, SimulationResult
 from app.services.market_data import fetch_price_history
@@ -151,3 +151,4 @@ def get_deleverage_projection(
         expected_cagr=0.08,
     )
     return timeline
+

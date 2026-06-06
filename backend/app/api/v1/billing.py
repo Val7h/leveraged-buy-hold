@@ -10,7 +10,7 @@ import json
 from typing import Optional
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user_or_demo as get_current_user
 from app.models.user import User
 from app.models.subscription import Subscription, SubscriptionTier, SubscriptionStatus
 
@@ -381,3 +381,4 @@ async def check_feature_access(
         "tier": tier,
         "has_access": has_access,
     }
+

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user_or_demo as get_current_user
 from app.models.user import User
 from app.schemas.analysis import BacktestRequest, BacktestResult, SharpeCompareRequest, SharpeCompareResult
 from app.services.market_data import fetch_multiple_price_history
@@ -73,3 +73,4 @@ def sharpe_compare(request: SharpeCompareRequest, user: User = Depends(get_curre
         "period":      f"{request.start} → {period_end}",
         "computed_at": datetime.utcnow().isoformat(),
     }
+
