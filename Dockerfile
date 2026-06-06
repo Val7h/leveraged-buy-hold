@@ -9,22 +9,12 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Final image — Python + Node
-FROM python:3.11-slim
+# Stage 2: Imagem com Python + Node.js já instalados
+FROM nikolaik/python-nodejs:python3.11-nodejs18
 
 WORKDIR /app
 
-# System deps: Node.js + build tools for psycopg2
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    curl \
-    ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
-
-# Python dependencies
+# Python dependencies (psycopg2 já tem suporte nessa imagem)
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
