@@ -78,8 +78,20 @@ def run_migrations():  # noqa: C901
 
 @app.on_event("startup")
 def startup():
-    create_tables()
-    run_migrations()
+    import time
+    # Retry DB connection up to 5x (DB may not be ready on first deploy)
+    for attempt in range(1, 6):
+        try:
+            create_tables()
+            run_migrations()
+            print(f"[DB] Connected and tables ready (attempt {attempt})")
+            break
+        except Exception as e:
+            print(f"[DB] Attempt {attempt}/5 failed: {e}")
+            if attempt < 5:
+                time.sleep(5)
+            else:
+                print("[DB] Could not connect to database after 5 attempts - running without DB")
 
 
 app.include_router(auth.router, prefix="/api/v1")
