@@ -5,6 +5,7 @@ import EquityCurve from "@/components/charts/EquityCurve";
 import DrawdownChart from "@/components/charts/DrawdownChart";
 import LeverageChart from "@/components/charts/LeverageChart";
 import PriceTradeChart from "@/components/charts/PriceTradeChart";
+import BacktestComparisonPanel from "@/components/backtest/BacktestComparisonPanel";
 import { backtestApi } from "@/lib/api";
 import type { BacktestResult, BacktestMetrics } from "@/types";
 import { FlaskConical, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
@@ -137,6 +138,9 @@ export default function BacktestPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Backtest Comparison Panel */}
+            <BacktestComparisonPanel result={result} ticker={tickers.split(",")[0].trim().toUpperCase()} />
 
             {/* Charts */}
             <EquityCurve data={result.equity_curves} title="Curva de Patrimônio — Comparação de Estratégias" />
