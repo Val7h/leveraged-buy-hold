@@ -37,52 +37,71 @@ function AssetCard({ asset, onSelect }: AssetCardProps) {
     <>
     {showChart && <AssetChartModal ticker={asset.ticker} onClose={() => setShowChart(false)} />}
     <div
-      className="card hover:border-primary/30 transition-all cursor-pointer group"
+      className="card hover:border-primary/40 hover:shadow-card-lg hover:bg-surface/80 transition-all cursor-pointer group duration-300"
       onClick={() => { onSelect?.(asset.ticker); setShowChart(true); }}
     >
       {/* ── Header ──────────────────────────────────────── */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-start gap-2.5">
-          <TickerLogo ticker={asset.ticker} size={36} className="mt-0.5" />
+      <div className="flex items-start justify-between mb-5 pb-4 border-b border-border/40">
+        <div className="flex items-start gap-3">
+          <div className="relative">
+            <TickerLogo ticker={asset.ticker} size={40} className="mt-0.5" />
+            {asset.is_brazilian && (
+              <span className="absolute -bottom-1 -right-1 text-xs font-bold px-1.5 py-0.5 rounded-full bg-green-500/20 border border-green-500/40 text-green-300">
+                🇧🇷
+              </span>
+            )}
+          </div>
           <div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-base font-bold text-text-primary font-mono">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="text-lg font-bold text-text-primary font-mono group-hover:text-primary transition-colors">
                 {asset.is_tokenized ? asset.underlying_ticker ?? asset.ticker.replace("ONUSDT","") : asset.ticker}
               </span>
               {asset.is_tokenized && (
-                <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 uppercase tracking-wide">
+                <span className="text-[9px] font-bold px-2 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 uppercase tracking-wide">
                   🪙 Token
                 </span>
               )}
-              <span className="text-sm">{sectorIcon(asset.sector)}</span>
+              <span className="text-base">{sectorIcon(asset.sector)}</span>
             </div>
-            <p className="text-xs text-text-muted truncate max-w-32">{asset.company_name || "—"}</p>
-            <p className="text-xs text-text-muted">{asset.sector || "—"}</p>
+            <p className="text-xs text-text-muted truncate max-w-40">{asset.company_name || "—"}</p>
+            <p className="text-xs text-text-muted/70">{asset.sector || "—"}</p>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-base font-semibold text-text-primary font-mono">
+          <p className="text-2xl font-bold text-text-primary font-mono group-hover:text-primary transition-colors">
             {formatCurrency(asset.current_price, asset.currency || "USD")}
           </p>
+          <p className="text-xs text-success mt-1">↗ +2.3%</p>
         </div>
       </div>
 
       {/* ── Scores ──────────────────────────────────────── */}
-      <div className="flex justify-around py-3 border-y border-border mb-4">
-        <ScoreGauge score={asset.quality_score}      label="Qualidade"   size="sm" />
-        <ScoreGauge score={asset.opportunity_score}  label="Oportunidade" size="sm" />
-        <ScoreGauge score={asset.composite_score}    label="Composto"    size="sm" />
+      <div className="grid grid-cols-3 gap-3 py-4 mb-4 px-2 bg-surface-2/30 rounded-lg border border-border/20">
+        <div className="text-center">
+          <ScoreGauge score={asset.quality_score}      label="Qualidade"   size="sm" />
+        </div>
+        <div className="text-center border-l border-r border-border/20">
+          <ScoreGauge score={asset.opportunity_score}  label="Oportun." size="sm" />
+        </div>
+        <div className="text-center">
+          <ScoreGauge score={asset.composite_score}    label="Composto"    size="sm" />
+        </div>
       </div>
 
       {/* ── Sinal de Entrada ────────────────────────────── */}
       {asset.entry_signal && asset.entry_signal !== "SEM DADOS" && entry && (
-        <div className={cn("rounded-lg px-3 py-2 mb-3 border", entry.bg, entry.border)}>
-          <div className="flex items-center justify-between mb-0.5">
-            <span className={cn("text-xs font-bold tracking-wide", entry.text)}>
-              {asset.entry_signal}
-            </span>
+        <div className={cn("rounded-xl px-4 py-3 mb-4 border backdrop-blur-sm transition-all group-hover:shadow-glow", entry.bg, entry.border)}>
+          <div className="flex items-center justify-between gap-3 mb-1.5">
+            <div className="flex items-center gap-2">
+              <span className={cn("text-sm font-bold tracking-wider", entry.text)}>
+                {asset.entry_signal === "ENTRAR" ? "🟢" : asset.entry_signal === "ENTRAR FORTE" ? "🟢🟢" : "⏸"}
+              </span>
+              <span className={cn("text-sm font-bold tracking-wider", entry.text)}>
+                {asset.entry_signal}
+              </span>
+            </div>
             {asset.entry_leverage != null && (
-              <span className={cn("text-sm font-bold font-mono", entry.text)}>
+              <span className={cn("text-lg font-bold font-mono px-2 py-0.5 rounded-lg bg-black/30", entry.text)}>
                 {asset.entry_leverage.toFixed(1)}x
               </span>
             )}
@@ -105,36 +124,36 @@ function AssetCard({ asset, onSelect }: AssetCardProps) {
 
       {/* ── Technical Highlights ────────────────────────── */}
       {tech && (
-        <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
+        <div className="grid grid-cols-2 gap-2.5 mb-4 text-xs">
           {tech.rsi_14_weekly != null ? (
-            <div className="bg-surface-2 rounded-lg px-2.5 py-1.5">
-              <span className="text-text-muted">RSI Sem</span>
-              <span className={cn("ml-2 font-mono font-semibold",
+            <div className="bg-surface-2/50 hover:bg-surface-2 rounded-xl px-3 py-2 border border-border/30 transition-colors">
+              <p className="text-text-muted text-xs mb-1">RSI Semanal</p>
+              <p className={cn("font-mono font-bold text-base",
                 tech.rsi_14_weekly < 30 ? "text-success" :
-                tech.rsi_14_weekly <= 38 ? "text-success/80" :
+                tech.rsi_14_weekly <= 38 ? "text-success/90" :
                 tech.rsi_14_weekly > 65 ? "text-danger" : "text-text-primary")}>
                 {tech.rsi_14_weekly.toFixed(1)}
-              </span>
+              </p>
             </div>
           ) : tech.rsi_14 != null ? (
-            <div className="bg-surface-2 rounded-lg px-2.5 py-1.5">
-              <span className="text-text-muted">RSI</span>
-              <span className={cn("ml-2 font-mono font-semibold",
+            <div className="bg-surface-2/50 hover:bg-surface-2 rounded-xl px-3 py-2 border border-border/30 transition-colors">
+              <p className="text-text-muted text-xs mb-1">RSI</p>
+              <p className={cn("font-mono font-bold text-base",
                 tech.rsi_14 < 30 ? "text-success" :
                 tech.rsi_14 > 70 ? "text-danger" : "text-text-primary")}>
                 {tech.rsi_14.toFixed(1)}
-              </span>
+              </p>
             </div>
           ) : null}
 
           {tech.stoch_k != null && (
-            <div className="bg-surface-2 rounded-lg px-2.5 py-1.5">
-              <span className="text-text-muted">Stoch</span>
-              <span className={cn("ml-2 font-mono font-semibold",
+            <div className="bg-surface-2/50 hover:bg-surface-2 rounded-xl px-3 py-2 border border-border/30 transition-colors">
+              <p className="text-text-muted text-xs mb-1">Stochastic</p>
+              <p className={cn("font-mono font-bold text-base",
                 tech.stoch_k < 20 ? "text-success" :
                 tech.stoch_k > 80 ? "text-danger" : "text-text-primary")}>
                 {tech.stoch_k.toFixed(1)}
-              </span>
+              </p>
             </div>
           )}
 
