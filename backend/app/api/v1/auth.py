@@ -104,3 +104,43 @@ def google_login(request: GoogleLoginRequest, db: Session = Depends(get_db)):
     # Create JWT token
     token = create_access_token(data={"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
+
+
+class GoogleDevLoginRequest(BaseModel):
+    """Development-only: login without verifying Google token"""
+    email: str
+    full_name: str = ""
+
+
+@router.post("/google-dev", response_model=Token)
+def google_dev_login(request: GoogleDevLoginRequest, db: Session = Depends(get_db)):
+    """
+    DEVELOPMENT ONLY: Login via mock Google OAuth (no token verification).
+    Used for testing without a real Google Client ID.
+    """
+    env = os.getenv("ENVIRONMENT", "development")
+    if env == "production":
+        raise HTTPException(
+            status_code=403,
+            detail="Development endpoint not available in production",
+        )
+
+    email = request.email.strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    # Find or create user
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        user = User(
+            email=email,
+            full_name=request.full_name,
+            hashed_password=get_password_hash(os.urandom(32).hex()),
+            risk_profile="moderate",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    token = create_access_token(data={"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}

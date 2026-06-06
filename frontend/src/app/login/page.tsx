@@ -5,6 +5,7 @@ import { useAuthStore } from "@/store/authStore";
 import { authApi } from "@/lib/api";
 import RiskDisclaimerModal from "@/components/RiskDisclaimerModal";
 import GoogleLoginButton from "@/components/GoogleLoginButton";
+import DevGoogleLogin from "@/components/DevGoogleLogin";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 
 export default function LoginPage() {
@@ -142,8 +143,12 @@ export default function LoginPage() {
             <div className="h-px flex-1 bg-border" />
           </div>
 
-          {/* Google Login */}
-          <GoogleLoginButton />
+          {/* Google Login - Show Dev mode if no Client ID configured */}
+          {!googleClientId ? (
+            <DevGoogleLogin />
+          ) : (
+            <GoogleLoginButton />
+          )}
         </div>
 
         <p className="text-center text-xs text-text-muted mt-6">
