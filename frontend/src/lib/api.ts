@@ -1,6 +1,8 @@
 import axios, { AxiosInstance } from "axios";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+// Em produção: URL relativa (proxy via Next.js rewrites → FastAPI porta 8001)
+// Em desenvolvimento: localhost:8001 direto
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? "" : "http://localhost:8001");
 
 function createClient(): AxiosInstance {
   const client = axios.create({ baseURL: BASE_URL });
