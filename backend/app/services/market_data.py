@@ -429,6 +429,8 @@ def analyze_asset(
         "company_name":            fund.get("company_name") or _BITGET_TO_UNDERLYING.get(ticker.upper(), ticker),
         "sector":                  fund.get("sector") or ("Technology" if _is_tokenized(ticker) else None),
         "is_tokenized":            _is_tokenized(ticker),
+        "is_brazilian":            is_brazilian,
+        "currency":                "BRL" if is_brazilian else ("USDT" if _is_tokenized(ticker) else "USD"),
         "underlying_ticker":       _BITGET_TO_UNDERLYING.get(ticker.upper()) if _is_tokenized(ticker) else None,
         "current_price":           current_price,
         "quality_score":           quality_score,
