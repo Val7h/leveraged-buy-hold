@@ -97,7 +97,6 @@ app.include_router(user_consent.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(news.router, prefix="/api/v1")
 
-
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health():
     return {"status": "ok", "version": "1.2.0", "features": ["consent", "stripe", "db-persistence"]}
