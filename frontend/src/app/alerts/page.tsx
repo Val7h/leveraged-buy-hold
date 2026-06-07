@@ -8,7 +8,7 @@ import { formatPercent } from "@/lib/utils";
 import TickerLogo from "@/components/ui/TickerLogo";
 
 const ALERT_TYPES = [
-  { value: "entry_signal",        label: "Sinal de Entrada",          description: "Dispara quando sinal for ENTRAR ou ENTRAR FORTE",    noThreshold: true },
+  { value: "entry_signal",        label: "Sinal Técnico",             description: "Dispara quando o modelo identifica OPORTUNIDADE ou OPORTUNIDADE FORTE",    noThreshold: true },
   { value: "rsi_weekly_oversold", label: "RSI Semanal Sobrevendido",  description: "Alerta quando RSI semanal cair abaixo do valor" },
   { value: "rsi_oversold",        label: "RSI Diário Sobrevendido",   description: "Alerta quando RSI diário cair abaixo do valor" },
   { value: "stochastic_oversold", label: "Estocástico Sobrevendido",  description: "Alerta quando Stoch %K cair abaixo" },

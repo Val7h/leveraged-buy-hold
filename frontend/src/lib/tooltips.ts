@@ -18,8 +18,8 @@ export const TOOLTIPS = {
   "quality-score": "Qualidade do ativo: beta baixo, drawdown baixo, dividendos altos, Sharpe, volatilidade",
   "opportunity-score": "Oportunidade de entrada: RSI semanal baixo, posição acima/abaixo das Bandas de Bollinger",
   "composite-score": "Score composto: média ponderada de Qualidade (60%) e Oportunidade (40%)",
-  "entry-signal": "Sinal de entrada baseado em RSI semanal + estado do mercado",
-  "kelly-criterion": "Recomendação de alavancagem ótima baseada em histórico de wins/losses",
+  "entry-signal": "Sinal técnico do modelo (OPORTUNIDADE/NEUTRO/DESFAVORÁVEL) calculado a partir de RSI semanal + estado do mercado. NÃO é recomendação de compra/venda.",
+  "kelly-criterion": "Alavancagem sugerida pelo modelo de Kelly Criterion a partir de heurísticas de win-rate. Cenário matemático, não recomendação operacional.",
 
   // Backtest
   "backtest-cagr": "Retorno anualizado composto da estratégia no período testado",
@@ -38,12 +38,12 @@ export const TOOLTIPS = {
   // Alerts
   "price-alert": "Alerta quando o preço atinge um nível definido",
   "rsi-alert": "Alerta quando RSI semanal cruza valores críticos (entrada/saída)",
-  "signal-alert": "Alerta quando um novo sinal ENTRAR é gerado",
+  "signal-alert": "Alerta quando o modelo identifica novo cenário de OPORTUNIDADE",
   "score-alert": "Alerta quando o score do ativo atinge um nível mínimo",
   "drawdown-alert": "Alerta quando a queda acumulada excede um limite",
 
   // Positions
-  "leverage-recommendation": "Alavancagem recomendada pelo Kelly Criterion baseada no histórico",
+  "leverage-recommendation": "Alavancagem sugerida pelo modelo Kelly Criterion (heurística estatística — não é recomendação operacional)",
   "stop-loss": "Nível de preço onde a posição será encerrada (proteção)",
   "position-size": "Tamanho ideal da posição pelo Kelly Criterion",
 };

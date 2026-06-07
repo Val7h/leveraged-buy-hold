@@ -26,8 +26,8 @@ interface QuoteResult {
   realized_vol_30d: number | null;
 }
 
-// Cache key prefix — bumped a v2 porque mudei o shape (campos null-safe + sector/industry).
-const CACHE_PREFIX = "quote:v2:";
+// Cache key prefix — v3: compliance CVM (entry_signal usa OPORTUNIDADE/NEUTRO/DESFAVORÁVEL).
+const CACHE_PREFIX = "quote:v3:";
 const CACHE_TTL_SEC = 300; // 5 min
 const YAHOO_FETCH_TIMEOUT_MS = 10_000;
 
@@ -352,11 +352,13 @@ export function calculateScores(q: QuoteResult): {
 
   const composite = Math.round(quality * 0.6 + opportunity * 0.4);
 
-  // Entry signal
-  let entry_signal = "AGUARDAR";
-  if (composite >= 80 && rsi < 45) entry_signal = "ENTRAR";
-  else if (composite >= 70 && rsi < 40) entry_signal = "ENTRAR";
-  else if (composite < 50) entry_signal = "EVITAR";
+  // Sinal técnico do modelo (NÃO É RECOMENDAÇÃO DE COMPRA/VENDA — CVM Of-Circ 04/2023).
+  // Os labels descrevem o cenário quantitativo, sem verbo imperativo.
+  // Valores: OPORTUNIDADE | NEUTRO | DESFAVORÁVEL
+  let entry_signal = "NEUTRO";
+  if (composite >= 80 && rsi < 45) entry_signal = "OPORTUNIDADE";
+  else if (composite >= 70 && rsi < 40) entry_signal = "OPORTUNIDADE";
+  else if (composite < 50) entry_signal = "DESFAVORÁVEL";
 
   // ── Kelly Criterion CORRETO ──────────────────────────────────────────
   // p heurístico: composite=50 → p=0.45 (sem edge); composite=100 → p=0.65; composite=0 → p=0.40

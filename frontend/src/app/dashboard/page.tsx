@@ -19,12 +19,18 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+// Sinais técnicos do modelo — DESCRITIVOS, não imperativos (compliance CVM 04/2023).
 const SIGNAL_COLORS: Record<string, string> = {
-  "ENTRAR FORTE":            "text-success bg-success/15 border-success/35",
-  "ENTRAR":                  "text-success bg-success/10 border-success/25",
-  "ENTRAR (mercado em topo)":"text-warning bg-warning/10 border-warning/30",
-  "AGUARDAR":                "text-warning bg-warning/8 border-warning/20",
-  "EVITAR":                  "text-danger bg-danger/8 border-danger/20",
+  "OPORTUNIDADE FORTE":         "text-success bg-success/15 border-success/35",
+  "OPORTUNIDADE":               "text-success bg-success/10 border-success/25",
+  "OPORTUNIDADE (mercado topo)":"text-warning bg-warning/10 border-warning/30",
+  "NEUTRO":                     "text-warning bg-warning/8 border-warning/20",
+  "DESFAVORÁVEL":               "text-danger bg-danger/8 border-danger/20",
+  // Aliases legados (transição) — remover após cache invalidar
+  "ENTRAR FORTE":               "text-success bg-success/15 border-success/35",
+  "ENTRAR":                     "text-success bg-success/10 border-success/25",
+  "AGUARDAR":                   "text-warning bg-warning/8 border-warning/20",
+  "EVITAR":                     "text-danger bg-danger/8 border-danger/20",
 };
 
 function SignalCard({ s, onBuy }: { s: any; onBuy: (ticker: string, leverage: number) => void }) {
@@ -50,8 +56,9 @@ function SignalCard({ s, onBuy }: { s: any; onBuy: (ticker: string, leverage: nu
       <Link
         href={`/portfolio?add=${encodeURIComponent(s.ticker)}&leverage=${(s.entry_leverage || 1).toFixed(2)}`}
         className="flex items-center gap-1 text-[10px] font-semibold text-success bg-success/10 border border-success/20 hover:bg-success/20 px-2 py-1.5 rounded-lg transition-colors flex-shrink-0"
+        title="Adicionar à carteira simulada (não é recomendação de compra)"
       >
-        Comprar <ArrowRight size={9} />
+        Simular <ArrowRight size={9} />
       </Link>
     </div>
   );

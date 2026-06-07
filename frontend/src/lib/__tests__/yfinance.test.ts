@@ -135,7 +135,7 @@ describe('calculateScores', () => {
     expect(s.opportunity_score).toBeLessThanOrEqual(100);
   });
 
-  it('entry_signal = EVITAR quando composite < 50 (vol extrema + RSI alto)', () => {
+  it('entry_signal = DESFAVORÁVEL quando composite < 50 (vol extrema + RSI alto)', () => {
     const bad = {
       ...baseQuote,
       realized_vol_30d: 50, // mata o volScore
@@ -145,7 +145,7 @@ describe('calculateScores', () => {
     };
     const s = calculateScores(bad);
     expect(s.composite_score).toBeLessThan(50);
-    expect(s.entry_signal).toBe('EVITAR');
+    expect(s.entry_signal).toBe('DESFAVORÁVEL');
   });
 
   it('kelly.kelly_half clampado em [0.8, 2.0]', () => {
@@ -193,7 +193,7 @@ describe('calculateScores', () => {
     expect(s.risk_rating).toBe('MODERADO');
   });
 
-  it('entry_signal ENTRAR quando composite >= 70 e RSI < 40', () => {
+  it('entry_signal OPORTUNIDADE quando composite >= 70 e RSI < 40', () => {
     const good = {
       ...baseQuote,
       realized_vol_30d: 8,
@@ -203,7 +203,7 @@ describe('calculateScores', () => {
     };
     const s = calculateScores(good);
     expect(s.composite_score).toBeGreaterThanOrEqual(70);
-    expect(['ENTRAR']).toContain(s.entry_signal);
+    expect(['OPORTUNIDADE']).toContain(s.entry_signal);
   });
 });
 

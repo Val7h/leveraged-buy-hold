@@ -202,8 +202,8 @@ export default function WatchlistPage() {
                       <button
                         onClick={() => handleBought(item.ticker, score.entry_leverage || 1)}
                         className="flex items-center gap-1.5 text-xs font-semibold text-success bg-success/10 border border-success/20 hover:bg-success/20 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
-                        title="Comprei — adicionar à carteira">
-                        Comprei
+                        title="Registrar posição na carteira simulada">
+                        Adicionar à carteira
                         <ArrowRight size={11} />
                       </button>
                     </>
@@ -217,8 +217,9 @@ export default function WatchlistPage() {
                       {!analyzing && (
                         <button
                           onClick={() => handleBought(item.ticker, 1)}
-                          className="ml-auto flex items-center gap-1.5 text-xs text-text-muted hover:text-success border border-border hover:border-success/30 px-3 py-1.5 rounded-lg transition-colors">
-                          Comprei <ArrowRight size={11} />
+                          className="ml-auto flex items-center gap-1.5 text-xs text-text-muted hover:text-success border border-border hover:border-success/30 px-3 py-1.5 rounded-lg transition-colors"
+                          title="Registrar posição na carteira simulada">
+                          Adicionar à carteira <ArrowRight size={11} />
                         </button>
                       )}
                     </div>
@@ -238,11 +239,15 @@ export default function WatchlistPage() {
             {Object.keys(scores).length > 0 && (
               <div className="mt-6 p-4 bg-primary/5 border border-primary/15 rounded-xl">
                 <p className="text-xs text-text-secondary leading-relaxed">
-                  <span className="text-primary font-semibold">Fluxo recomendado:</span>{" "}
-                  Watchlist → veja o sinal (ENTRAR/AGUARDAR) → compre na corretora →
-                  clique em <span className="text-success font-semibold">Comprei →</span> para adicionar à carteira →
+                  <span className="text-primary font-semibold">Fluxo sugerido (cenário simulado):</span>{" "}
+                  Watchlist → analise o sinal técnico do modelo (OPORTUNIDADE/NEUTRO/DESFAVORÁVEL) →
+                  decida por sua conta e risco se executa a operação no seu broker →
+                  registre a posição clicando em <span className="text-success font-semibold">Adicionar à carteira →</span> →
                   classifique como <span className="text-warning font-semibold">🔒 Semente</span> (posição permanente)
-                  ou <span className="text-primary font-semibold">🔄 Ciclo</span> (rotação — venda quando sinal reverter).
+                  ou <span className="text-primary font-semibold">🔄 Ciclo</span> (rotação).
+                </p>
+                <p className="text-[10px] text-text-muted/70 mt-2 italic">
+                  ⚠️ Sinais técnicos NÃO são recomendações de compra/venda. Sistema informativo. CVM Of-Circ 04/2023.
                 </p>
               </div>
             )}

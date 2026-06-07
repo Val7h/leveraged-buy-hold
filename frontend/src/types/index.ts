@@ -114,10 +114,10 @@ export interface AssetScore {
    */
   risk_rating_is_heuristic?: boolean;
   opportunity_rating: string;
-  // Sinal de entrada
-  entry_signal?: string;       // ENTRAR FORTE | ENTRAR | AGUARDAR | EVITAR
+  // Sinal técnico do modelo — CVM 04/2023: labels descritivos, não imperativos.
+  entry_signal?: string;       // OPORTUNIDADE FORTE | OPORTUNIDADE | NEUTRO | DESFAVORÁVEL
   entry_signal_color?: string; // green | yellow | red | gray
-  entry_leverage?: number;     // leverage sugerida para entrada
+  entry_leverage?: number;     // alavancagem sugerida (cenário, não recomendação)
   entry_rationale?: string;    // explicação do sinal
   kelly?: KellyCriterion;
   technicals?: TechnicalIndicators;

@@ -35,9 +35,15 @@ export default function AssetComparisonModal({
   };
 
   const getSignalColor = (signal: string) => {
+    // Novos labels (compliance CVM 04/2023)
+    if (signal === "OPORTUNIDADE FORTE") return "bg-success/15 border-success/35 text-success";
+    if (signal === "OPORTUNIDADE") return "bg-success/10 border-success/25 text-success";
+    if (signal === "OPORTUNIDADE (mercado topo)") return "bg-warning/10 border-warning/30 text-warning";
+    if (signal === "NEUTRO") return "bg-warning/8 border-warning/20 text-warning";
+    if (signal === "DESFAVORÁVEL") return "bg-danger/8 border-danger/20 text-danger";
+    // Aliases legados (transição)
     if (signal === "ENTRAR FORTE") return "bg-success/15 border-success/35 text-success";
     if (signal === "ENTRAR") return "bg-success/10 border-success/25 text-success";
-    if (signal === "ENTRAR (mercado em topo)") return "bg-warning/10 border-warning/30 text-warning";
     if (signal === "AGUARDAR") return "bg-warning/8 border-warning/20 text-warning";
     if (signal === "EVITAR") return "bg-danger/8 border-danger/20 text-danger";
     return "bg-surface-2 border-border text-text-muted";
