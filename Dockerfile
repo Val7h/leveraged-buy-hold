@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
  && rm -rf /var/lib/apt/lists/*
 COPY frontend/package*.json ./
 COPY frontend/prisma ./prisma
-RUN npm ci
+# --legacy-peer-deps tolera peer dep mismatches (radix-ui + zod + @react-oauth/google)
+RUN npm ci --legacy-peer-deps --no-audit --no-fund
 
 # ── builder ────────────────────────────────────────────────────────────────────
 FROM node:20-slim AS builder
