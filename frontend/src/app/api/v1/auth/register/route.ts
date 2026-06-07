@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { signSession, setSessionCookie } from "@/lib/auth";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 // bcrypt + Prisma → Node runtime.
 export const runtime = "nodejs";
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "unknown_error";
-    console.error("[/auth/register] DB/auth error:", msg);
+    logger.error("/auth/register DB error", { msg });
     return NextResponse.json(
       {
         error: "service_unavailable",

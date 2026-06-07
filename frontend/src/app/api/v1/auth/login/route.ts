@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { signSession, setSessionCookie, DUMMY_BCRYPT_HASH } from "@/lib/auth";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 // bcrypt + Prisma exigem Node runtime (não Edge).
 export const runtime = "nodejs";
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "unknown_error";
-    console.error("[/auth/login] DB/auth error:", msg);
+    logger.error("/auth/login DB error", { msg });
     return NextResponse.json(
       {
         error: "service_unavailable",

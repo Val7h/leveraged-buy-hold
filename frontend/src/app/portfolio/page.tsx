@@ -18,6 +18,7 @@ export default function PortfolioPage() {
   const [capital, setCapital] = useState(1000);
   const [equityCurve, setEquityCurve] = useState<any>(null);
   const [curveLoading, setCurveLoading] = useState(false);
+  const [curveError, setCurveError] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPos, setNewPos] = useState({ ticker: "", shares: "", avg_price: "", leverage: "1" });
   const [fetchingPrice, setFetchingPrice] = useState(false);
@@ -34,9 +35,10 @@ export default function PortfolioPage() {
       fetchPositions(activePortfolioId);
       // Load equity curve
       setCurveLoading(true);
+      setCurveError(false);
       portfolioApi.getEquityCurve(activePortfolioId)
         .then((res) => setEquityCurve(res.data))
-        .catch(() => {})
+        .catch(() => setCurveError(true))
         .finally(() => setCurveLoading(false));
     }
   }, [activePortfolioId]);
@@ -180,15 +182,21 @@ export default function PortfolioPage() {
         )}
 
         {/* Equity Curve */}
-        {(equityCurve || curveLoading) && (
+        {(equityCurve || curveLoading || curveError) && (
           <div className="mb-6">
-            <PortfolioEquityCurve
-              curve={equityCurve?.curve ?? []}
-              totalInvested={equityCurve?.total_invested ?? 0}
-              pnlPct={equityCurve?.pnl_pct ?? 0}
-              maxDrawdown={equityCurve?.max_drawdown ?? 0}
-              loading={curveLoading}
-            />
+            {curveError && !curveLoading ? (
+              <div className="card flex items-center justify-center h-32 text-sm text-text-muted">
+                Curva de patrimônio indisponível no momento
+              </div>
+            ) : (
+              <PortfolioEquityCurve
+                curve={equityCurve?.curve ?? []}
+                totalInvested={equityCurve?.total_invested ?? 0}
+                pnlPct={equityCurve?.pnl_pct ?? 0}
+                maxDrawdown={equityCurve?.max_drawdown ?? 0}
+                loading={curveLoading}
+              />
+            )}
           </div>
         )}
 

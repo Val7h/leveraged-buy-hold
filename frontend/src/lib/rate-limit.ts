@@ -1,25 +1,12 @@
 /**
  * Rate limiter — sliding window (per-key buckets).
  *
- * Default: in-memory Map (single-instance, dev or low-traffic).
- *
- * TODO(gerente): em produção multi-instance (Render scale > 1) o limite
- * vaza entre instâncias. Trocar por @upstash/ratelimit + @upstash/redis
- * quando UPSTASH_REDIS_REST_URL estiver setado. Exemplo:
- *
- *   import { Ratelimit } from "@upstash/ratelimit";
- *   import { Redis } from "@upstash/redis";
- *   const redis = Redis.fromEnv();
- *   const rl = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(5, "60 s") });
- *
- * Pacotes a adicionar (NÃO instalo aqui, ver package.json):
- *   "@upstash/ratelimit": "^2.0.0"
- *   "@upstash/redis": "^1.34.0"
- *
- * Variáveis de ambiente:
- *   UPSTASH_REDIS_REST_URL
- *   UPSTASH_REDIS_REST_TOKEN
+ * Usa Upstash Redis se UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN
+ * estiverem setados (multi-instance, produção).
+ * Caso contrário usa Map em memória (single-instance / dev).
  */
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 
 export type RateLimitResult = {
   success: boolean;
@@ -29,14 +16,47 @@ export type RateLimitResult = {
   reset: number;
 };
 
+// ─── Upstash (multi-instance) ────────────────────────────────────────────────
+
+const _rlCache = new Map<string, Ratelimit>();
+
+function getUpstashRl(limit: number, windowSec: number): Ratelimit | null {
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    return null;
+  }
+  const cacheKey = `${limit}:${windowSec}`;
+  if (!_rlCache.has(cacheKey)) {
+    _rlCache.set(
+      cacheKey,
+      new Ratelimit({
+        redis: Redis.fromEnv(),
+        limiter: Ratelimit.slidingWindow(limit, `${windowSec} s`),
+        prefix: "lbh:rl",
+      })
+    );
+  }
+  return _rlCache.get(cacheKey)!;
+}
+
+async function rateLimitUpstash(
+  key: string,
+  limit: number,
+  windowSec: number
+): Promise<RateLimitResult> {
+  const rl = getUpstashRl(limit, windowSec)!;
+  const result = await rl.limit(key);
+  return {
+    success: result.success,
+    limit: result.limit,
+    remaining: result.remaining,
+    reset: Math.max(1, Math.ceil((result.reset - Date.now()) / 1000)),
+  };
+}
+
+// ─── In-memory fallback (single-instance) ────────────────────────────────────
+
 type Bucket = { count: number; resetAt: number };
-
-// Edge runtime: módulo top-level é por-instance.
 const store = new Map<string, Bucket>();
-
-// Limpeza periódica para evitar vazamento de memória.
-// Edge runtime não suporta setInterval persistente em todos workers,
-// portanto fazemos limpeza oportunista a cada chamada (O(1) amortizado).
 let lastSweep = 0;
 const SWEEP_INTERVAL_MS = 60_000;
 
@@ -48,28 +68,19 @@ function sweep(now: number) {
   }
 }
 
-/**
- * Sliding-window rate limit em memória.
- *
- * @param key       chave única (ex: `auth:/api/v1/auth/login:1.2.3.4`)
- * @param limit     número máximo de requests dentro da janela
- * @param windowSec tamanho da janela em segundos
- */
-export async function rateLimit(
+async function rateLimitInMemory(
   key: string,
   limit: number,
   windowSec: number
 ): Promise<RateLimitResult> {
   const now = Date.now();
   sweep(now);
-
   const bucket = store.get(key);
 
   if (!bucket || bucket.resetAt <= now) {
     store.set(key, { count: 1, resetAt: now + windowSec * 1000 });
     return { success: true, limit, remaining: limit - 1, reset: windowSec };
   }
-
   if (bucket.count >= limit) {
     return {
       success: false,
@@ -78,7 +89,6 @@ export async function rateLimit(
       reset: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
     };
   }
-
   bucket.count += 1;
   return {
     success: true,
@@ -88,13 +98,23 @@ export async function rateLimit(
   };
 }
 
-/**
- * Extrai IP do cliente respeitando proxies confiáveis.
- *
- * ATENÇÃO: x-forwarded-for é spoofable em ambientes sem proxy reverso
- * confiável. Render/Vercel/Cloudflare sobrescrevem o header — seguro.
- * Bare-metal ou dev local pode receber valor falso enviado pelo cliente.
- */
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+export async function rateLimit(
+  key: string,
+  limit: number,
+  windowSec: number
+): Promise<RateLimitResult> {
+  if (getUpstashRl(limit, windowSec)) {
+    try {
+      return await rateLimitUpstash(key, limit, windowSec);
+    } catch {
+      // Upstash falhou — cai no in-memory como fallback
+    }
+  }
+  return rateLimitInMemory(key, limit, windowSec);
+}
+
 export function getClientIp(req: { headers: Headers }): string {
   const xff = req.headers.get("x-forwarded-for");
   if (xff) {
