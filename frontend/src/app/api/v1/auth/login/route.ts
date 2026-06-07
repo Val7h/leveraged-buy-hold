@@ -56,31 +56,42 @@ export async function POST(request: NextRequest) {
   const { email, password } = parsed;
   const normalizedEmail = email.toLowerCase().trim();
 
-  const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-  });
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
 
-  // Compare ALWAYS to flatten timing (user enumeration mitigation).
-  const hashToCheck = user?.passwordHash ?? DUMMY_BCRYPT_HASH;
-  const passwordOk = await bcrypt.compare(password, hashToCheck);
+    // Compare ALWAYS to flatten timing (user enumeration mitigation).
+    const hashToCheck = user?.passwordHash ?? DUMMY_BCRYPT_HASH;
+    const passwordOk = await bcrypt.compare(password, hashToCheck);
 
-  if (!user || !passwordOk) {
+    if (!user || !passwordOk) {
+      return NextResponse.json(
+        { error: "invalid_credentials" },
+        { status: 401 }
+      );
+    }
+
+    const token = await signSession(user.id);
+    setSessionCookie(token);
+
+    return NextResponse.json({
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      riskProfile: user.riskProfile,
+      full_name: user.fullName,
+      risk_profile: user.riskProfile,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "unknown_error";
+    console.error("[/auth/login] DB/auth error:", msg);
     return NextResponse.json(
-      { error: "invalid_credentials" },
-      { status: 401 }
+      {
+        error: "service_unavailable",
+        message: "Banco de dados temporariamente indisponível. Tente novamente.",
+      },
+      { status: 503 }
     );
   }
-
-  const token = await signSession(user.id);
-  setSessionCookie(token);
-
-  return NextResponse.json({
-    id: user.id,
-    email: user.email,
-    fullName: user.fullName,
-    riskProfile: user.riskProfile,
-    // legado snake_case (callers antigos):
-    full_name: user.fullName,
-    risk_profile: user.riskProfile,
-  });
 }

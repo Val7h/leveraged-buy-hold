@@ -62,37 +62,49 @@ export async function POST(request: NextRequest) {
 
   const email = parsed.email.toLowerCase().trim();
 
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    return NextResponse.json({ error: "email_in_use" }, { status: 409 });
+  try {
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return NextResponse.json({ error: "email_in_use" }, { status: 409 });
+    }
+
+    const passwordHash = await bcrypt.hash(parsed.password, 12);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        fullName: parsed.fullName ?? null,
+        riskProfile: parsed.riskProfile,
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        riskProfile: true,
+      },
+    });
+
+    const token = await signSession(user.id);
+    setSessionCookie(token);
+
+    return NextResponse.json(
+      {
+        ...user,
+        full_name: user.fullName,
+        risk_profile: user.riskProfile,
+      },
+      { status: 201 }
+    );
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "unknown_error";
+    console.error("[/auth/register] DB/auth error:", msg);
+    return NextResponse.json(
+      {
+        error: "service_unavailable",
+        message: "Banco de dados temporariamente indisponível. Tente novamente.",
+      },
+      { status: 503 }
+    );
   }
-
-  const passwordHash = await bcrypt.hash(parsed.password, 12);
-
-  const user = await prisma.user.create({
-    data: {
-      email,
-      passwordHash,
-      fullName: parsed.fullName ?? null,
-      riskProfile: parsed.riskProfile,
-    },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      riskProfile: true,
-    },
-  });
-
-  const token = await signSession(user.id);
-  setSessionCookie(token);
-
-  return NextResponse.json(
-    {
-      ...user,
-      full_name: user.fullName,
-      risk_profile: user.riskProfile,
-    },
-    { status: 201 }
-  );
 }
