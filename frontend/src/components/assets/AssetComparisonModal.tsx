@@ -47,14 +47,14 @@ export default function AssetComparisonModal({
   const handleExport = () => {
     const headers = [
       "Ticker",
-      "Quality Score",
-      "Opportunity Score",
-      "Composite Score",
-      "Entry Signal",
-      "RSI Weekly",
+      "Score Qualidade",
+      "Score Oportunidade",
+      "Score Composto",
+      "Sinal de Entrada",
+      "RSI Semanal",
       "Dividend Yield",
       "Beta",
-      "Recommended Leverage",
+      "Alavancagem Recomendada",
     ];
 
     const rows = sortedAssets.map((asset) => [
@@ -90,10 +90,10 @@ export default function AssetComparisonModal({
         <div className="flex items-center justify-between p-6 border-b border-border/40">
           <div>
             <h2 className="text-lg font-bold text-text-primary">
-              Compare {sortedAssets.length} Assets
+              Comparar {sortedAssets.length} Ativos
             </h2>
             <p className="text-xs text-text-muted mt-1">
-              Sorted by Composite Score (highest first)
+              Ordenado por Score Composto (maior primeiro)
             </p>
           </div>
           <div className="flex gap-2">
@@ -102,7 +102,7 @@ export default function AssetComparisonModal({
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
             >
               <Download size={14} />
-              Export CSV
+              Exportar CSV
             </button>
             <button
               onClick={onClose}
@@ -123,25 +123,25 @@ export default function AssetComparisonModal({
                     Ticker
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
-                    Quality
+                    Qualidade
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
-                    Opportunity
+                    Oportunidade
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
-                    Composite
+                    Composto
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
-                    Entry Signal
+                    Sinal de Entrada
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
-                    RSI Weekly
+                    RSI Semanal
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
                     Dividend Yield
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
-                    Recommended Leverage
+                    Alavancagem Recomendada
                   </th>
                 </tr>
               </thead>
@@ -160,7 +160,7 @@ export default function AssetComparisonModal({
                         {asset.ticker}
                         {isTop && (
                           <span className="ml-2 badge bg-primary/10 border-primary/20 text-primary text-[9px]">
-                            BEST
+                            MELHOR
                           </span>
                         )}
                       </td>
@@ -213,22 +213,22 @@ export default function AssetComparisonModal({
           <div className="mt-6 pt-6 border-t border-border">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-success/10 border border-success/20 rounded-lg p-4">
-                <p className="text-xs font-semibold text-success mb-2">✅ Best Now (Highest Opportunity)</p>
+                <p className="text-xs font-semibold text-success mb-2">✅ Melhor Agora (Maior Oportunidade)</p>
                 <p className="text-sm font-bold text-text-primary">
                   {sortedAssets.length > 0 ? sortedAssets[0].ticker : "N/A"}
                 </p>
                 <p className="text-xs text-text-muted mt-1">
-                  Signal: {sortedAssets[0]?.entry_signal || "N/A"}
+                  Sinal: {sortedAssets[0]?.entry_signal || "N/A"}
                 </p>
               </div>
 
               <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-                <p className="text-xs font-semibold text-primary mb-2">💡 Best Quality (Highest Score)</p>
+                <p className="text-xs font-semibold text-primary mb-2">💡 Melhor Qualidade (Maior Score)</p>
                 <p className="text-sm font-bold text-text-primary">
                   {sortedAssets.length > 0 ? sortedAssets[0].ticker : "N/A"}
                 </p>
                 <p className="text-xs text-text-muted mt-1">
-                  Composite Score: {sortedAssets[0]?.composite_score.toFixed(2) || "N/A"}
+                  Score Composto: {sortedAssets[0]?.composite_score.toFixed(2) || "N/A"}
                 </p>
               </div>
             </div>

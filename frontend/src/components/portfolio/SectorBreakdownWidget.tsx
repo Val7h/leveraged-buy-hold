@@ -202,7 +202,7 @@ export default function SectorBreakdownWidget({ positions }: SectorBreakdownWidg
               )}
               {parseFloat(sectorBreakdown[0]?.percentage || "0") > 60 && (
                 <p className="text-warning">
-                  ⚠️ Consideree rebalancear — um setor tem mais de 60% da exposição
+                  ⚠️ Considere rebalancear — um setor tem mais de 60% da exposição
                 </p>
               )}
             </>

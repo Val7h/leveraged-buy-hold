@@ -222,7 +222,6 @@ export default function DashboardPage() {
                 accent={metrics.safety_margin > 60 ? "success" : metrics.safety_margin > 30 ? "warning" : "danger"}
                 icon={<Shield size={16} className="text-success" />}
                 tooltip="Perda máxima esperada em 95% dos cenários (próximos 30 dias)" />
-              />
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-5">
@@ -244,7 +243,6 @@ export default function DashboardPage() {
                 subValue="Para alavanc. natural ~1.0x" accent="primary"
                 icon={<Clock size={16} className="text-primary" />}
                 tooltip="Alavancagem média ponderada de todas suas posições" />
-              />
             </div>
 
             {/* ── Two-col: Ciclo em Atenção + Sementes ─────── */}

@@ -127,11 +127,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
         <button
           onClick={logout}
+          aria-label="Sair"
           className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-text-muted hover:text-danger hover:bg-danger/10 transition-all w-full duration-200"
         >
           <LogOut size={14} />
           Sair
-          <span>Sair</span>
         </button>
       </div>
     </aside>
