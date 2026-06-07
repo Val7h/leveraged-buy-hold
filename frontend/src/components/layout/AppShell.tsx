@@ -4,6 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import Sidebar from "./Sidebar";
 import NotificationBell from "./NotificationBell";
+import BetaBanner from "@/components/BetaBanner";
 import { Menu } from "lucide-react";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -77,6 +78,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <NotificationBell />
         </header>
 
+        <BetaBanner />
         <main className="flex-1">
           {children}
         </main>
