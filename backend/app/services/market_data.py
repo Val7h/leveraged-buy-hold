@@ -458,6 +458,7 @@ def screen_assets(
 
     tickers = tickers or DEFAULT_DEFENSIVE_TICKERS
     results = []
+    failed: list[str] = []
     for i, ticker in enumerate(tickers):
         try:
             if i > 0:
@@ -465,11 +466,14 @@ def screen_assets(
             analysis = analyze_asset(ticker, risk_profile, market_multiplier=market_multiplier)
             if analysis and analysis["composite_score"] >= min_score:
                 results.append(analysis)
+            elif not analysis:
+                failed.append(ticker)
         except Exception as e:
             logger.warning(f"Error analyzing {ticker}: {e}")
+            failed.append(ticker)
 
     sorted_results = sorted(results, key=lambda x: x["composite_score"], reverse=True)
-    return sorted_results, market_state
+    return sorted_results, market_state, failed
 
 
 def fetch_multiple_price_history(

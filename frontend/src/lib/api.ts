@@ -128,6 +128,7 @@ export const alertsApi = {
     api.post("/api/v1/alerts", data),
   delete: (id: number) => api.delete(`/api/v1/alerts/${id}`),
   check: (tickers: string[]) => api.post("/api/v1/alerts/check", tickers),
+  dismissTriggered: () => api.delete("/api/v1/alerts/triggered"),
 };
 
 export default api;

@@ -81,6 +81,19 @@ export default function AlertsPage() {
     }
   };
 
+  const handleDismissTriggered = async () => {
+    setLoading(true);
+    try {
+      await alertsApi.dismissTriggered();
+      setCheckResult(null);
+      await loadAlerts();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const hasTriggered = alerts.some((a) => a.is_triggered);
+
   const typeLabel = (type: string) => ALERT_TYPES.find((t) => t.value === type)?.label || type;
 
   return (
@@ -92,6 +105,11 @@ export default function AlertsPage() {
             <p className="text-sm text-text-secondary mt-0.5">Monitoramento de RSI, Estocástico, Drawdown e Oportunidades</p>
           </div>
           <div className="flex gap-2">
+            {hasTriggered && (
+              <button onClick={handleDismissTriggered} disabled={loading} className="btn-ghost text-sm border border-warning/30 text-warning hover:bg-warning/10">
+                Limpar Disparados
+              </button>
+            )}
             <button onClick={handleCheck} disabled={loading || !alerts.length} className="btn-ghost text-sm border border-border">
               {loading ? "Verificando..." : "Verificar Agora"}
             </button>

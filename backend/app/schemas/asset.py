@@ -95,3 +95,5 @@ class AssetScreenResult(BaseModel):
     screened_at: datetime
     total_assets: int
     market_state: Optional[Dict[str, Any]] = None
+    failed_tickers: Optional[List[str]] = None
+    attempted_count: Optional[int] = None

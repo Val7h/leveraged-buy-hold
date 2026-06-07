@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
+import logging
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -9,6 +10,7 @@ from app.models.user import User
 from app.models.alert import Alert, AlertType
 from app.schemas.analysis import AlertCreate, AlertResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
@@ -85,10 +87,12 @@ def check_alerts(
                 current_val = analysis.get("opportunity_score")
                 triggered_condition = current_val is not None and current_val >= alert.threshold
             elif alert.alert_type == AlertType.entry_signal:
-                # Dispara quando sinal for ENTRAR ou ENTRAR FORTE
                 entry = analysis.get("entry_signal", "")
                 current_val = tech.get("rsi_14_weekly") or tech.get("rsi_14")
-                triggered_condition = entry in ("ENTRAR FORTE", "ENTRAR", "ENTRAR (mercado em topo)")
+                triggered_condition = entry in (
+                    "ENTRAR FORTE", "ENTRAR", "ENTRAR (mercado em topo)",
+                    "OPORTUNIDADE FORTE", "OPORTUNIDADE", "OPORTUNIDADE (mercado em topo)",
+                )
             else:
                 triggered_condition = False
 
@@ -105,7 +109,19 @@ def check_alerts(
                 })
 
             db.commit()
-        except Exception:
+        except Exception as e:
+            logger.error(f"[ALERTS] Error checking {alert.ticker}: {e}")
             continue
 
     return {"triggered": triggered, "checked": len(active_alerts)}
+
+
+@router.delete("/triggered")
+def dismiss_triggered_alerts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Remove todos os alertas já disparados do usuário."""
+    count = db.query(Alert).filter(
+        Alert.user_id == user.id,
+        Alert.is_triggered == True,
+    ).update({"is_active": False})
+    db.commit()
+    return {"dismissed": count}
