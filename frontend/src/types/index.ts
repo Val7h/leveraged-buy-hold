@@ -135,6 +135,8 @@ export interface AssetScreenResult {
   screened_at: string;
   total_assets: number;
   market_state?: MarketState;
+  failed_tickers?: string[];
+  attempted_count?: number;
 }
 
 export interface PortfolioMetrics {

@@ -26,13 +26,15 @@ export default function WatchlistPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [addLoading, setAddLoading] = useState(false);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   const fetchList = async () => {
     try {
       const res = await watchlistApi.list();
       setItems(res.data);
+      setLoadError("");
     } catch {
-      setError("Erro ao carregar watchlist");
+      setLoadError("Não foi possível carregar a watchlist. Verifique sua conexão.");
     }
   };
 
@@ -75,6 +77,9 @@ export default function WatchlistPage() {
       const map: Record<string, AssetScore> = {};
       (res.data.assets as AssetScore[]).forEach((a) => { map[a.ticker] = a; });
       setScores(map);
+      if (res.data.failed_tickers?.length) {
+        setError(`Análise parcial: ${res.data.failed_tickers.join(", ")} não retornou dados (Yahoo Finance pode estar com rate limit).`);
+      }
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Erro ao analisar ativos");
     } finally {
@@ -108,6 +113,13 @@ export default function WatchlistPage() {
             </button>
           )}
         </div>
+
+        {loadError && (
+          <div className="bg-danger/10 border border-danger/20 rounded-xl px-4 py-3 mb-5 flex items-center gap-2 text-sm text-danger">
+            <AlertCircle size={14} />
+            {loadError}
+          </div>
+        )}
 
         {/* Add ticker */}
         <div className="card mb-6">

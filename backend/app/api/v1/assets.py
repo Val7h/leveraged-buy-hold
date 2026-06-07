@@ -30,12 +30,15 @@ def screen(
 ):
     risk_profile = current_user.risk_profile.value
     ticker_list = [t.strip().upper() for t in tickers.split(",")] if tickers else None
-    results, market_state = screen_assets(ticker_list, risk_profile, min_score)
+    results, market_state, failed = screen_assets(ticker_list, risk_profile, min_score)
+    attempted = len(ticker_list) if ticker_list else len(results) + len(failed)
     return {
         "assets": results,
         "screened_at": datetime.utcnow(),
         "total_assets": len(results),
         "market_state": market_state,
+        "failed_tickers": failed if failed else None,
+        "attempted_count": attempted,
     }
 
 
