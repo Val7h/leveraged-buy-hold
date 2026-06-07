@@ -10,12 +10,28 @@ export default function Home() {
   const [hasToken, setHasToken] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    if (token) {
-      router.replace("/dashboard");
-    } else {
-      setHasToken(false);
-    }
+    // Limpa tokens antigos do localStorage (legacy demo mode).
+    // Auth real agora usa cookie httpOnly — checa via /api/v1/auth/me.
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+
+    let cancelled = false;
+    fetch("/api/v1/auth/me", { credentials: "include" })
+      .then((r) => {
+        if (cancelled) return;
+        if (r.ok) {
+          router.replace("/dashboard");
+        } else {
+          setHasToken(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHasToken(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   // Aguardando checagem do token

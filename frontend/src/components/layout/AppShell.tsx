@@ -15,28 +15,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem("access_token");
-    const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+    // Auth real agora usa cookie httpOnly (não localStorage).
+    // Limpa tokens legados e checa identidade via /me.
+    localStorage.removeItem("access_token");
 
-    if (!stored) {
-      if (demoMode) {
-        // Demo mode: create a fake token to bypass auth
-        const fakeToken = "demo_token_" + Date.now();
-        localStorage.setItem("access_token", fakeToken);
-        // Set a demo user in auth store
-        if (!user) {
-          // Don't fetch from API, just continue with UI
+    let cancelled = false;
+    fetch("/api/v1/auth/me", { credentials: "include" })
+      .then((r) => {
+        if (cancelled) return;
+        if (!r.ok) {
+          router.replace("/login");
+          return;
         }
-      } else {
-        // Production: require login
-        router.replace("/login");
-        return;
-      }
-    }
+        // Atualiza o store local com os dados do user autenticado.
+        if (!user) fetchMe();
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/login");
+      });
 
-    if (!user && !demoMode) {
-      fetchMe();
-    }
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Close sidebar on route change (mobile)
