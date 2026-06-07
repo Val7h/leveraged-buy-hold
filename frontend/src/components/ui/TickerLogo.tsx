@@ -44,7 +44,7 @@ const US_DOMAINS: Record<string, string> = {
   SPLK:"splunk.com",           OKTA:"okta.com",
   CYBR:"cyberark.com",         CHKP:"checkpoint.com",
   PANW:"paloaltonetworks.com", SENTIENT:"sentientai.com",
-  TTD: "thetradedesk.com",     ADBE:"adobe.com",
+  TTD: "thetradedesk.com",     OKAP:"kaplan.com",
   // Semiconductors
   MU:  "micron.com",           SK:  "sk.com",
   NXPI:"nxp.com",              MCHP:"microchip.com",
@@ -53,7 +53,7 @@ const US_DOMAINS: Record<string, string> = {
   MCD: "mcdonalds.com",        SBUX:"starbucks.com",
   NKE: "nike.com",             LULU:"lululemon.com",
   HD:  "homedepot.com",        LOW: "lowes.com",
-  TJX: "tjx.com",              AMZN:"amazon.com",
+  TJX: "tjx.com",              URBN:"urbanoutfitters.com",
   EBAY:"ebay.com",             NCLH:"ncl.com",
   RCL: "rci.com",              CCL: "carnival.com",
   MAR: "marriott.com",         HLT: "hilton.com",
@@ -261,17 +261,17 @@ const EUROPEAN_DOMAINS: Record<string, string> = {
   IMB: "imb.com",              EXPN:"experian.com",
   // SIX (Switzerland)
   NSRGY:"nestle.com",          NOVN:"novartis.com",
-  RHHBY:"roche.com",           ASML:"asml.com",
+  RHHBY:"roche.com",           ZURN:"zuercher.com",
   ROG: "roche.com",            CSGN:"credit-suisse.com",
   UBS: "ubs.com",              GEBN:"geberit.com",
   // Ibex 35 (Spain)
   BBVA:"bbva.com",             RENO:"repsol.com",
-  SAN: "santander.com",        IBE: "iberia.com",
+  PSEG:"pseg.com",             IBE: "iberia.com",
   // AEX (Netherlands) & Other
-  ASML:"asml.com",             PHIA:"philips.com",
-  ABD: "asml.com",
+  ING: "ing.com",              PHIA:"philips.com",
+  ABN: "abnamro.com",
   // Nordic & Other EU
-  NOKIA:"nokia.com",           INTC:"intel.com",
+  NOKIA:"nokia.com",           VOLVB:"volvo.com",
   SAB: "sabsoftware.com",
 };
 

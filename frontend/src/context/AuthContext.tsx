@@ -3,16 +3,15 @@
 import React, { createContext, useContext, useCallback, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api';
-import { useAuthStore } from '@/store/authStore';
-import type { User } from '@/types';
+import { useAuthStore, type AuthUser } from '@/store/authStore';
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<User | null>;
+  refreshUser: () => Promise<AuthUser | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -42,10 +41,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [zustandLogout, router]);
 
   // RefreshUser implementation
-  const refreshUser = useCallback(async (): Promise<User | null> => {
+  const refreshUser = useCallback(async (): Promise<AuthUser | null> => {
     try {
       const res = await authApi.me();
-      const refreshedUser = res.data as User;
+      const refreshedUser = res.data as AuthUser;
 
       // Update store with fresh user data
       useAuthStore.setState({ user: refreshedUser });

@@ -13,6 +13,7 @@ export interface AuthUser {
 
 interface AuthState {
   user: AuthUser | null;
+  token: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: {
@@ -22,6 +23,7 @@ interface AuthState {
     riskProfile?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
+  setToken: (token: string | null) => void;
   fetchMe: () => Promise<void>;
 }
 
@@ -36,6 +38,7 @@ async function postJson(url: string, body: unknown): Promise<Response> {
 
 export const useAuthStore = create<AuthState>()((set) => ({
   user: null,
+  token: null,
   isLoading: false,
 
   login: async (email, password) => {
@@ -75,8 +78,12 @@ export const useAuthStore = create<AuthState>()((set) => ({
         credentials: "same-origin",
       });
     } finally {
-      set({ user: null });
+      set({ user: null, token: null });
     }
+  },
+
+  setToken: (token: string | null) => {
+    set({ token });
   },
 
   fetchMe: async () => {

@@ -107,10 +107,10 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-xl font-semibold text-text-primary">
-              {greeting}, {user?.full_name?.split(" ")[0] || "Investidor"} 👋
+              {greeting}, {user?.fullName?.split(" ")[0] || "Investidor"} 👋
             </h1>
             <p className="text-sm text-text-secondary mt-0.5">
-              Perfil: <span className="text-primary font-medium">{riskProfileLabel(user?.risk_profile || "balanced")}</span>
+              Perfil: <span className="text-primary font-medium">{riskProfileLabel(user?.riskProfile || "balanced")}</span>
               {" "}· Buy &amp; Hold Alavancado Adaptativo
             </p>
           </div>

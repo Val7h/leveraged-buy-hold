@@ -34,7 +34,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      await authApi.register({ email, password, full_name: name, risk_profile: riskProfile });
+      await authApi.register({ email, password, fullName: name, riskProfile });
       await login(email, password);
       router.push("/dashboard");
     } catch (err: unknown) {
@@ -49,10 +49,10 @@ export default function LoginPage() {
   const handleDemoMode = () => {
     localStorage.setItem("access_token", "demo_" + Date.now());
     localStorage.setItem("user", JSON.stringify({
-      id: 1,
+      id: "1",
       email: "demo@lbhsystem.com",
-      full_name: "Demo User",
-      risk_profile: "balanced",
+      fullName: "Demo User",
+      riskProfile: "balanced",
     }));
     router.push("/dashboard");
   };

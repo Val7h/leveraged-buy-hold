@@ -10,14 +10,14 @@ import { PrismaClient } from "@prisma/client";
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function makeStubClient(): PrismaClient {
-  const handler: ProxyHandler<object> = {
+  const handler: ProxyHandler<PrismaClient> = {
     get() {
       throw new Error(
         "Banco de dados não configurado. Defina DATABASE_URL para habilitar auth/persistência."
       );
     },
   };
-  return new Proxy({} as PrismaClient, handler);
+  return new Proxy({} as unknown as PrismaClient, handler);
 }
 
 export const prisma: PrismaClient =

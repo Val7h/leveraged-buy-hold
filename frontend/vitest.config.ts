@@ -14,9 +14,6 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       include: ['src/lib/yfinance.ts'],
-      // Per-file thresholds so the gate applies to yfinance.ts specifically,
-      // not the project as a whole.
-      perFile: true,
       thresholds: {
         lines: 60,
         functions: 60,

@@ -117,11 +117,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="flex items-center gap-3 px-3 py-3 rounded-lg bg-surface-2/40 border border-border/30">
           <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center flex-shrink-0 shadow-glow-success">
             <span className="text-white text-xs font-bold">
-              {user?.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "D"}
+              {user?.fullName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "D"}
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-text-primary truncate">{user?.full_name || "Demo User"}</p>
+            <p className="text-xs font-semibold text-text-primary truncate">{user?.fullName || "Demo User"}</p>
             <p className="text-xs text-text-muted/70 truncate">{user?.email || "demo@example.com"}</p>
           </div>
         </div>

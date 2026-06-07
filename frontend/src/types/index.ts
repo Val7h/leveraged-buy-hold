@@ -1,12 +1,12 @@
 export type RiskProfile = "conservative" | "balanced" | "aggressive";
 
 export interface User {
-  id: number;
+  id: string;
   email: string;
-  full_name?: string;
-  risk_profile: RiskProfile;
-  is_active: boolean;
-  created_at: string;
+  fullName?: string;
+  riskProfile?: RiskProfile;
+  is_active?: boolean;
+  created_at?: string;
 }
 
 export interface TechnicalIndicators {
@@ -98,6 +98,8 @@ export interface AssetScore {
   company_name?: string;
   sector?: string;
   current_price: number;
+  currency?: string;
+  is_brazilian?: boolean;
   quality_score: number;
   opportunity_score: number;
   composite_score: number;
@@ -120,6 +122,8 @@ export interface AssetScore {
   kelly?: KellyCriterion;
   technicals?: TechnicalIndicators;
   fundamentals?: FundamentalData;
+  dividend_yield?: number;
+  beta?: number;
   score_breakdown: Record<string, number>;
   // Tokenized assets (Bitget)
   is_tokenized?: boolean;

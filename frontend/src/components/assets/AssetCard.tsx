@@ -223,10 +223,10 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
               </p>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono font-semibold text-primary">
-                  ½K {kelly.kelly_half.toFixed(2)}x
+                  ½K {kelly.kelly_half?.toFixed(2)}x
                 </span>
                 <span className="text-[10px] text-text-muted">
-                  · ¼K {kelly.kelly_quarter.toFixed(2)}x
+                  · ¼K {kelly.kelly_quarter?.toFixed(2)}x
                 </span>
               </div>
             </div>

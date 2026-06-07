@@ -106,6 +106,8 @@ const baseQuote = {
   change_pct: 0.44,
   currency: 'USD',
   company_name: 'SPDR S&P 500 ETF',
+  sector: 'Financials',
+  industry: 'Exchange Traded Fund',
   market_cap: 0,
   pe_ratio: null,
   dividend_yield: 0,
