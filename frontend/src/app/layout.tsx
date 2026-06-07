@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import CookieBanner from "@/components/legal/CookieBanner";
 
 export const metadata: Metadata = {
   title: { default: "LBH System — Buy & Hold Alavancado Adaptativo", template: "%s | LBH System" },
@@ -39,7 +40,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <body className="bg-background text-text-primary antialiased">{children}</body>
+      <body className="bg-background text-text-primary antialiased">
+        {children}
+        <CookieBanner />
+      </body>
     </html>
   );
 }

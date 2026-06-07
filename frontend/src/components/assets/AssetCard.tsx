@@ -4,6 +4,7 @@ import { cn, formatCurrency, formatPercent, getScoreColor, getScoreBg, sectorIco
 import ScoreGauge from "@/components/ui/ScoreGauge";
 import TickerLogo from "@/components/ui/TickerLogo";
 import Tooltip from "@/components/ui/Tooltip";
+import HeuristicBadge from "@/components/ui/HeuristicBadge";
 import AssetChartModal from "@/components/assets/AssetChartModal";
 import type { AssetScore } from "@/types";
 
@@ -211,10 +212,15 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
 
       {/* ── Kelly Criterion ─────────────────────────────── */}
       {kelly?.kelly_half != null && (
-        <Tooltip content="Recomendação de alavancagem ótima baseada em histórico de wins/losses" side="top" delay={300}>
+        <Tooltip content="Recomendação de alavancagem via Kelly Criterion: f* = (b·p - q)/b. Sem histórico real, p e b são heurísticas." side="top" delay={300}>
           <div className="rounded-lg bg-surface-2 px-3 py-2 mb-3 flex items-center justify-between">
             <div>
-              <p className="text-[10px] text-text-muted mb-0.5">Kelly Criterion</p>
+              <p className="text-[10px] text-text-muted mb-0.5 flex items-center gap-1.5">
+                Kelly Criterion
+                {kelly.is_heuristic && (
+                  <HeuristicBadge tooltip="Win rate e payoff ratio são estimativas heurísticas derivadas do composite_score e da volatilidade — não há histórico de trades real. Para Kelly verdadeiro: ≥30 trades fechados." />
+                )}
+              </p>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono font-semibold text-primary">
                   ½K {kelly.kelly_half.toFixed(2)}x
@@ -224,12 +230,29 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
                 </span>
               </div>
             </div>
-            {kelly.win_rate != null && (
-              <div className="text-right">
-                <p className="text-[10px] text-text-muted">Win rate</p>
-                <p className="text-xs font-mono font-semibold text-text-primary">{kelly.win_rate.toFixed(1)}%</p>
-              </div>
-            )}
+            {(() => {
+              // Prefer the new `confidence_score` field; fall back to legacy
+              // `win_rate` during the deprecation window (1 release).
+              const conf = kelly.confidence_score ?? kelly.win_rate;
+              if (conf == null) return null;
+              return (
+                <div className="text-right">
+                  <p className="text-[10px] text-text-muted flex items-center gap-1 justify-end">
+                    Confianca
+                    <Tooltip
+                      content="Score heuristico derivado do composite. Nao representa taxa historica de acertos."
+                      side="top"
+                      delay={200}
+                    >
+                      <span className="text-warning cursor-help" aria-label="heuristica">⚠</span>
+                    </Tooltip>
+                  </p>
+                  <p className="text-xs font-mono font-semibold text-text-primary">
+                    {conf.toFixed(1)}%
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </Tooltip>
       )}
@@ -247,9 +270,14 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
             </span>
           </div>
           <div className="flex flex-col gap-1 items-end">
-            <span className={cn("badge border text-xs", riskColors[asset.risk_rating] || "text-text-secondary")}>
-              Risco {asset.risk_rating}
-            </span>
+            <div className="flex items-center gap-1.5">
+              {asset.risk_rating_is_heuristic && (
+                <HeuristicBadge tooltip="Beta indisponível — risk_rating estimado apenas pela volatilidade realizada (sem fator CAPM)." />
+              )}
+              <span className={cn("badge border text-xs", riskColors[asset.risk_rating] || "text-text-secondary")}>
+                Risco {asset.risk_rating}
+              </span>
+            </div>
             <span className="text-xs text-text-muted">{asset.opportunity_rating}</span>
           </div>
         </div>

@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { TrendingUp, ShieldCheck, BarChart3, FlaskConical, Zap, ChevronRight, Check } from "lucide-react";
+import { TrendingUp, BarChart3, FlaskConical, Zap, ChevronRight, Check } from "lucide-react";
+import Footer from "@/components/layout/Footer";
 
 export default function Home() {
   const router = useRouter();
@@ -210,23 +211,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border py-8 px-4 sm:px-6">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-primary/15 border border-primary/30 flex items-center justify-center">
-              <span className="text-primary font-bold text-[10px]">L</span>
-            </div>
-            <span className="text-xs text-text-muted">LBH System · Sistema quantitativo para uso pessoal</span>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-text-muted">
-            <Link href="/pricing" className="hover:text-text-secondary transition-colors">Planos</Link>
-            <Link href="/login" className="hover:text-text-secondary transition-colors">Entrar</Link>
-            <ShieldCheck size={12} className="text-success" />
-            <span>Não é recomendação de investimento</span>
-          </div>
-        </div>
-      </footer>
+      {/* Footer legal compartilhado */}
+      <Footer />
     </div>
   );
 }

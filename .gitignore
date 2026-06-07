@@ -30,6 +30,11 @@ yarn-error.log*
 .pnpm-debug.log*
 tsconfig.tsbuildinfo
 
+# ── Test / Coverage ──────────────────────────────
+coverage/
+*.lcov
+.vitest-cache/
+
 # ── Docker ───────────────────────────────────────
 docker-compose.override.yml
 

@@ -1,7 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { ShieldAlert, CheckCircle2 } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
+import ConsentCheckbox, {
+  buildConsentPayload,
+  ConsentSnapshot,
+} from "@/components/legal/ConsentCheckbox";
+import { LEGAL_VERSIONS } from "@/lib/legal/versions";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
@@ -16,165 +21,250 @@ const RiskDisclaimerModal: React.FC<RiskDisclaimerModalProps> = ({
   onAccept,
   isOpen = true,
 }) => {
-  const [acceptRisk, setAcceptRisk] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  const [acceptRisk, setAcceptRisk] = useState(false);
+  const [acceptCookies, setAcceptCookies] = useState(false); // opcional
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const allChecked = acceptRisk && acceptTerms;
+  const requiredOk = acceptTerms && acceptPrivacy && acceptRisk;
 
   const handleSubmit = async () => {
-    if (!allChecked) return;
+    if (!requiredOk || isSubmitting) return;
     setIsSubmitting(true);
+    setError(null);
 
-    // Redireciona imediatamente — consent é salvo em background
-    const redirect = onAccept || onConfirm || (() => { window.location.href = "/dashboard"; });
-    redirect();
+    const consents: ConsentSnapshot[] = [
+      {
+        documentType: "terms",
+        version: LEGAL_VERSIONS.terms.version,
+        acceptedAt: new Date().toISOString(),
+      },
+      {
+        documentType: "privacy",
+        version: LEGAL_VERSIONS.privacy.version,
+        acceptedAt: new Date().toISOString(),
+      },
+      {
+        documentType: "risk",
+        version: LEGAL_VERSIONS.risk.version,
+        acceptedAt: new Date().toISOString(),
+      },
+    ];
+    if (acceptCookies) {
+      consents.push({
+        documentType: "cookies",
+        version: LEGAL_VERSIONS.cookies.version,
+        acceptedAt: new Date().toISOString(),
+      });
+    }
 
-    // POST em background, não bloqueia o usuário
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-      await fetch(`${API_URL}/api/v1/user/consent`, {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("access_token")
+          : null;
+      const resp = await fetch(`${API_URL}/api/v1/user/consent`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          acceptRisk: true,
-          acceptTerms: true,
-          timestamp: new Date().toISOString(),
-        }),
+        body: JSON.stringify(buildConsentPayload(consents)),
       });
+
+      if (!resp.ok) {
+        // LGPD Art. 8 §2: sem confirmacao server-side, NAO ha prova.
+        // Bloqueamos o avanco para evitar consentimento "fantasma".
+        setError(
+          "Nao foi possivel registrar seu consentimento agora. Verifique sua conexao e tente novamente."
+        );
+        setIsSubmitting(false);
+        return;
+      }
     } catch {
-      // Falha silenciosa — o usuário já foi redirecionado
-    } finally {
+      setError(
+        "Falha ao registrar consentimento. Verifique sua conexao e tente novamente."
+      );
       setIsSubmitting(false);
+      return;
     }
+
+    const redirect =
+      onAccept ||
+      onConfirm ||
+      (() => {
+        window.location.href = "/dashboard";
+      });
+    redirect();
   };
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-surface border border-border rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-
         {/* Header */}
         <div className="sticky top-0 bg-surface border-b border-border p-5 flex items-center gap-3 rounded-t-xl">
           <div className="w-9 h-9 rounded-lg bg-warning/10 border border-warning/30 flex items-center justify-center flex-shrink-0">
             <ShieldAlert className="w-5 h-5 text-warning" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-text-primary">Aviso de Risco — Leia antes de continuar</h2>
-            <p className="text-xs text-text-muted mt-0.5">Plataforma de investimentos alavancados</p>
+            <h2 className="text-base font-bold text-text-primary">
+              Aviso de Risco e Aceite Legal
+            </h2>
+            <p className="text-xs text-text-muted mt-0.5">
+              Leia antes de continuar
+            </p>
           </div>
         </div>
 
         {/* Content */}
         <div className="p-5 space-y-4">
-
-          {/* Risk box */}
+          {/* Disclaimer CVM resumido */}
           <div className="bg-warning/5 border border-warning/20 rounded-lg p-4">
-            <h3 className="font-semibold text-text-primary text-sm mb-2">Risco de Alavancagem</h3>
+            <h3 className="font-semibold text-text-primary text-sm mb-2">
+              Disclaimer CVM
+            </h3>
             <p className="text-xs text-text-secondary leading-relaxed">
-              Esta plataforma utiliza estratégias com alavancagem de 2x a 3,5x sobre o portfólio.
-              Alavancagem amplifica tanto os ganhos quanto as perdas. Resultados passados não
-              garantem resultados futuros.
+              O LBH System <strong>nao constitui recomendacao de investimento</strong>,
+              analise ou consultoria. Material meramente educacional. Os
+              responsaveis nao sao analistas CVM nem agentes autonomos.{" "}
+              <a
+                href="/disclaimer"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Ler disclaimer completo
+              </a>
+              .
             </p>
           </div>
 
-          {/* Risks list */}
-          <div>
-            <h3 className="text-sm font-semibold text-text-primary mb-2">Principais riscos:</h3>
-            <ul className="text-xs text-text-secondary space-y-1.5 list-none">
-              {[
-                "Margin calls podem forçar liquidação de posições",
-                "Juros incidem diariamente sobre valores alavancados",
-                "Volatilidade do mercado pode gerar perdas rápidas",
-                "A estratégia pode não funcionar em todas as condições",
-                "Falhas técnicas ou da corretora podem afetar as operações",
-              ].map((r, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="text-warning mt-0.5 flex-shrink-0">•</span>
-                  <span>{r}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Qualification */}
-          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
-            <p className="text-xs text-text-secondary">
-              <span className="text-primary font-semibold">Use esta plataforma somente se</span> você
-              compreende os riscos envolvidos, possui capital suficiente para absorver perdas e tem
-              experiência com investimentos alavancados.
+          {/* Risco de alavancagem */}
+          <div className="bg-warning/5 border border-warning/20 rounded-lg p-4">
+            <h3 className="font-semibold text-text-primary text-sm mb-2">
+              Risco de Alavancagem
+            </h3>
+            <p className="text-xs text-text-secondary leading-relaxed">
+              Estrategias com alavancagem (2x a 3,5x) podem amplificar perdas
+              alem do capital alocado. Resultados passados nao garantem
+              resultados futuros.
             </p>
           </div>
 
-          {/* Checkboxes */}
-          <div className="space-y-3 pt-2 border-t border-border">
-            <label className="flex items-start gap-3 cursor-pointer group p-2 rounded-lg hover:bg-surface-2 transition-colors">
-              <div className="relative mt-0.5 flex-shrink-0">
-                <input
-                  id="check-risk"
-                  type="checkbox"
-                  checked={acceptRisk}
-                  onChange={(e) => setAcceptRisk(e.target.checked)}
-                  className="sr-only"
-                />
-                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                  acceptRisk ? "bg-primary border-primary" : "border-border group-hover:border-primary/50"
-                }`}>
-                  {acceptRisk && <CheckCircle2 className="w-4 h-4 text-background" />}
-                </div>
-              </div>
-              <span className="text-xs text-text-secondary leading-relaxed">
-                Entendo os riscos de alavancagem e aceito total responsabilidade por eventuais perdas.
-              </span>
-            </label>
-
-            <label className="flex items-start gap-3 cursor-pointer group p-2 rounded-lg hover:bg-surface-2 transition-colors">
-              <div className="relative mt-0.5 flex-shrink-0">
-                <input
-                  id="check-terms"
-                  type="checkbox"
-                  checked={acceptTerms}
-                  onChange={(e) => setAcceptTerms(e.target.checked)}
-                  className="sr-only"
-                />
-                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                  acceptTerms ? "bg-primary border-primary" : "border-border group-hover:border-primary/50"
-                }`}>
-                  {acceptTerms && <CheckCircle2 className="w-4 h-4 text-background" />}
-                </div>
-              </div>
-              <span className="text-xs text-text-secondary leading-relaxed">
-                Li e aceito os{" "}
-                <a href="/legal/termos" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                  Termos de Uso
-                </a>{" "}e a{" "}
-                <a href="/legal/risco" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                  Política de Risco
-                </a>.
-              </span>
-            </label>
+          {/* Checkboxes granulares */}
+          <div className="space-y-2 pt-2 border-t border-border">
+            <ConsentCheckbox
+              id="consent-terms"
+              documentType="terms"
+              version={LEGAL_VERSIONS.terms.version}
+              checked={acceptTerms}
+              onChange={setAcceptTerms}
+              label={
+                <>
+                  Li e aceito os{" "}
+                  <a
+                    href="/termos"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    Termos de Uso
+                  </a>{" "}
+                  (v{LEGAL_VERSIONS.terms.version}).
+                </>
+              }
+            />
+            <ConsentCheckbox
+              id="consent-privacy"
+              documentType="privacy"
+              version={LEGAL_VERSIONS.privacy.version}
+              checked={acceptPrivacy}
+              onChange={setAcceptPrivacy}
+              label={
+                <>
+                  Li e aceito a{" "}
+                  <a
+                    href="/privacidade"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    Politica de Privacidade
+                  </a>{" "}
+                  (v{LEGAL_VERSIONS.privacy.version}).
+                </>
+              }
+            />
+            <ConsentCheckbox
+              id="consent-risk"
+              documentType="risk"
+              version={LEGAL_VERSIONS.risk.version}
+              checked={acceptRisk}
+              onChange={setAcceptRisk}
+              label={
+                <>
+                  Entendo os riscos de alavancagem e o{" "}
+                  <a
+                    href="/disclaimer"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    Disclaimer CVM
+                  </a>
+                  . Aceito total responsabilidade por eventuais perdas.
+                </>
+              }
+            />
+            <ConsentCheckbox
+              id="consent-cookies"
+              documentType="cookies"
+              version={LEGAL_VERSIONS.cookies.version}
+              required={false}
+              checked={acceptCookies}
+              onChange={setAcceptCookies}
+              label={
+                <>
+                  (Opcional) Autorizo cookies analiticos para melhoria do
+                  produto.
+                </>
+              }
+            />
           </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="text-xs text-danger bg-danger/10 border border-danger/30 rounded-lg p-3"
+            >
+              {error}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="sticky bottom-0 bg-surface border-t border-border p-5 rounded-b-xl space-y-2">
           <button
             onClick={handleSubmit}
-            disabled={!allChecked || isSubmitting}
+            disabled={!requiredOk || isSubmitting}
             className={`w-full py-3 px-4 rounded-lg font-semibold text-sm transition-all ${
-              allChecked && !isSubmitting
+              requiredOk && !isSubmitting
                 ? "bg-primary text-background hover:bg-primary/90 active:scale-[0.98]"
                 : "bg-surface-2 text-text-muted cursor-not-allowed"
             }`}
           >
-            {isSubmitting ? "Processando..." : allChecked ? "Entendi, quero continuar →" : "Aceite ambos os itens para continuar"}
+            {isSubmitting
+              ? "Registrando consentimento..."
+              : requiredOk
+              ? "Aceitar e continuar"
+              : "Aceite os 3 itens obrigatorios"}
           </button>
           <p className="text-[11px] text-text-muted text-center">
-            Seu consentimento é registrado para fins de conformidade regulatória.
+            Seu consentimento e registrado de forma auditavel (LGPD Art. 8 §2).
           </p>
         </div>
       </div>

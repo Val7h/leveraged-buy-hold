@@ -34,7 +34,7 @@ const pricingTiers = [
   },
   {
     name: 'Pro',
-    price: 'R$ 19',
+    price: 'R$ 39',
     period: '/mês',
     description: 'Para investidores ativos com estratégia quantitativa',
     cta: 'Testar grátis por 14 dias',
@@ -48,6 +48,26 @@ const pricingTiers = [
       { text: 'Relatórios em PDF', included: true },
       { text: 'Suporte por email (resp. em 24h)', included: true },
       { text: 'Sem anúncios', included: true },
+      { text: 'Acesso à API REST', included: false },
+      { text: 'Marca branca', included: false },
+    ],
+  },
+  {
+    name: 'Trader',
+    price: 'R$ 89',
+    period: '/mês',
+    description: 'Para traders quantitativos que precisam de mais escala',
+    cta: 'Testar grátis por 14 dias',
+    highlight: false,
+    features: [
+      { text: 'Tudo do Pro incluído', included: true },
+      { text: 'Backtests ilimitados (histórico de 20 anos)', included: true },
+      { text: '20 carteiras', included: true },
+      { text: 'Alertas ilimitados (até 100)', included: true },
+      { text: 'Simulação Monte Carlo avançada', included: true },
+      { text: 'Relatórios em PDF customizados', included: true },
+      { text: 'Suporte prioritário (resp. em 4h)', included: true },
+      { text: 'Webhooks de sinais', included: true },
       { text: 'Acesso à API REST', included: false },
       { text: 'Marca branca', included: false },
     ],
@@ -87,8 +107,8 @@ const faqItems = [
     answer: 'Ao assinar o Pro, você tem 14 dias de acesso completo a todas as funcionalidades sem nenhuma cobrança. O cartão é solicitado no cadastro, mas só é debitado a partir do 15º dia. Cancele a qualquer momento antes disso sem custo.',
   },
   {
-    question: 'Por que R$ 19 por mês?',
-    answer: 'O valor foi definido para equilibrar acessibilidade com qualidade. Ferramentas equivalentes para investidores profissionais custam centenas de reais. Nosso objetivo é democratizar o acesso a estratégias quantitativas para o investidor brasileiro.',
+    question: 'Por que R$ 39 por mês?',
+    answer: 'O valor foi calibrado contra o mercado brasileiro de research/análise: Status Invest cobra R$ 29 (apenas dados), TradeMap R$ 39 (dados + comunidade), Suno R$ 79 (relatórios manuais). O LBH é o único que inclui backtest quantitativo com simulação Monte Carlo e alavancagem adaptativa por esse preço — funcionalidades que em Bloomberg/Refinitiv custam milhares de USD/mês. Para quem precisa de mais carteiras e alertas, o plano Trader (R$ 89) entrega backtests ilimitados.',
   },
   {
     question: 'Posso cancelar a qualquer momento?',
@@ -121,10 +141,16 @@ export default function PricingPage() {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [showCheckout, setShowCheckout] = useState(false);
 
+  const [checkoutTier, setCheckoutTier] = useState<'pro' | 'trader'>('pro');
+
   const handleCTA = (tierName: string) => {
     if (tierName === 'Gratuito') {
       router.push('/login');
     } else if (tierName === 'Pro') {
+      setCheckoutTier('pro');
+      setShowCheckout(true);
+    } else if (tierName === 'Trader') {
+      setCheckoutTier('trader');
       setShowCheckout(true);
     } else {
       window.location.href = 'mailto:contato@lbhsystem.com?subject=Plano%20Enterprise';
@@ -146,7 +172,7 @@ export default function PricingPage() {
             </button>
             <div className="p-6">
               <Elements stripe={stripePromise}>
-                <CheckoutForm tier="pro" />
+                <CheckoutForm tier={checkoutTier} />
               </Elements>
             </div>
           </div>
@@ -177,8 +203,8 @@ export default function PricingPage() {
 
         {/* Pricing Cards */}
         <section className="py-16 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {pricingTiers.map((tier, idx) => (
                 <div
                   key={idx}

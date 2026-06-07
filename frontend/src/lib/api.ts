@@ -5,22 +5,22 @@ import axios, { AxiosInstance } from "axios";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? "" : "http://localhost:8001");
 
 function createClient(): AxiosInstance {
-  const client = axios.create({ baseURL: BASE_URL });
+  // withCredentials garante que o cookie httpOnly lbh_session é enviado.
+  // Em same-origin (Next BFF) ele iria mesmo sem isso, mas mantemos explícito
+  // para que NEXT_PUBLIC_API_URL apontado para outro host também funcione com CORS.
+  const client = axios.create({ baseURL: BASE_URL, withCredentials: true });
 
-  client.interceptors.request.use((config) => {
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("access_token");
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  });
+  // Auth real: cookie httpOnly viaja sozinho. NÃO injetamos Authorization Bearer
+  // (token não está mais em localStorage, e não deve estar acessível ao JS).
 
   client.interceptors.response.use(
     (r) => r,
     (error) => {
       if (error.response?.status === 401 && typeof window !== "undefined") {
-        localStorage.removeItem("access_token");
-        window.location.href = "/login";
+        // Cookie expirado/inválido → manda para login. Não há localStorage a limpar.
+        if (!window.location.pathname.startsWith("/login")) {
+          window.location.href = "/login";
+        }
       }
       return Promise.reject(error);
     }
@@ -31,15 +31,18 @@ function createClient(): AxiosInstance {
 
 const api = createClient();
 
-// Auth
+// Auth — contrato novo: JSON body, cookie httpOnly de sessão (sem token no response).
 export const authApi = {
   login: (email: string, password: string) =>
-    api.post("/api/v1/auth/login", new URLSearchParams({ username: email, password }), {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    }),
-  register: (data: { email: string; password: string; full_name?: string; risk_profile?: string }) =>
-    api.post("/api/v1/auth/register", data),
+    api.post("/api/v1/auth/login", { email, password }),
+  register: (data: {
+    email: string;
+    password: string;
+    fullName?: string;
+    riskProfile?: string;
+  }) => api.post("/api/v1/auth/register", data),
   me: () => api.get("/api/v1/auth/me"),
+  logout: () => api.post("/api/v1/auth/logout"),
 };
 
 // Assets

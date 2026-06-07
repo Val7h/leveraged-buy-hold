@@ -10,7 +10,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 interface CheckoutFormProps {
   onSuccess?: (subscriptionId: string) => void;
   onError?: (error: string) => void;
-  tier?: "pro" | "enterprise";
+  tier?: "pro" | "trader" | "enterprise";
   className?: string;
 }
 
@@ -27,8 +27,13 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [cardComplete, setCardComplete] = useState(false);
 
+  // NOTE: precos sincronizados com pricing/page.tsx (single source of truth: PRICING_DECISION.md).
+  // TODO(gerente): criar novos Stripe Price IDs no dashboard (`price_pro_v2_r39`,
+  // `price_trader_v1_r89`) e mapear no backend endpoint /subscriptions/create.
+  // Manter `price_pro_legacy_r19` ativo para grandfathering — NAO substituir.
   const plans = {
-    pro: { price: "R$ 19/mês", trialLabel: "14 dias grátis", billingLabel: "Cobrança a partir do 15º dia", label: "Pro" },
+    pro: { price: "R$ 39/mês", trialLabel: "14 dias grátis", billingLabel: "Cobrança a partir do 15º dia", label: "Pro" },
+    trader: { price: "R$ 89/mês", trialLabel: "14 dias grátis", billingLabel: "Cobrança a partir do 15º dia", label: "Trader" },
     enterprise: { price: "R$ 299/mês", trialLabel: "Personalizado", billingLabel: "Cobrado mensalmente", label: "Enterprise" },
   };
 

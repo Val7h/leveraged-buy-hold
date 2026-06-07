@@ -50,21 +50,47 @@ export interface MarketStateSignals {
 }
 
 export interface MarketState {
-  state: "TOPO" | "NORMAL" | "CAPITULAÇÃO";
-  multiplier: 2 | 3 | 4;
-  score: number;
+  /**
+   * CAPITULAÇÃO: drawdown >35% + RSI <30 (bear severo, ex: 2000, 2008, 2020).
+   * CORREÇÃO: queda 15-35% + RSI <40 (pullback, ocorre 1-2x/ano em SPY).
+   * NORMAL: condições neutras.
+   * TOPO: RSI overbought + perto do high + acima MM200.
+   * Ref: Pagan-Sossounov (2003); Ned Davis Research bear definition.
+   */
+  state: "TOPO" | "NORMAL" | "CORREÇÃO" | "CAPITULAÇÃO";
+  multiplier: 0.5 | 1.5 | 2.0 | 3.0;
+  score?: number;
   description: string;
-  color: "red" | "yellow" | "green";
+  color?: "red" | "yellow" | "green";
   signals: MarketStateSignals;
+  spy_price?: number;
   last_updated?: string;
+  last_update?: string;
 }
 
 export interface KellyCriterion {
   kelly_full?: number | null;
   kelly_half?: number | null;
   kelly_quarter?: number | null;
+  /**
+   * @deprecated Use `confidence_score`. O valor exibido NAO e taxa historica
+   * de acertos — e score heuristico derivado do composite. Sera removido
+   * apos 1 release de transicao.
+   */
   win_rate?: number | null;
+  /**
+   * Score heuristico de confianca (0-100) derivado do composite_score.
+   * NAO representa taxa historica de wins/losses. Sempre exibir com
+   * disclaimer/badge "heuristica" no UI (compliance CVM/FINRA).
+   */
+  confidence_score?: number | null;
   payoff_ratio?: number | null;
+  /**
+   * true = kelly_full/half/quarter foram derivados HEURISTICAMENTE (sem
+   * histórico real de trades). Exibir badge "heurística" no UI.
+   * Ref: SEC Marketing Rule 206(4)-1 §(d)(1).
+   */
+  is_heuristic?: boolean;
 }
 
 export interface AssetScore {
@@ -80,6 +106,11 @@ export interface AssetScore {
   recommended_leverage: number;
   conservative_leverage: number;
   risk_rating: string;
+  /**
+   * true = risk_rating foi calculado SÓ a partir de volatilidade
+   * (beta não disponível). UI deve mostrar badge "heurística".
+   */
+  risk_rating_is_heuristic?: boolean;
   opportunity_rating: string;
   // Sinal de entrada
   entry_signal?: string;       // ENTRAR FORTE | ENTRAR | AGUARDAR | EVITAR

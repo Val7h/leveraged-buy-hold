@@ -4,6 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import Sidebar from "./Sidebar";
 import NotificationBell from "./NotificationBell";
+import Footer from "./Footer";
 import BetaBanner from "@/components/BetaBanner";
 import { Menu } from "lucide-react";
 
@@ -82,6 +83,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1">
           {children}
         </main>
+        <Footer />
       </div>
     </div>
   );

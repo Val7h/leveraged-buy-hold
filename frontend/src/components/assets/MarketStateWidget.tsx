@@ -26,6 +26,16 @@ const STATE_CONFIG = {
     badgeText:    "text-black",
     multiplierColor: "text-warning",
   },
+  CORREÇÃO: {
+    Icon:         TrendingDown,
+    bg:           "bg-primary/8",
+    border:       "border-primary/25",
+    iconBg:       "bg-primary/15",
+    textColor:    "text-primary",
+    badgeBg:      "bg-primary",
+    badgeText:    "text-white",
+    multiplierColor: "text-primary",
+  },
   CAPITULAÇÃO: {
     Icon:         TrendingDown,
     bg:           "bg-success/8",

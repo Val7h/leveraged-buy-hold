@@ -1,0 +1,100 @@
+// LBH System — Prisma schema
+// All PKs use cuid() to avoid enumeration / IDOR. Decimal columns avoid FP drift.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  fullName     String?
+  riskProfile  String      @default("moderado")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  portfolios   Portfolio[]
+  watchlists   Watchlist[]
+  alerts       Alert[]
+
+  @@map("users")
+}
+
+model Portfolio {
+  id                  String     @id @default(cuid())
+  userId              String
+  name                String
+  initialEquity       Decimal    @db.Decimal(18, 2)
+  monthlyContribution Decimal    @db.Decimal(18, 2) @default(0)
+  currency            String     @default("BRL")
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  positions           Position[]
+
+  @@index([userId, createdAt])
+  @@map("portfolios")
+}
+
+model Position {
+  id          String    @id @default(cuid())
+  portfolioId String
+  ticker      String
+  quantity    Decimal   @db.Decimal(18, 6)
+  avgPrice    Decimal   @db.Decimal(18, 4)
+  leverage    Decimal   @db.Decimal(6, 2) @default(1)
+  createdAt   DateTime  @default(now())
+
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId])
+  @@map("positions")
+}
+
+model Watchlist {
+  id        String           @id @default(cuid())
+  userId    String
+  name      String           @default("Default")
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     WatchlistItem[]
+
+  @@index([userId])
+  @@map("watchlists")
+}
+
+model WatchlistItem {
+  id          String    @id @default(cuid())
+  watchlistId String
+  ticker      String
+  createdAt   DateTime  @default(now())
+
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, ticker])
+  @@map("watchlist_items")
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  userId    String
+  ticker    String
+  condition String
+  threshold Decimal  @db.Decimal(18, 4)
+  active    Boolean  @default(true)
+  message   String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("alerts")
+}

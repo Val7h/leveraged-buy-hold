@@ -1,49 +1,29 @@
-databases:
-  - name: lbh-db
-    plan: starter
-    databaseName: leveraged_bh
-    user: lbh_user
+# Render Blueprint — LBH System
+# 1 service web (Next.js standalone, API routes incluidas).
+# Backend Python foi removido. Quando o Track Backend reativar Postgres,
+# adicione a seccao "databases:" e o envVar DATABASE_URL.fromDatabase.
 
 services:
-  # ── Backend (FastAPI) ──────────────────────────────────────────
   - type: web
-    name: lbh-backend
+    name: lbh-system
     runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: starter
     healthCheckPath: /api/health
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: lbh-db
-          property: connectionString
-      - key: SECRET_KEY
-        generateValue: true
-      - key: ALGORITHM
-        value: HS256
-      - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: 1440
-      - key: ENVIRONMENT
+      - key: NODE_ENV
         value: production
-      - key: BACKEND_CORS_ORIGINS
-        value: '["http://localhost:3000","https://lbh-frontend.onrender.com","https://lbh-frontend-val7h.onrender.com"]'
-      # Stripe (adicionar no dashboard do Render)
-      - key: STRIPE_SECRET_KEY
+      # Cache (Upstash Redis - HTTP). Configurar no dashboard do Render.
+      - key: UPSTASH_REDIS_REST_URL
         sync: false
-      - key: STRIPE_WEBHOOK_SECRET
+      - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
-
-  # ── Frontend (Next.js) ────────────────────────────────────────
-  - type: web
-    name: lbh-frontend
-    runtime: docker
-    dockerfilePath: ./frontend/Dockerfile
-    dockerContext: ./frontend
-    plan: starter
-    envVars:
-      - key: NEXT_PUBLIC_API_URL
-        value: https://lbh-backend.onrender.com
-      # Stripe (adicionar no dashboard do Render)
+      # Database (futuro). Configurar no dashboard quando reativar Postgres.
+      - key: DATABASE_URL
+        sync: false
+      # Stripe (opcional - modo demo nao precisa).
       - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
         sync: false
