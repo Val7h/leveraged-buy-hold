@@ -151,3 +151,188 @@ class AlertResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 11: GET /api/portfolio/{portfolio_id}/ytd-performance
+# ────────────────────────────────────────────────────────────────────────────────
+
+class YTDPerformancePoint(BaseModel):
+    date: str
+    equity: float
+    daily_return: float
+    cumulative_return: float
+    benchmark_price: float
+    benchmark_return: float
+    alpha: float
+    beta: float
+    tracking_error: float
+
+
+class YTDPerformanceResponse(BaseModel):
+    portfolio_id: int
+    ytd_start: str
+    ytd_end: str
+    ytd_return_pct: float
+    ytd_volatility_pct: float
+    ytd_sharpe_ratio: float
+    ytd_max_drawdown_pct: float
+    benchmark_return_pct: float
+    alpha_pct: float
+    beta: float
+    information_ratio: float
+    win_days: int
+    loss_days: int
+    win_rate_pct: float
+    daily_points: List[YTDPerformancePoint]
+    computed_at: datetime
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 12: GET /api/metrics/volatility
+# ────────────────────────────────────────────────────────────────────────────────
+
+class VolatilityMetric(BaseModel):
+    period: str  # 1m, 3m, 6m, 1y, 2y, 5y
+    volatility_pct: float
+    daily_avg_vol: float
+    realized_vol: float
+    implied_vol: Optional[float] = None
+    vol_of_vol: Optional[float] = None
+    percentile_rank: float
+
+
+class VolatilityResponse(BaseModel):
+    tickers: List[str]
+    start_date: str
+    end_date: str
+    metrics: Dict[str, List[VolatilityMetric]]
+    portfolio_volatility_pct: float
+    min_volatility: float
+    max_volatility: float
+    correlation_matrix: Dict[str, Dict[str, float]]
+    computed_at: datetime
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 13: GET /api/metrics/sharpe-ratio
+# ────────────────────────────────────────────────────────────────────────────────
+
+class SharpeRatioPoint(BaseModel):
+    ticker: str
+    sharpe_ratio: float
+    sortino_ratio: float
+    calmar_ratio: float
+    excess_return_pct: float
+    volatility_pct: float
+    max_drawdown_pct: float
+    win_rate_pct: float
+    recovery_factor: float
+
+
+class SharpeRatioResponse(BaseModel):
+    period: str
+    risk_free_rate: float
+    start_date: str
+    end_date: str
+    metrics: List[SharpeRatioPoint]
+    portfolio_sharpe: float
+    benchmark_sharpe: float
+    portfolio_sortino: float
+    portfolio_calmar: float
+    best_performer: str
+    worst_performer: str
+    computed_at: datetime
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 14: POST /api/analytics/backtest-results
+# ────────────────────────────────────────────────────────────────────────────────
+
+class BacktestResultsRequest(BaseModel):
+    portfolio_id: int
+    tickers: List[str]
+    start_date: str = "2020-01-01"
+    end_date: Optional[str] = None
+    initial_capital: float = 100000.0
+    monthly_contribution: float = 1000.0
+    rebalancing: str = "none"  # none, monthly, quarterly, annual
+    include_dividends: bool = True
+
+
+class BacktestResultsMetric(BaseModel):
+    metric_name: str
+    value: float
+    unit: str
+    benchmark_value: Optional[float] = None
+    outperformance: Optional[float] = None
+
+
+class BacktestResultsData(BaseModel):
+    portfolio_id: int
+    final_equity: float
+    total_return_pct: float
+    cagr_pct: float
+    annualized_volatility_pct: float
+    sharpe_ratio: float
+    max_drawdown_pct: float
+    calmar_ratio: float
+    win_rate_pct: float
+    best_month_return_pct: float
+    worst_month_return_pct: float
+    best_year_return_pct: float
+    worst_year_return_pct: float
+    avg_monthly_return_pct: float
+    recovery_factor: float
+    ulcer_index: float
+    metrics: List[BacktestResultsMetric]
+    equity_curve: List[Dict[str, Any]]
+    monthly_returns: List[Dict[str, Any]]
+    yearly_returns: List[Dict[str, Any]]
+    drawdown_periods: List[Dict[str, Any]]
+
+
+class BacktestResultsResponse(BaseModel):
+    request: BacktestResultsRequest
+    results: BacktestResultsData
+    execution_time_seconds: float
+    computed_at: datetime
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 15: GET /api/analytics/risk-analysis
+# ────────────────────────────────────────────────────────────────────────────────
+
+class RiskMetric(BaseModel):
+    name: str
+    value: float
+    unit: str
+    status: str  # low, moderate, high, critical
+    threshold: float
+    distance_to_threshold: float
+
+
+class RiskScenario(BaseModel):
+    name: str
+    description: str
+    market_move: str
+    portfolio_impact_pct: float
+    equity_loss: float
+    time_to_recovery_days: Optional[int] = None
+    probability_pct: float
+
+
+class RiskAnalysisResponse(BaseModel):
+    portfolio_id: int
+    risk_level: str  # low, moderate, high, critical
+    risk_score: float  # 0-100
+    metrics: List[RiskMetric]
+    scenarios: List[RiskScenario]
+    leverage_utilization_pct: float
+    margin_requirement_pct: float
+    margin_cushion_pct: float
+    liquidity_coverage_days: float
+    concentration_risk_pct: float
+    largest_position_weight: float
+    recommendations: List[str]
+    computed_at: datetime

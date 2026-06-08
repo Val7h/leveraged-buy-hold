@@ -7,6 +7,8 @@ from app.api.v1 import auth, assets, portfolio, backtest, simulator, alerts, wat
 from app.api.v1 import user_consent
 from app.api.v1 import notifications
 from app.api.v1 import news
+from app.api.v1 import settings
+from app.api.v1 import analytics
 
 app = FastAPI(
     title="Leveraged Buy & Hold — Sistema Quantitativo",
@@ -108,6 +110,8 @@ app.include_router(billing.router, prefix="/api/v1")
 app.include_router(user_consent.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(news.router, prefix="/api/v1")
+app.include_router(settings.router)
+app.include_router(analytics.router, prefix="/api/v1")
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def health():

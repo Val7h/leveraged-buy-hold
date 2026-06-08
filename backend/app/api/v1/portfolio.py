@@ -13,6 +13,7 @@ from app.schemas.portfolio import (
     PortfolioCreate, PortfolioResponse, PositionCreate,
     PortfolioMetrics, ContributionSuggestion
 )
+from app.schemas.analysis import YTDPerformanceResponse, YTDPerformancePoint
 from app.services.portfolio_service import calculate_portfolio_metrics, suggest_contributions
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
@@ -378,4 +379,170 @@ def get_suggestions(
     if not portfolio:
         raise HTTPException(404, "Carteira não encontrada")
     return suggest_contributions(portfolio_id, available_capital, user.risk_profile.value, db)
+
+
+# ── YTD Performance (Endpoint 11) ──────────────────────────────────────────────────
+
+@router.get("/{portfolio_id}/ytd-performance", response_model=YTDPerformanceResponse)
+def get_ytd_performance(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Calculate year-to-date performance metrics including daily returns,
+    alpha, beta, and tracking error vs SPY.
+    """
+    import numpy as np
+    import pandas as pd
+    from app.services.market_data import fetch_multiple_price_history
+
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.id == portfolio_id,
+        Portfolio.user_id == user.id
+    ).first()
+    if not portfolio:
+        raise HTTPException(404, "Carteira não encontrada")
+
+    positions = db.query(Position).filter(
+        Position.portfolio_id == portfolio_id,
+        Position.is_active == True,
+    ).all()
+
+    if not positions:
+        raise HTTPException(400, "Carteira sem posições ativas")
+
+    # Get current year start
+    now = datetime.utcnow()
+    ytd_start = datetime(now.year, 1, 1)
+    ytd_start_str = ytd_start.strftime("%Y-%m-%d")
+    ytd_end_str = now.strftime("%Y-%m-%d")
+
+    # Fetch price data
+    tickers = [p.ticker for p in positions]
+    price_data = fetch_multiple_price_history(tickers + ["SPY"], "2y")
+
+    if not price_data:
+        raise HTTPException(400, "Não foi possível obter dados de preços")
+
+    # Filter to YTD
+    for ticker in price_data:
+        price_data[ticker] = price_data[ticker].loc[ytd_start:]
+
+    # Build daily equity curve
+    daily_points = []
+    daily_equities = []
+    daily_spy_prices = []
+
+    for date in sorted(set().union(*[p.index for p in price_data.values()])):
+        if date < ytd_start:
+            continue
+
+        # Calculate portfolio equity
+        portfolio_equity = 0.0
+        for pos in positions:
+            if pos.ticker in price_data:
+                try:
+                    price = float(price_data[pos.ticker].loc[date])
+                    portfolio_equity += pos.shares * price
+                except (KeyError, IndexError):
+                    portfolio_equity += pos.shares * pos.avg_price
+            else:
+                portfolio_equity += pos.shares * pos.avg_price
+
+        # Get SPY price
+        spy_price = None
+        if "SPY" in price_data:
+            try:
+                spy_price = float(price_data["SPY"].loc[date])
+            except (KeyError, IndexError):
+                pass
+
+        daily_equities.append(portfolio_equity)
+        if spy_price:
+            daily_spy_prices.append(spy_price)
+
+    if not daily_equities or not daily_spy_prices:
+        raise HTTPException(400, "Dados insuficientes para YTD")
+
+    # Calculate metrics
+    equity_array = np.array(daily_equities)
+    spy_array = np.array(daily_spy_prices)
+
+    daily_returns = np.diff(equity_array) / equity_array[:-1]
+    daily_spy_returns = np.diff(spy_array) / spy_array[:-1]
+
+    ytd_return_pct = (equity_array[-1] / equity_array[0] - 1) * 100
+    ytd_volatility_pct = np.std(daily_returns) * np.sqrt(252) * 100
+
+    # Risk-free rate (assume 5% annual)
+    risk_free = 0.05 / 252
+    excess_returns = daily_returns - risk_free
+    ytd_sharpe = np.mean(excess_returns) / np.std(excess_returns) * np.sqrt(252) if np.std(excess_returns) > 0 else 0
+
+    # Max drawdown
+    cumulative = np.cumprod(1 + daily_returns)
+    running_max = np.maximum.accumulate(cumulative)
+    drawdown = (cumulative - running_max) / running_max
+    ytd_max_drawdown = np.min(drawdown) * 100
+
+    # Alpha and Beta vs SPY
+    covariance = np.cov(daily_returns, daily_spy_returns)[0, 1]
+    variance_spy = np.var(daily_spy_returns)
+    beta = covariance / variance_spy if variance_spy > 0 else 1.0
+    alpha = np.mean(daily_returns) - beta * np.mean(daily_spy_returns)
+    alpha_pct = alpha * 252 * 100
+
+    # Benchmark return
+    benchmark_return_pct = (spy_array[-1] / spy_array[0] - 1) * 100
+
+    # Information ratio
+    tracking_error = np.std(daily_returns - daily_spy_returns) * np.sqrt(252)
+    information_ratio = (np.mean(daily_returns) - np.mean(daily_spy_returns)) / tracking_error * np.sqrt(252) if tracking_error > 0 else 0
+
+    # Win/loss days
+    win_days = np.sum(daily_returns > 0)
+    loss_days = np.sum(daily_returns < 0)
+    win_rate_pct = (win_days / len(daily_returns)) * 100 if len(daily_returns) > 0 else 0
+
+    # Build daily points
+    dates = sorted(set().union(*[p.index for p in price_data.values()]))
+    for i, date in enumerate(dates):
+        if date < ytd_start or i >= len(daily_equities):
+            continue
+
+        daily_ret = daily_returns[i] if i > 0 else 0
+        spy_ret = daily_spy_returns[i] if i > 0 else 0
+        cumulative_ret = (daily_equities[i] / daily_equities[0]) - 1
+
+        daily_points.append(YTDPerformancePoint(
+            date=date.strftime("%Y-%m-%d"),
+            equity=round(daily_equities[i], 2),
+            daily_return=round(daily_ret * 100, 4),
+            cumulative_return=round(cumulative_ret * 100, 2),
+            benchmark_price=round(daily_spy_prices[i], 2),
+            benchmark_return=round(spy_ret * 100, 4),
+            alpha=round(alpha * 100, 4),
+            beta=round(beta, 4),
+            tracking_error=round(tracking_error * 100, 4),
+        ))
+
+    return YTDPerformanceResponse(
+        portfolio_id=portfolio_id,
+        ytd_start=ytd_start_str,
+        ytd_end=ytd_end_str,
+        ytd_return_pct=round(ytd_return_pct, 2),
+        ytd_volatility_pct=round(ytd_volatility_pct, 2),
+        ytd_sharpe_ratio=round(ytd_sharpe, 3),
+        ytd_max_drawdown_pct=round(ytd_max_drawdown, 2),
+        benchmark_return_pct=round(benchmark_return_pct, 2),
+        alpha_pct=round(alpha_pct, 2),
+        beta=round(beta, 3),
+        information_ratio=round(information_ratio, 3),
+        win_days=int(win_days),
+        loss_days=int(loss_days),
+        win_rate_pct=round(win_rate_pct, 2),
+        daily_points=daily_points,
+        computed_at=datetime.utcnow(),
+    )
 

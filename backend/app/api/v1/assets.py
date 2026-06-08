@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from datetime import datetime
 
-from app.core.security import get_current_user_or_demo_or_demo
+from app.core.security import get_current_user_or_demo
 from app.models.user import User
 from app.services.market_data import analyze_asset, screen_assets, get_market_state
 from app.schemas.asset import AssetScore, AssetScreenResult, AssetFilter, MarketStateData

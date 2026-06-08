@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     FRED_API_KEY: str = ""
     ENVIRONMENT: str = "development"
     BACKEND_CORS_ORIGINS: str = '["http://localhost:3000"]'
+    DEMO_MODE: bool = False
+    GOOGLE_CLIENT_ID: str = ""
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
 
     class Config:
         env_file = ".env"
