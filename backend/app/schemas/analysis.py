@@ -336,3 +336,197 @@ class RiskAnalysisResponse(BaseModel):
     largest_position_weight: float
     recommendations: List[str]
     computed_at: datetime
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 16: GET /api/analytics/sector-breakdown
+# ────────────────────────────────────────────────────────────────────────────────
+
+class SectorBreakdownItem(BaseModel):
+    sector: str
+    ticker_count: int
+    tickers: List[str]
+    total_value: float
+    weight_pct: float
+    contribution_return_pct: float
+    volatility_pct: float
+    dividend_yield_pct: Optional[float] = None
+    pe_ratio: Optional[float] = None
+    growth_estimate_pct: Optional[float] = None
+
+
+class SectorBreakdownResponse(BaseModel):
+    portfolio_id: int
+    total_portfolio_value: float
+    sectors: List[SectorBreakdownItem]
+    sector_count: int
+    most_exposed_sector: str
+    largest_sector_weight_pct: float
+    sector_concentration_index: float  # 0-1, higher = more concentrated
+    diversification_score: float  # 0-100
+    sector_correlations: Dict[str, Dict[str, float]]
+    recommendations: List[str]
+    computed_at: datetime
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 17: GET /api/analytics/geographic-breakdown
+# ────────────────────────────────────────────────────────────────────────────────
+
+class GeographicBreakdownItem(BaseModel):
+    country: str
+    region: str
+    ticker_count: int
+    tickers: List[str]
+    total_value: float
+    weight_pct: float
+    contribution_return_pct: float
+    volatility_pct: float
+    currency_exposure: str  # USD, EUR, GBP, etc
+    currency_risk_pct: Optional[float] = None
+    gdp_growth_estimate_pct: Optional[float] = None
+    political_risk_score: Optional[int] = None  # 0-100
+
+
+class GeographicBreakdownResponse(BaseModel):
+    portfolio_id: int
+    total_portfolio_value: float
+    geographic_breakdown: List[GeographicBreakdownItem]
+    country_count: int
+    region_distribution: Dict[str, float]
+    home_country_bias_pct: float
+    international_exposure_pct: float
+    currency_diversification: Dict[str, float]
+    fx_risk_pct: Optional[float] = None
+    recommendations: List[str]
+    computed_at: datetime
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 18: POST /api/analytics/portfolio-rebalancing
+# ────────────────────────────────────────────────────────────────────────────────
+
+class RebalancingAction(BaseModel):
+    ticker: str
+    current_weight_pct: float
+    target_weight_pct: float
+    current_shares: float
+    target_shares: float
+    trade_amount: float
+    trade_direction: str  # buy, sell
+    priority: str  # high, medium, low
+    estimated_tax_impact: Optional[float] = None
+
+
+class RebalancingRecommendation(BaseModel):
+    portfolio_id: int
+    rebalancing_method: str  # equal_weight, target_allocation, risk_parity, etc
+    current_portfolio_value: float
+    estimated_portfolio_value_after: float
+    total_trades_needed: int
+    total_trade_value: float
+    estimated_transaction_costs: float
+    estimated_tax_cost: float
+    total_cost: float
+    expected_improvement_pct: float
+    estimated_execution_time_hours: float
+    actions: List[RebalancingAction]
+    summary: str
+
+
+class PortfolioRebalancingRequest(BaseModel):
+    portfolio_id: int
+    method: str = "equal_weight"  # equal_weight, target_allocation, risk_parity, momentum
+    target_allocations: Optional[Dict[str, float]] = None  # {ticker: weight}
+    max_transaction_cost_pct: float = 0.5
+    consider_tax_efficiency: bool = True
+    only_suggest: bool = True  # True = suggest only, False = execute
+
+
+class PortfolioRebalancingResponse(BaseModel):
+    request: PortfolioRebalancingRequest
+    recommendation: RebalancingRecommendation
+    execution_status: str  # pending, executed, rejected
+    executed_at: Optional[datetime] = None
+    computed_at: datetime
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 19: GET /api/analytics/tax-efficiency
+# ────────────────────────────────────────────────────────────────────────────────
+
+class TaxLot(BaseModel):
+    ticker: str
+    shares: float
+    cost_basis: float
+    current_value: float
+    unrealized_gain_loss: float
+    gain_loss_pct: float
+    holding_period: str  # long_term or short_term
+    days_held: int
+
+
+class TaxHarvestingOpportunity(BaseModel):
+    ticker: str
+    unrealized_loss: float
+    potential_tax_savings: float
+    wash_sale_risk: bool
+    replacement_tickers: List[str]
+    holding_period_days: int
+
+
+class TaxEfficiencyAnalysis(BaseModel):
+    portfolio_id: int
+    total_portfolio_value: float
+    total_unrealized_gains: float
+    total_unrealized_losses: float
+    net_unrealized_gain_loss: float
+    long_term_gains: float
+    short_term_gains: float
+    tax_loss_carryforward: Optional[float] = None
+    estimated_annual_tax_liability: float
+    estimated_tax_rate_pct: float
+    tax_efficiency_score: float  # 0-100, higher = more efficient
+    tax_alpha_pct: float  # returns from tax optimization
+    tax_lots: List[TaxLot]
+    harvesting_opportunities: List[TaxHarvestingOpportunity]
+    recommendations: List[str]
+    computed_at: datetime
+
+
+class TaxEfficiencyResponse(BaseModel):
+    analysis: TaxEfficiencyAnalysis
+    calculated_at: datetime
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Endpoint 20: POST /api/analytics/export-report
+# ────────────────────────────────────────────────────────────────────────────────
+
+class ReportSection(BaseModel):
+    name: str
+    include: bool
+    data: Optional[Dict[str, Any]] = None
+
+
+class ExportReportRequest(BaseModel):
+    portfolio_id: int
+    report_type: str  # comprehensive, performance, risk, tax, holdings
+    format: str = "pdf"  # pdf, excel, csv, json
+    include_sections: List[str] = []  # ytd_performance, risk_analysis, sector_breakdown, etc
+    custom_title: Optional[str] = None
+    include_charts: bool = True
+    include_recommendations: bool = True
+    period: str = "ytd"  # ytd, 1m, 3m, 6m, 1y, all
+
+
+class ExportReportResponse(BaseModel):
+    portfolio_id: int
+    report_type: str
+    format: str
+    file_url: str
+    file_size_kb: float
+    generated_at: datetime
+    expires_at: Optional[datetime] = None
+    includes_charts: bool
+    sections_included: List[str]
