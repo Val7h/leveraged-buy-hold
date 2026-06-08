@@ -418,3 +418,95 @@ class ErrorResponse(BaseModel):
                 "detail": "Invalid authentication token"
             }
         }
+
+
+# ==================== API Key Rotation Schemas ====================
+
+class RotateAPIKeyRequest(BaseModel):
+    """Request to rotate API key"""
+    password: str = Field(..., min_length=8, description="User password for confirmation")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "password": "UserPassword123!"
+            }
+        }
+
+
+class RotateAPIKeyResponse(BaseModel):
+    """Response after rotating API key"""
+    id: int
+    name: str
+    new_key: str  # New API key (shown only once)
+    last_four: str
+    permissions: str
+    created_at: datetime
+    expires_at: Optional[datetime]
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "id": 1,
+                "name": "Portfolio Integration",
+                "new_key": "sk_live_xyz789uvw012...",
+                "last_four": "uvw012",
+                "permissions": "read",
+                "created_at": "2026-07-04T10:00:00Z",
+                "expires_at": "2026-10-02T10:00:00Z"
+            }
+        }
+
+
+# ==================== Account Deletion Schemas ====================
+
+class RequestAccountDeletionRequest(BaseModel):
+    """Request to initiate account deletion"""
+    password: str = Field(..., min_length=8, description="User password for confirmation")
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for deletion")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "password": "UserPassword123!",
+                "reason": "No longer using the platform"
+            }
+        }
+
+
+class AccountDeletionResponse(BaseModel):
+    """Response for account deletion request"""
+    success: bool
+    message: str
+    deletion_scheduled_for: datetime
+    confirmation_required: bool
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Account deletion scheduled. Please confirm via email.",
+                "deletion_scheduled_for": "2026-07-11T10:00:00Z",
+                "confirmation_required": True
+            }
+        }
+
+
+class AccountDeletionStatusResponse(BaseModel):
+    """Response for account deletion status"""
+    scheduled_for_deletion: bool
+    deletion_date: Optional[datetime]
+    days_until_deletion: Optional[int]
+    confirmation_sent: bool
+    confirmation_deadline: Optional[datetime]
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "scheduled_for_deletion": True,
+                "deletion_date": "2026-07-11T10:00:00Z",
+                "days_until_deletion": 7,
+                "confirmation_sent": True,
+                "confirmation_deadline": "2026-07-08T10:00:00Z"
+            }
+        }

@@ -25,9 +25,11 @@ from app.schemas.settings import (
     Setup2FARequest, Setup2FAResponse, Verify2FARequest, Disable2FARequest,
     SecurityResponse, UpdatePreferencesRequest, PreferencesResponse,
     CreateAPIKeyRequest, APIKeyResponse, APIKeyCreateResponse,
+    RotateAPIKeyRequest, RotateAPIKeyResponse,
     ActivityLogResponse, ActivityLogsListResponse,
     SessionResponse, SessionsListResponse, SettingsSummaryResponse,
-    ErrorResponse
+    ErrorResponse, RequestAccountDeletionRequest, AccountDeletionResponse,
+    AccountDeletionStatusResponse
 )
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
@@ -525,6 +527,61 @@ def revoke_api_key(
     return {"success": True, "message": "API key revoked"}
 
 
+@router.put("/api-keys/{key_id}/rotate", response_model=RotateAPIKeyResponse)
+def rotate_api_key(
+    key_id: int,
+    request: RotateAPIKeyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Rotate (regenerate) an API key"""
+    import hashlib
+
+    # Verify password
+    if not verify_password(request.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Password is incorrect"
+        )
+
+    # Find the API key
+    api_key = db.query(APIKey).filter(
+        APIKey.id == key_id,
+        APIKey.user_id == current_user.id
+    ).first()
+
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    # Generate new key
+    new_raw_key = APIKey.generate_key()
+    new_key_hash = hashlib.sha256(new_raw_key.encode()).hexdigest()
+
+    # Update API key
+    old_name = api_key.name
+    api_key.key_hash = new_key_hash
+    api_key.last_four = new_raw_key[-4:]
+    api_key.last_used_at = None  # Reset usage tracking
+    db.add(api_key)
+    db.commit()
+    db.refresh(api_key)
+
+    log_activity(
+        db, current_user.id, ActivityType.api_key_rotated,
+        f"API key rotated: {old_name}", resource_type="api_key", resource_id=api_key.id
+    )
+
+    return RotateAPIKeyResponse(
+        id=api_key.id,
+        name=api_key.name,
+        new_key=new_raw_key,
+        last_four=api_key.last_four,
+        permissions=api_key.permissions,
+        created_at=api_key.created_at,
+        expires_at=api_key.expires_at
+    )
+
+
 # ==================== Session Endpoints ====================
 
 @router.get("/sessions", response_model=SessionsListResponse)
@@ -600,7 +657,7 @@ def terminate_all_sessions(
 
 # ==================== Activity Log Endpoints ====================
 
-@router.get("/activity", response_model=ActivityLogsListResponse)
+@router.get("/activity-log", response_model=ActivityLogsListResponse)
 def get_activity_logs(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -621,6 +678,110 @@ def get_activity_logs(
         page=page,
         page_size=page_size,
         total_pages=(total + page_size - 1) // page_size
+    )
+
+
+@router.delete("/activity-log")
+def clear_activity_logs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Clear user activity logs"""
+    # Delete all activity logs for the user
+    db.query(ActivityLog).filter(
+        ActivityLog.user_id == current_user.id
+    ).delete()
+
+    db.commit()
+
+    log_activity(
+        db, current_user.id, ActivityType.profile_updated,
+        "Activity logs cleared", resource_type="activity_log"
+    )
+
+    return {
+        "success": True,
+        "message": "Activity logs cleared"
+    }
+
+
+# ==================== Account Deletion Endpoints ====================
+
+@router.post("/account/delete", response_model=AccountDeletionResponse)
+def request_account_deletion(
+    request: RequestAccountDeletionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Request account deletion (scheduled after 7 days)"""
+    # Verify password
+    if not verify_password(request.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Password is incorrect"
+        )
+
+    user = get_or_create_user_settings(current_user, db)
+    security_settings = user.security_settings
+
+    # Check if deletion is already scheduled
+    if security_settings.scheduled_deletion_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account deletion is already scheduled"
+        )
+
+    # Schedule deletion for 7 days from now
+    deletion_date = datetime.utcnow() + timedelta(days=7)
+    security_settings.scheduled_deletion_date = deletion_date
+    security_settings.deletion_reason = request.reason
+    security_settings.deletion_confirmed = False
+
+    db.add(security_settings)
+    db.commit()
+
+    log_activity(
+        db, current_user.id, ActivityType.account_deletion_requested,
+        "Account deletion scheduled", resource_type="account"
+    )
+
+    return AccountDeletionResponse(
+        success=True,
+        message="Account deletion scheduled. Please confirm via email within 7 days.",
+        deletion_scheduled_for=deletion_date,
+        confirmation_required=True
+    )
+
+
+@router.get("/account/deletion-status", response_model=AccountDeletionStatusResponse)
+def get_account_deletion_status(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get account deletion status"""
+    user = get_or_create_user_settings(current_user, db)
+    security_settings = user.security_settings
+
+    if not security_settings.scheduled_deletion_date:
+        return AccountDeletionStatusResponse(
+            scheduled_for_deletion=False,
+            deletion_date=None,
+            days_until_deletion=None,
+            confirmation_sent=False,
+            confirmation_deadline=None
+        )
+
+    # Calculate days until deletion
+    now = datetime.utcnow()
+    days_until = max(0, (security_settings.scheduled_deletion_date - now).days)
+    confirmation_deadline = security_settings.scheduled_deletion_date - timedelta(days=1)
+
+    return AccountDeletionStatusResponse(
+        scheduled_for_deletion=True,
+        deletion_date=security_settings.scheduled_deletion_date,
+        days_until_deletion=days_until,
+        confirmation_sent=True,
+        confirmation_deadline=confirmation_deadline
     )
 
 

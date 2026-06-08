@@ -32,10 +32,14 @@ class ActivityType(str, enum.Enum):
     two_fa_disabled = "two_fa_disabled"
     api_key_created = "api_key_created"
     api_key_revoked = "api_key_revoked"
+    api_key_rotated = "api_key_rotated"
     profile_updated = "profile_updated"
     email_changed = "email_changed"
     session_created = "session_created"
     session_terminated = "session_terminated"
+    account_deletion_requested = "account_deletion_requested"
+    account_deletion_cancelled = "account_deletion_cancelled"
+    account_deleted = "account_deleted"
 
 
 class UserProfile(Base):
@@ -88,6 +92,11 @@ class SecuritySettings(Base):
     # Session settings
     require_mfa_on_login = Column(Boolean, default=False)
     idle_timeout_minutes = Column(Integer, default=30)
+
+    # Account deletion
+    scheduled_deletion_date = Column(DateTime(timezone=True), nullable=True)
+    deletion_reason = Column(Text, nullable=True)
+    deletion_confirmed = Column(Boolean, default=False)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

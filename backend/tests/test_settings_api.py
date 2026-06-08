@@ -285,7 +285,7 @@ class TestActivityLogEndpoints:
 
     def test_get_activity_logs(self, auth_headers):
         """Test getting activity logs"""
-        response = client.get("/api/v1/settings/activity", headers=auth_headers)
+        response = client.get("/api/v1/settings/activity-log", headers=auth_headers)
         assert response.status_code in [200, 401]
         if response.status_code == 200:
             data = response.json()
@@ -296,10 +296,132 @@ class TestActivityLogEndpoints:
     def test_activity_logs_pagination(self, auth_headers):
         """Test activity logs pagination"""
         response = client.get(
-            "/api/v1/settings/activity?page=1&page_size=10",
+            "/api/v1/settings/activity-log?page=1&page_size=10",
             headers=auth_headers
         )
         assert response.status_code in [200, 401]
+
+    def test_clear_activity_logs(self, auth_headers):
+        """Test clearing activity logs"""
+        response = client.delete("/api/v1/settings/activity-log", headers=auth_headers)
+        assert response.status_code in [200, 401]
+        if response.status_code == 200:
+            data = response.json()
+            assert data.get("success") is True
+
+
+class TestAPIKeyRotationEndpoints:
+    """Tests for API key rotation endpoints"""
+
+    def test_rotate_api_key_success(self, auth_headers):
+        """Test successful API key rotation"""
+        # First create a key
+        create_response = client.post(
+            "/api/v1/settings/api-keys",
+            json={"name": "Rotatable Key", "permissions": "read"},
+            headers=auth_headers
+        )
+
+        if create_response.status_code in [200, 201]:
+            key_id = create_response.json().get("id")
+            if key_id:
+                data = {"password": "TestPassword123!"}
+                response = client.put(
+                    f"/api/v1/settings/api-keys/{key_id}/rotate",
+                    json=data,
+                    headers=auth_headers
+                )
+                assert response.status_code in [200, 401, 404, 422]
+                if response.status_code == 200:
+                    response_data = response.json()
+                    assert "new_key" in response_data
+                    assert "last_four" in response_data
+
+    def test_rotate_api_key_invalid_password(self, auth_headers):
+        """Test API key rotation with invalid password"""
+        create_response = client.post(
+            "/api/v1/settings/api-keys",
+            json={"name": "Rotatable Key 2", "permissions": "read"},
+            headers=auth_headers
+        )
+
+        if create_response.status_code in [200, 201]:
+            key_id = create_response.json().get("id")
+            if key_id:
+                data = {"password": "WrongPassword123!"}
+                response = client.put(
+                    f"/api/v1/settings/api-keys/{key_id}/rotate",
+                    json=data,
+                    headers=auth_headers
+                )
+                assert response.status_code in [401, 422, 404]
+
+
+class TestAccountDeletionEndpoints:
+    """Tests for account deletion endpoints"""
+
+    def test_request_account_deletion_success(self, auth_headers):
+        """Test requesting account deletion"""
+        data = {
+            "password": "TestPassword123!",
+            "reason": "No longer needed"
+        }
+        response = client.post(
+            "/api/v1/settings/account/delete",
+            json=data,
+            headers=auth_headers
+        )
+        assert response.status_code in [200, 201, 401, 422]
+        if response.status_code in [200, 201]:
+            response_data = response.json()
+            assert response_data.get("success") is True
+            assert "deletion_scheduled_for" in response_data
+
+    def test_request_account_deletion_invalid_password(self, auth_headers):
+        """Test account deletion with invalid password"""
+        data = {
+            "password": "WrongPassword123!",
+            "reason": "Test"
+        }
+        response = client.post(
+            "/api/v1/settings/account/delete",
+            json=data,
+            headers=auth_headers
+        )
+        assert response.status_code in [401, 422]
+
+    def test_get_deletion_status_no_deletion(self, auth_headers):
+        """Test getting deletion status when no deletion is scheduled"""
+        response = client.get(
+            "/api/v1/settings/account/deletion-status",
+            headers=auth_headers
+        )
+        assert response.status_code in [200, 401]
+        if response.status_code == 200:
+            data = response.json()
+            assert "scheduled_for_deletion" in data
+
+    def test_double_deletion_request(self, auth_headers):
+        """Test requesting deletion twice"""
+        data = {
+            "password": "TestPassword123!",
+            "reason": "First request"
+        }
+        # First request
+        response1 = client.post(
+            "/api/v1/settings/account/delete",
+            json=data,
+            headers=auth_headers
+        )
+
+        # Second request - should fail
+        if response1.status_code in [200, 201]:
+            response2 = client.post(
+                "/api/v1/settings/account/delete",
+                json=data,
+                headers=auth_headers
+            )
+            assert response2.status_code == 400  # Already scheduled
 
 
 class TestSettingsSummary:
