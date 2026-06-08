@@ -125,7 +125,7 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
         </div>
       </div>
 
-      {/* ── Sinal de Entrada ────────────────────────────── */}
+      {/* ── Sinal técnico de entrada ────────────────────── */}
       {asset.entry_signal && asset.entry_signal !== "SEM DADOS" && entry && (
         <div className={cn("rounded-xl px-4 py-3 mb-4 border backdrop-blur-sm transition-all group-hover:shadow-glow", entry.bg, entry.border)}>
           <div className="flex items-center justify-between gap-3 mb-1.5">
@@ -156,6 +156,9 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
           {asset.entry_rationale && !tech?.rsi_14_weekly && (
             <p className="text-[10px] text-text-muted leading-tight truncate">{asset.entry_rationale}</p>
           )}
+          <p className="text-[10px] text-text-muted/70 mt-1.5 leading-tight">
+            Sinal tecnico. Nao constitui recomendacao de investimento. CVM Of-Circ 04/2023.
+          </p>
         </div>
       )}
 
@@ -218,7 +221,7 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
 
       {/* ── Kelly Criterion ─────────────────────────────── */}
       {kelly?.kelly_half != null && (
-        <Tooltip content="Recomendação de alavancagem via Kelly Criterion: f* = (b·p - q)/b. Sem histórico real, p e b são heurísticas." side="top" delay={300}>
+        <Tooltip content="Sugestão de alavancagem pelo modelo Kelly Criterion: f* = (b·p - q)/b. Sem histórico real, p e b são heurísticas." side="top" delay={300}>
           <div className="rounded-lg bg-surface-2 px-3 py-2 mb-3 flex items-center justify-between">
             <div>
               <p className="text-[10px] text-text-muted mb-0.5 flex items-center gap-1.5">
@@ -264,10 +267,10 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
       )}
 
       {/* ── Leverage + Risk badges ───────────────────────── */}
-      <Tooltip content="Alavancagem recomendada pelo Kelly Criterion baseada no histórico" side="top" delay={300}>
+      <Tooltip content="Alavancagem sugerida pelo modelo Kelly Criterion com base no histórico" side="top" delay={300}>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs text-text-muted mb-0.5">Alavancagem Recomendada</p>
+            <p className="text-xs text-text-muted mb-0.5">Alavancagem sugerida pelo modelo</p>
             <span className="text-base font-bold text-warning font-mono">
               {asset.recommended_leverage.toFixed(2)}x
             </span>

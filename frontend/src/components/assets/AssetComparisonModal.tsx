@@ -56,11 +56,11 @@ export default function AssetComparisonModal({
       "Score Qualidade",
       "Score Oportunidade",
       "Score Composto",
-      "Sinal de Entrada",
+      "Sinal tecnico de entrada",
       "RSI Semanal",
       "Dividend Yield",
       "Beta",
-      "Alavancagem Recomendada",
+      "Alavancagem sugerida pelo modelo",
     ];
 
     const rows = sortedAssets.map((asset) => [
@@ -138,7 +138,7 @@ export default function AssetComparisonModal({
                     Composto
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
-                    Sinal de Entrada
+                    Sinal técnico de entrada
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
                     RSI Semanal
@@ -147,7 +147,7 @@ export default function AssetComparisonModal({
                     Dividend Yield
                   </th>
                   <th className="text-left text-text-muted font-semibold py-3 px-3 whitespace-nowrap">
-                    Alavancagem Recomendada
+                    Alavancagem sugerida pelo modelo
                   </th>
                 </tr>
               </thead>
