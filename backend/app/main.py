@@ -9,6 +9,7 @@ from app.api.v1 import notifications
 from app.api.v1 import news
 from app.api.v1 import settings
 from app.api.v1 import analytics
+from app.api.v1 import preferences
 
 app = FastAPI(
     title="Leveraged Buy & Hold — Sistema Quantitativo",
@@ -53,11 +54,28 @@ def run_migrations():  # noqa: C901
                     body TEXT NOT NULL,
                     url VARCHAR(500),
                     read BOOLEAN NOT NULL DEFAULT FALSE,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
+                    status VARCHAR(50) NOT NULL DEFAULT 'sent',
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    delivered_at TIMESTAMPTZ
                 )
             """))
             conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS ix_notifications_user_id ON notifications(user_id)
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_notifications_user_created ON notifications(user_id, created_at)
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS ix_notifications_user_status ON notifications(user_id, status)
+            """))
+            # Add new columns to existing notifications table if they don't exist
+            conn.execute(text("""
+                ALTER TABLE notifications
+                ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'sent'
+            """))
+            conn.execute(text("""
+                ALTER TABLE notifications
+                ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ
             """))
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -71,6 +89,11 @@ def run_migrations():  # noqa: C901
             """))
             conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS ix_push_subscriptions_user_id ON push_subscriptions(user_id)
+            """))
+            # Add email_frequency column to preferences_settings if it doesn't exist
+            conn.execute(text("""
+                ALTER TABLE preferences_settings
+                ADD COLUMN IF NOT EXISTS email_frequency VARCHAR(50) DEFAULT 'daily'
             """))
             conn.commit()
     except Exception:
@@ -112,6 +135,7 @@ app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(news.router, prefix="/api/v1")
 app.include_router(settings.router)
 app.include_router(analytics.router, prefix="/api/v1")
+app.include_router(preferences.router, prefix="/api")
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def health():

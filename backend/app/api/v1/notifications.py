@@ -1,16 +1,17 @@
-"""Notification endpoints — in-app + push subscriptions"""
+"""Notification endpoints — in-app + push subscriptions + queue management"""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, and_
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.core.database import get_db
 from app.core.security import get_current_user_or_demo as get_current_user
 from app.models.user import User
-from app.models.notification import Notification, NotificationType, PushSubscription
+from app.models.notification import Notification, NotificationType, NotificationStatus, PushSubscription
+from app.models.user_settings import PreferencesSettings, EmailFrequency
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -24,7 +25,30 @@ class NotificationOut(BaseModel):
     body: str
     url: Optional[str] = None
     read: bool
+    status: str
     created_at: datetime
+    delivered_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationQueueIn(BaseModel):
+    """Request to queue a notification for batch delivery"""
+    type: NotificationType
+    title: str
+    body: str
+    url: Optional[str] = None
+    send_immediate: bool = False  # Override queue, send immediately
+    batch_id: Optional[str] = None  # Optional batch grouping
+
+
+class NotificationDigestOut(BaseModel):
+    """Digest response with grouped notifications"""
+    date: datetime
+    count: int
+    by_type: dict  # {"price_alert": 5, "news": 3, ...}
+    notifications: List[NotificationOut]
 
     class Config:
         from_attributes = True
@@ -144,6 +168,126 @@ def unsubscribe_push(
     return {"ok": True}
 
 
+# ── Queue Management ──────────────────────────────────────────────────────
+
+@router.post("/queue", response_model=NotificationOut)
+def queue_notification(
+    payload: NotificationQueueIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Queue a notification for batch delivery or send immediately.
+
+    - If send_immediate=True, notification is sent immediately (status=sent)
+    - Otherwise, queued notification will be batched and sent based on user's
+      email_frequency preference (immediate/daily/weekly)
+    """
+    # Get user preferences to determine send behavior
+    prefs = db.query(PreferencesSettings).filter(
+        PreferencesSettings.user_id == current_user.id
+    ).first()
+
+    # Determine initial status
+    if payload.send_immediate or (prefs and prefs.email_frequency == EmailFrequency.immediate):
+        status = NotificationStatus.sent
+        delivered_at = datetime.utcnow()
+    else:
+        status = NotificationStatus.queued
+        delivered_at = None
+
+    n = Notification(
+        user_id=current_user.id,
+        type=payload.type,
+        title=payload.title,
+        body=payload.body,
+        url=payload.url,
+        status=status,
+        delivered_at=delivered_at,
+    )
+    db.add(n)
+    db.commit()
+    db.refresh(n)
+    return n
+
+
+@router.get("/digest", response_model=NotificationDigestOut)
+def get_notification_digest(
+    days: int = Query(1, ge=1, le=30, description="Number of days to include in digest"),
+    notification_type: Optional[NotificationType] = Query(None, description="Filter by type"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get a digest of notifications from the past N days.
+    Useful for daily/weekly digest emails.
+
+    Returns notifications grouped by type with aggregated stats.
+    """
+    cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+    # Build query
+    q = db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.created_at >= cutoff_date,
+    )
+
+    if notification_type:
+        q = q.filter(Notification.type == notification_type)
+
+    notifications = q.order_by(desc(Notification.created_at)).all()
+
+    # Group by type
+    by_type = {}
+    for notif in notifications:
+        type_str = notif.type.value
+        by_type[type_str] = by_type.get(type_str, 0) + 1
+
+    return NotificationDigestOut(
+        date=datetime.utcnow(),
+        count=len(notifications),
+        by_type=by_type,
+        notifications=notifications,
+    )
+
+
+# ── Preferences (Email Frequency) ─────────────────────────────────────────
+
+@router.put("/preferences/email-frequency")
+def update_email_frequency(
+    frequency: EmailFrequency = Query(..., description="Email frequency: immediate, daily, weekly, or never"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update user's email notification frequency preference.
+
+    - immediate: Send email notifications immediately
+    - daily: Group notifications into daily digest emails
+    - weekly: Group notifications into weekly digest emails
+    - never: Disable email notifications entirely
+    """
+    prefs = db.query(PreferencesSettings).filter(
+        PreferencesSettings.user_id == current_user.id
+    ).first()
+
+    if not prefs:
+        # Create if doesn't exist
+        prefs = PreferencesSettings(user_id=current_user.id)
+        db.add(prefs)
+
+    prefs.email_frequency = frequency
+    prefs.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(prefs)
+
+    return {
+        "success": True,
+        "email_frequency": frequency.value,
+        "message": f"Email frequency set to {frequency.value}"
+    }
+
+
 # ── Internal helper (used by other modules to create notifications) ────────
 
 def create_notification(
@@ -153,13 +297,36 @@ def create_notification(
     title: str,
     body: str,
     url: Optional[str] = None,
+    send_immediately: bool = True,
 ) -> Notification:
+    """
+    Create a notification for a user.
+
+    Args:
+        db: Database session
+        user_id: Target user ID
+        type: NotificationType enum
+        title: Notification title
+        body: Notification body/message
+        url: Optional deep link
+        send_immediately: If True, send immediately (default). If False, queue based on preferences.
+    """
+    # Determine status based on send_immediately flag
+    if send_immediately:
+        status = NotificationStatus.sent
+        delivered_at = datetime.utcnow()
+    else:
+        status = NotificationStatus.queued
+        delivered_at = None
+
     n = Notification(
         user_id=user_id,
         type=type,
         title=title,
         body=body,
         url=url,
+        status=status,
+        delivered_at=delivered_at,
     )
     db.add(n)
     db.commit()

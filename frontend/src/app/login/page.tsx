@@ -69,7 +69,8 @@ export default function LoginPage() {
             </div>
             <span className="text-xl font-semibold text-text-primary">LBH System</span>
           </div>
-          <p className="text-text-secondary text-sm">Buy &amp; Hold Alavancado Adaptativo</p>
+          <p className="text-text-secondary text-sm">Simulador educacional de Buy &amp; Hold Alavancado Adaptativo</p>
+          <p className="text-[10px] text-text-muted/70 mt-1">Conteúdo educacional. Não constitui recomendação de investimento. CVM Of-Circ 04/2023.</p>
         </div>
 
         <div className="card">

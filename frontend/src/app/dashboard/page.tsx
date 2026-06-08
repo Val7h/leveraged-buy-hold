@@ -118,7 +118,7 @@ export default function DashboardPage() {
             </h1>
             <p className="text-sm text-text-secondary mt-0.5">
               Perfil: <span className="text-primary font-medium">{riskProfileLabel(user?.riskProfile || "balanced")}</span>
-              {" "}· Buy &amp; Hold Alavancado Adaptativo
+              {" "}· Simulador Buy &amp; Hold Alavancado Adaptativo
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -184,6 +184,9 @@ export default function DashboardPage() {
                 ))}
               </div>
             )}
+            <p className="text-[10px] text-text-muted/70 mt-3 leading-tight">
+              Sinal técnico do modelo. Não constitui recomendação de investimento. CVM Of-Circ 04/2023.
+            </p>
           </div>
         )}
 
@@ -196,8 +199,8 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm font-semibold text-text-primary">Nenhuma oportunidade ativa</p>
               <p className="text-xs text-text-muted">
-                {awaiting.length} ativo{awaiting.length !== 1 ? "s" : ""} aguardando recuo
-                {avoid.length > 0 && ` · ${avoid.length} a evitar`}
+                {awaiting.length} ativo{awaiting.length !== 1 ? "s" : ""} em cenário neutro
+                {avoid.length > 0 && ` · ${avoid.length} em cenário desfavorável`}
                 {" "}· watchlist monitorada
               </p>
             </div>
@@ -286,7 +289,7 @@ export default function DashboardPage() {
                       ))}
                     </div>
                     <p className="text-[10px] text-text-muted mt-2 leading-tight">
-                      Posições de rotação — monitorar sinal de entrada. Vender quando EVITAR.
+                      Posições de rotação — modelo monitora o sinal técnico. Cenário DESFAVORÁVEL sugere remoção da simulação.
                     </p>
                   </div>
                 )}
@@ -319,7 +322,7 @@ export default function DashboardPage() {
                       ))}
                     </div>
                     <p className="text-[10px] text-text-muted mt-2 leading-tight">
-                      Posições base permanentes — nunca vender, apenas adicionar em quedas.
+                      Posições base permanentes da simulação — modelo não sugere remoção, apenas aporte adicional em quedas.
                     </p>
                   </div>
                 )}

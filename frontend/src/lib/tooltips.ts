@@ -35,12 +35,12 @@ export const TOOLTIPS = {
   "monte-carlo": "Simula 1.000 cenários futuros com volatilidade e correlações históricas",
   "confidence-95": "Faixa de valores esperados com 95% de confiança",
 
-  // Alerts
-  "price-alert": "Alerta quando o preço atinge um nível definido",
-  "rsi-alert": "Alerta quando RSI semanal cruza valores críticos (entrada/saída)",
-  "signal-alert": "Alerta quando o modelo identifica novo cenário de OPORTUNIDADE",
-  "score-alert": "Alerta quando o score do ativo atinge um nível mínimo",
-  "drawdown-alert": "Alerta quando a queda acumulada excede um limite",
+  // Alerts (técnicos — não constituem recomendação de investimento)
+  "price-alert": "Alerta técnico quando o preço atinge um nível definido pelo usuário",
+  "rsi-alert": "Alerta técnico quando RSI semanal cruza valores definidos pelo usuário",
+  "signal-alert": "Alerta técnico quando o modelo identifica novo cenário de OPORTUNIDADE (não é recomendação de compra)",
+  "score-alert": "Alerta técnico quando o score do ativo atinge um nível mínimo",
+  "drawdown-alert": "Alerta técnico quando a queda acumulada excede um limite definido pelo usuário",
 
   // Positions
   "leverage-recommendation": "Alavancagem sugerida pelo modelo Kelly Criterion (heurística estatística — não é recomendação operacional)",

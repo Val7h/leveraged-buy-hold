@@ -98,6 +98,14 @@ class SecuritySettings(Base):
     user = relationship("User", back_populates="security_settings")
 
 
+class EmailFrequency(str, enum.Enum):
+    """Email notification frequency options"""
+    immediate = "immediate"  # Send immediately
+    daily = "daily"          # Daily digest
+    weekly = "weekly"        # Weekly digest
+    never = "never"          # Disable email notifications
+
+
 class PreferencesSettings(Base):
     """User preferences for notifications and general settings"""
     __tablename__ = "preferences_settings"
@@ -110,6 +118,9 @@ class PreferencesSettings(Base):
     push_notifications = Column(Boolean, default=True)
     sms_alerts = Column(Boolean, default=False)
     marketing_emails = Column(Boolean, default=False)
+
+    # Email frequency preference
+    email_frequency = Column(Enum(EmailFrequency, native_enum=False), default=EmailFrequency.daily)
 
     # Daily digest preferences
     daily_digest = Column(Boolean, default=False)

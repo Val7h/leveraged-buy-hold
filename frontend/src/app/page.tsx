@@ -80,8 +80,8 @@ export default function Home() {
             <span className="text-primary">inteligente e controlada</span>
           </h1>
           <p className="text-lg text-text-secondary mb-8 max-w-xl mx-auto leading-relaxed">
-            Backtest quantitativo, sinais automáticos e gestão de risco adaptativa.
-            Tudo que você precisa para operar a estratégia Buy & Hold Alavancado.
+            Backtest quantitativo, alertas técnicos automáticos e gestão de risco adaptativa.
+            Tudo que você precisa para estudar a estratégia Buy & Hold Alavancado.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-12">
             <Link
@@ -107,14 +107,14 @@ export default function Home() {
       <section className="py-16 px-4 sm:px-6 bg-surface border-y border-border">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl font-bold text-center text-text-primary mb-10">
-            Tudo que você precisa para operar com disciplina
+            Tudo que você precisa para estudar a estratégia com disciplina
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { icon: FlaskConical, title: "Backtest Profissional", desc: "Histórico de até 20 anos com Sharpe, Drawdown e CAGR." },
               { icon: TrendingUp, title: "Alavancagem Adaptativa", desc: "Ajuste automático baseado em condições de mercado." },
               { icon: BarChart3, title: "Monte Carlo", desc: "Simule milhares de cenários para medir risco real." },
-              { icon: Zap, title: "Sinais em Tempo Real", desc: "Alertas de entrada e saída via email e painel." },
+              { icon: Zap, title: "Alertas Técnicos em Tempo Real", desc: "Alertas técnicos do modelo via email e painel. Não constituem recomendação de investimento." },
             ].map(({ icon: Icon, title, desc }, i) => (
               <div key={i} className="p-5 rounded-xl bg-background border border-border hover:border-primary/30 transition-colors">
                 <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center mb-3">

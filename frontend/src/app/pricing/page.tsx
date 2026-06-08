@@ -2,336 +2,309 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, X, ShieldCheck, TrendingUp, BarChart3, FlaskConical, Zap } from 'lucide-react';
-import CheckoutForm from '@/components/CheckoutForm';
-import { Elements } from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
+import {
+  ShieldCheck,
+  TrendingUp,
+  BarChart3,
+  FlaskConical,
+  Zap,
+  Check,
+  X,
+} from 'lucide-react';
+import BillingToggle, { type BillingPeriod } from '@/components/pricing/BillingToggle';
+import TierCard, { type TierFeature } from '@/components/pricing/TierCard';
+import FeatureTable from '@/components/pricing/FeatureTable';
+import FAQ from '@/components/pricing/FAQ';
 
-const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
-);
+const trustChips = [
+  { icon: Check, label: 'Trial Pro de 14 dias sem cartão' },
+  { icon: Check, label: 'Cancele quando quiser' },
+  { icon: Check, label: 'Cobrança em reais com NF emitida' },
+];
 
-const pricingTiers = [
+const valueProps = [
   {
-    name: 'Gratuito',
-    price: 'R$ 0',
-    period: '/mês',
-    description: 'Para começar a explorar a estratégia LBH',
-    cta: 'Criar conta grátis',
-    highlight: false,
-    features: [
-      { text: 'Screening de até 5 ativos/mês', included: true },
-      { text: '1 backtest (histórico de 5 anos)', included: true },
-      { text: '1 carteira', included: true },
-      { text: 'Suporte pela comunidade', included: true },
-      { text: 'Exportação CSV básica', included: true },
-      { text: 'Screening ilimitado', included: false },
-      { text: 'Análise Monte Carlo', included: false },
-      { text: 'Suporte por email', included: false },
-      { text: 'Relatórios em PDF', included: false },
-      { text: 'Acesso à API', included: false },
-    ],
+    icon: FlaskConical,
+    title: 'Backtest quantitativo',
+    desc: 'Avalie a estratégia em 20+ anos de histórico com Sharpe, Drawdown e CAGR.',
   },
   {
-    name: 'Pro',
-    price: 'R$ 39',
-    period: '/mês',
-    description: 'Para investidores ativos com estratégia quantitativa',
-    cta: 'Testar grátis por 14 dias',
-    highlight: true,
-    features: [
-      { text: 'Screening ilimitado de ativos', included: true },
-      { text: '10 backtests/mês (histórico de 20 anos)', included: true },
-      { text: '5 carteiras', included: true },
-      { text: 'Alertas de preço e valor (até 20)', included: true },
-      { text: 'Simulação Monte Carlo', included: true },
-      { text: 'Relatórios em PDF', included: true },
-      { text: 'Suporte por email (resp. em 24h)', included: true },
-      { text: 'Sem anúncios', included: true },
-      { text: 'Acesso à API REST', included: false },
-      { text: 'Marca branca', included: false },
-    ],
+    icon: TrendingUp,
+    title: 'Alavancagem adaptativa',
+    desc: 'Sinais que ajustam a exposição ao mercado de acordo com indicadores objetivos.',
   },
   {
-    name: 'Trader',
-    price: 'R$ 89',
-    period: '/mês',
-    description: 'Para traders quantitativos que precisam de mais escala',
-    cta: 'Testar grátis por 14 dias',
-    highlight: false,
-    features: [
-      { text: 'Tudo do Pro incluído', included: true },
-      { text: 'Backtests ilimitados (histórico de 20 anos)', included: true },
-      { text: '20 carteiras', included: true },
-      { text: 'Alertas ilimitados (até 100)', included: true },
-      { text: 'Simulação Monte Carlo avançada', included: true },
-      { text: 'Relatórios em PDF customizados', included: true },
-      { text: 'Suporte prioritário (resp. em 4h)', included: true },
-      { text: 'Webhooks de sinais', included: true },
-      { text: 'Acesso à API REST', included: false },
-      { text: 'Marca branca', included: false },
-    ],
+    icon: BarChart3,
+    title: 'Comparação de cenários',
+    desc: 'Confronte estratégias lado a lado e visualize a diferença nas curvas de capital.',
   },
   {
-    name: 'Enterprise',
-    price: 'Sob consulta',
-    period: '',
-    description: 'Para assessores e gestoras profissionais',
-    cta: 'Falar com vendas',
-    highlight: false,
-    features: [
-      { text: 'Tudo do plano Pro incluído', included: true },
-      { text: 'Backtests ilimitados (histórico total)', included: true },
-      { text: 'Carteiras e pastas ilimitadas', included: true },
-      { text: 'Alertas ilimitados (100+)', included: true },
-      { text: 'Marca branca e personalização', included: true },
-      { text: 'Acesso completo à API REST', included: true },
-      { text: 'Webhooks e integrações', included: true },
-      { text: 'Gerente de conta dedicado', included: true },
-      { text: 'Suporte via Slack e telefone', included: true },
-      { text: 'SLA de 99,9% de disponibilidade', included: true },
-    ],
+    icon: Zap,
+    title: 'Sinais com alertas',
+    desc: 'Classificações Oportunidade · Neutro · Desfavorável entregues por email ou WhatsApp.',
   },
 ];
 
-const features = [
-  { icon: FlaskConical, title: 'Backtest Quantitativo', desc: 'Teste sua estratégia em até 20 anos de dados históricos com métricas profissionais (Sharpe, Drawdown, CAGR).' },
-  { icon: TrendingUp, title: 'Alavancagem Adaptativa', desc: 'Algoritmo que ajusta automaticamente o nível de alavancagem com base nas condições de mercado.' },
-  { icon: BarChart3, title: 'Monte Carlo', desc: 'Simule milhares de cenários futuros para entender o risco real da sua carteira.' },
-  { icon: Zap, title: 'Sinais em Tempo Real', desc: 'Alertas automáticos de entrada e saída com base nos indicadores quantitativos da estratégia.' },
+const freeFeatures: TierFeature[] = [
+  { text: '1 estratégia salva', highlight: true },
+  { text: '1 ativo monitorado' },
+  { text: 'Backtest com histórico de 5 anos' },
+  { text: 'Visualização dos sinais quantitativos' },
+  { text: 'Suporte pela comunidade' },
 ];
 
-const faqItems = [
-  {
-    question: 'Como funciona o período de teste grátis?',
-    answer: 'Ao assinar o Pro, você tem 14 dias de acesso completo a todas as funcionalidades sem nenhuma cobrança. O cartão é solicitado no cadastro, mas só é debitado a partir do 15º dia. Cancele a qualquer momento antes disso sem custo.',
-  },
-  {
-    question: 'Por que R$ 39 por mês?',
-    answer: 'O valor foi calibrado contra o mercado brasileiro de research/análise: Status Invest cobra R$ 29 (apenas dados), TradeMap R$ 39 (dados + comunidade), Suno R$ 79 (relatórios manuais). O LBH é o único que inclui backtest quantitativo com simulação Monte Carlo e alavancagem adaptativa por esse preço — funcionalidades que em Bloomberg/Refinitiv custam milhares de USD/mês. Para quem precisa de mais carteiras e alertas, o plano Trader (R$ 89) entrega backtests ilimitados.',
-  },
-  {
-    question: 'Posso cancelar a qualquer momento?',
-    answer: 'Sim, sem burocracia. Cancele diretamente no painel de configurações da sua conta. Se cancelar antes do 15º dia, não há cobrança. Assinantes pagos mantêm acesso até o fim do ciclo atual.',
-  },
-  {
-    question: 'O sistema funciona com qualquer corretora?',
-    answer: 'O LBH System é uma plataforma de análise e sinais — você executa as operações na sua corretora preferida. Funciona com qualquer corretora que ofereça alavancagem (ex: corretoras internacionais com acesso a ETFs alavancados).',
-  },
-  {
-    question: 'Quais formas de pagamento são aceitas?',
-    answer: 'Aceitamos cartões de crédito e débito (Visa, Mastercard, Amex) via Stripe. O pagamento é seguro, criptografado e certificado PCI DSS.',
-  },
-  {
-    question: 'O que acontece se meu pagamento falhar?',
-    answer: 'Tentamos automaticamente por 3 dias. Se o pagamento não for processado, você recebe um email para atualizar os dados. Há um período de carência antes de perder o acesso Pro.',
-  },
-  {
-    question: 'Vocês oferecem reembolso?',
-    answer: 'Sim. Se cancelar em até 7 dias após a primeira cobrança, reembolsamos integralmente. Após esse período, não há reembolso — mas você pode cancelar a renovação.',
-  },
-  {
-    question: 'Posso fazer upgrade ou downgrade do plano?',
-    answer: 'Sim, a qualquer momento. Upgrades são cobrados proporcionalmente. Downgrades entram em vigor no próximo ciclo de cobrança.',
-  },
+const proFeatures: TierFeature[] = [
+  { text: '10 estratégias salvas', highlight: true },
+  { text: 'Ativos ilimitados por estratégia' },
+  { text: 'Backtest com 20+ anos de histórico' },
+  { text: 'Alertas de sinais por email' },
+  { text: 'Comparação entre estratégias' },
+  { text: 'Suporte por email' },
+  { text: 'Nota fiscal emitida' },
+];
+
+const premiumFeatures: TierFeature[] = [
+  { text: 'Tudo do Pro, sem limites', highlight: true },
+  { text: 'Estratégias e carteiras ilimitadas' },
+  { text: 'Alertas por WhatsApp' },
+  { text: 'Paper trading integrado' },
+  { text: 'Exportação de relatórios PDF' },
+  { text: 'Chave de API REST' },
+  { text: 'Suporte prioritário em até 4h' },
 ];
 
 export default function PricingPage() {
   const router = useRouter();
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
-  const [showCheckout, setShowCheckout] = useState(false);
+  const [period, setPeriod] = useState<BillingPeriod>('yearly');
+  const [comingSoon, setComingSoon] = useState<null | 'pro' | 'premium'>(null);
 
-  const [checkoutTier, setCheckoutTier] = useState<'pro' | 'trader'>('pro');
+  const handleUpgrade = async (tier: 'pro' | 'premium') => {
+    try {
+      const res = await fetch(`/api/v1/billing/upgrade?tier=${tier}`, {
+        method: 'POST',
+        credentials: 'include',
+      });
 
-  const handleCTA = (tierName: string) => {
-    if (tierName === 'Gratuito') {
-      router.push('/login');
-    } else if (tierName === 'Pro') {
-      setCheckoutTier('pro');
-      setShowCheckout(true);
-    } else if (tierName === 'Trader') {
-      setCheckoutTier('trader');
-      setShowCheckout(true);
-    } else {
-      window.location.href = 'mailto:contato@lbhsystem.com?subject=Plano%20Enterprise';
+      if (res.status === 401) {
+        router.push(`/login?next=/pricing`);
+        return;
+      }
+
+      if (res.status === 501 || !res.ok) {
+        setComingSoon(tier);
+        return;
+      }
+
+      const data = await res.json().catch(() => null);
+      if (data?.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
+      setComingSoon(tier);
+    } catch {
+      setComingSoon(tier);
     }
   };
 
   return (
-    <>
-      {/* Checkout Modal */}
-      {showCheckout && (
+    <div className="min-h-screen bg-background text-text-primary">
+      {/* Coming-soon modal */}
+      {comingSoon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-surface border border-border rounded-xl shadow-2xl max-w-md w-full relative">
+          <div className="bg-surface border border-border rounded-2xl shadow-2xl max-w-md w-full relative p-6 sm:p-7">
             <button
-              onClick={() => setShowCheckout(false)}
+              onClick={() => setComingSoon(null)}
               className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-surface-2 text-text-muted hover:text-text-primary transition-colors"
               aria-label="Fechar"
             >
               <X size={16} />
             </button>
-            <div className="p-6">
-              <Elements stripe={stripePromise}>
-                <CheckoutForm tier={checkoutTier} />
-              </Elements>
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
+              <Zap size={18} className="text-primary" />
+            </div>
+            <h3 className="text-lg font-bold text-text-primary mb-2">
+              Checkout em breve
+            </h3>
+            <p className="text-sm text-text-secondary leading-relaxed mb-5">
+              O upgrade para o plano{' '}
+              <strong className="text-text-primary">
+                {comingSoon === 'pro' ? 'Pro' : 'Premium'}
+              </strong>{' '}
+              está em finalização. Deixe seu email no painel para ser avisado
+              assim que a cobrança em reais for liberada.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setComingSoon(null)}
+                className="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold bg-surface-2 text-text-primary border border-border hover:bg-background transition-colors"
+              >
+                Fechar
+              </button>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold bg-primary text-background hover:bg-primary/90 transition-colors"
+              >
+                Ir ao painel
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="min-h-screen bg-background text-text-primary">
-
-        {/* Hero */}
-        <section className="py-20 px-4 sm:px-6 lg:px-8 text-center border-b border-border">
-          <div className="max-w-3xl mx-auto">
-            <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 text-xs text-primary font-medium mb-6">
-              <ShieldCheck size={13} /> Plataforma quantitativa para investidor brasileiro
-            </div>
-            <h1 className="text-4xl sm:text-5xl font-bold text-text-primary mb-4 leading-tight">
-              Preços simples e<br />transparentes
-            </h1>
-            <p className="text-lg text-text-secondary mb-8">
-              Comece gratuitamente. Faça upgrade quando precisar de mais poder.
-            </p>
-            <div className="flex flex-wrap justify-center gap-6 text-sm text-text-secondary">
-              <span className="flex items-center gap-1.5"><Check size={14} className="text-success" /> 14 dias grátis no Pro</span>
-              <span className="flex items-center gap-1.5"><Check size={14} className="text-success" /> Cancele quando quiser</span>
-              <span className="flex items-center gap-1.5"><Check size={14} className="text-success" /> Pagamento seguro via Stripe</span>
-            </div>
+      {/* Hero */}
+      <section className="pt-20 pb-12 px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 text-xs text-primary font-medium mb-6">
+            <ShieldCheck size={13} /> Plataforma quantitativa para o investidor
+            brasileiro
           </div>
-        </section>
-
-        {/* Pricing Cards */}
-        <section className="py-16 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {pricingTiers.map((tier, idx) => (
-                <div
-                  key={idx}
-                  className={`relative rounded-xl flex flex-col transition-all duration-200 ${
-                    tier.highlight
-                      ? 'ring-2 ring-primary bg-surface shadow-xl shadow-primary/10'
-                      : 'bg-surface border border-border hover:border-border/80'
-                  }`}
-                >
-                  {tier.highlight && (
-                    <div className="absolute -top-3.5 left-0 right-0 flex justify-center">
-                      <span className="bg-primary text-background px-3 py-1 rounded-full text-xs font-bold">
-                        Mais popular
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="p-6 flex-1">
-                    <h3 className="text-lg font-bold text-text-primary mb-1">{tier.name}</h3>
-                    <p className="text-xs text-text-muted mb-5 min-h-[2.5rem]">{tier.description}</p>
-
-                    <div className="mb-6">
-                      <span className="text-4xl font-bold text-text-primary">{tier.price}</span>
-                      <span className="text-text-muted text-sm ml-1">{tier.period}</span>
-                    </div>
-
-                    <button
-                      onClick={() => handleCTA(tier.name)}
-                      className={`w-full py-2.5 px-4 rounded-lg font-semibold text-sm transition-all mb-6 ${
-                        tier.highlight
-                          ? 'bg-primary text-background hover:bg-primary/90 active:scale-[0.98]'
-                          : 'bg-surface-2 text-text-primary hover:bg-surface border border-border'
-                      }`}
-                    >
-                      {tier.cta}
-                    </button>
-
-                    <ul className="space-y-2.5">
-                      {tier.features.map((f, fi) => (
-                        <li key={fi} className="flex items-start gap-2.5 text-xs">
-                          {f.included
-                            ? <Check className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
-                            : <X className="w-4 h-4 text-text-muted flex-shrink-0 mt-0.5 opacity-40" />}
-                          <span className={f.included ? 'text-text-secondary' : 'text-text-muted opacity-50 line-through'}>
-                            {f.text}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-text-primary mb-5 leading-[1.1] tracking-tight">
+            Comece grátis.
+            <br />
+            <span className="text-primary">Atualize quando precisar.</span>
+          </h1>
+          <p className="text-base sm:text-lg text-text-secondary mb-8 max-w-2xl mx-auto leading-relaxed">
+            Backtest, comparação de estratégias e sinais quantitativos em reais
+            — com cobrança transparente e cancelamento em um clique.
+          </p>
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-text-secondary mb-10">
+            {trustChips.map(({ icon: Icon, label }, i) => (
+              <span key={i} className="flex items-center gap-1.5">
+                <Icon size={14} className="text-success" />
+                {label}
+              </span>
+            ))}
           </div>
-        </section>
 
-        {/* Features */}
-        <section className="py-16 px-4 sm:px-6 lg:px-8 bg-surface border-y border-border">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-center text-text-primary mb-10">
-              O que você obtém com o LBH System
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {features.map(({ icon: Icon, title, desc }, i) => (
-                <div key={i} className="flex gap-4 p-4 rounded-xl bg-background border border-border">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                    <Icon size={16} className="text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-text-primary mb-1">{title}</h3>
-                    <p className="text-xs text-text-secondary leading-relaxed">{desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <BillingToggle value={period} onChange={setPeriod} />
+        </div>
+      </section>
+
+      {/* Pricing cards */}
+      <section className="pb-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-5 lg:gap-7 pt-4">
+            <TierCard
+              name="Free"
+              tagline="Para conhecer a plataforma e validar a estratégia."
+              monthlyPrice={0}
+              yearlyPrice={0}
+              period={period}
+              features={freeFeatures}
+              ctaLabel="Começar grátis"
+              ctaSubtext="Sem cartão, sem prazo"
+              onCta={() => router.push('/login')}
+            />
+
+            <TierCard
+              name="Pro"
+              tagline="Para o investidor ativo que opera com método quantitativo."
+              monthlyPrice={59}
+              yearlyPrice={566}
+              period={period}
+              features={proFeatures}
+              ctaLabel="Iniciar trial de 14 dias"
+              trialBadge="14 dias grátis · sem cartão"
+              onCta={() => handleUpgrade('pro')}
+              highlight
+              badge="MAIS POPULAR"
+            />
+
+            <TierCard
+              name="Premium"
+              tagline="Para quem precisa de alertas em tempo real e integrações."
+              monthlyPrice={159}
+              yearlyPrice={1526}
+              period={period}
+              features={premiumFeatures}
+              ctaLabel="Iniciar trial de 14 dias"
+              ctaSubtext="Inclui WhatsApp e API"
+              onCta={() => handleUpgrade('premium')}
+            />
           </div>
-        </section>
 
-        {/* FAQ */}
-        <section className="py-16 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold text-text-primary text-center mb-8">Perguntas frequentes</h2>
-            <div className="space-y-2">
-              {faqItems.map((item, idx) => (
-                <div key={idx} className="border border-border rounded-xl overflow-hidden">
-                  <button
-                    onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
-                    className="w-full px-5 py-4 text-left text-sm font-medium text-text-primary hover:bg-surface-2 flex justify-between items-center transition-colors"
-                  >
-                    {item.question}
-                    <span className={`text-text-muted transition-transform duration-200 ${expandedFaq === idx ? 'rotate-180' : ''}`}>▾</span>
-                  </button>
-                  {expandedFaq === idx && (
-                    <div className="px-5 py-4 bg-surface border-t border-border text-sm text-text-secondary leading-relaxed">
-                      {item.answer}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+          <p className="text-center text-xs text-text-muted mt-8 max-w-xl mx-auto">
+            Preços em reais (BRL), com nota fiscal emitida. Os sinais
+            quantitativos são classificações objetivas (Oportunidade · Neutro ·
+            Desfavorável) e não constituem recomendação de investimento (Ofício-
+            Circular CVM nº 04/2023).
+          </p>
+        </div>
+      </section>
 
-        {/* CTA Bottom */}
-        <section className="py-16 px-4 sm:px-6 lg:px-8 bg-primary/5 border-t border-primary/10">
-          <div className="max-w-xl mx-auto text-center">
-            <h2 className="text-2xl font-bold text-text-primary mb-3">Pronto para começar?</h2>
-            <p className="text-text-secondary text-sm mb-6">
-              Crie sua conta gratuita ou experimente o Pro por 14 dias sem custo.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <button
-                onClick={() => router.push('/login')}
-                className="px-6 py-3 bg-surface border border-border text-text-primary rounded-lg font-semibold text-sm hover:bg-surface-2 transition-colors"
+      {/* Value props */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-surface border-y border-border">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-2xl sm:text-3xl font-bold text-center text-text-primary mb-3">
+            O que está incluído em todos os planos
+          </h2>
+          <p className="text-center text-text-secondary text-sm mb-10 max-w-xl mx-auto">
+            Mesmo no Free, você acessa a infraestrutura completa de dados e
+            análise — os planos pagos liberam volume e integrações.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {valueProps.map(({ icon: Icon, title, desc }, i) => (
+              <div
+                key={i}
+                className="p-5 rounded-xl bg-background border border-border hover:border-primary/30 transition-colors"
               >
-                Começar gratuitamente
-              </button>
-              <button
-                onClick={() => setShowCheckout(true)}
-                className="px-6 py-3 bg-primary text-background rounded-lg font-semibold text-sm hover:bg-primary/90 transition-colors"
-              >
-                Testar Pro — 14 dias grátis
-              </button>
-            </div>
+                <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center mb-3">
+                  <Icon size={18} className="text-primary" />
+                </div>
+                <h3 className="text-sm font-semibold text-text-primary mb-1.5">
+                  {title}
+                </h3>
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  {desc}
+                </p>
+              </div>
+            ))}
           </div>
-        </section>
-      </div>
-    </>
+        </div>
+      </section>
+
+      {/* Feature comparison */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <FeatureTable />
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-surface border-y border-border">
+        <FAQ />
+      </section>
+
+      {/* Final CTA */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4 tracking-tight">
+            Pronto para testar sua estratégia hoje?
+          </h2>
+          <p className="text-text-secondary text-base mb-8 max-w-xl mx-auto leading-relaxed">
+            Comece pelo Free para validar a plataforma — ou ative o trial de 14
+            dias do Pro e tenha acesso completo, sem precisar cadastrar cartão.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <button
+              onClick={() => router.push('/login')}
+              className="w-full sm:w-auto px-7 py-3.5 bg-surface border border-border text-text-primary rounded-xl font-semibold text-sm hover:bg-surface-2 transition-colors"
+            >
+              Começar grátis
+            </button>
+            <button
+              onClick={() => handleUpgrade('pro')}
+              className="w-full sm:w-auto px-7 py-3.5 bg-primary text-background rounded-xl font-semibold text-sm hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+            >
+              Iniciar trial Pro de 14 dias
+            </button>
+          </div>
+          <p className="text-xs text-text-muted mt-5">
+            Sem cartão de crédito · Cancele quando quiser · NF emitida
+          </p>
+        </div>
+      </section>
+    </div>
   );
 }

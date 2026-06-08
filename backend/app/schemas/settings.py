@@ -16,6 +16,14 @@ class TwoFAMethod(str, Enum):
     email = "email"
 
 
+class EmailFrequency(str, Enum):
+    """Email notification frequency options"""
+    immediate = "immediate"  # Send immediately
+    daily = "daily"          # Daily digest
+    weekly = "weekly"        # Weekly digest
+    never = "never"          # Disable email notifications
+
+
 # ==================== User Profile Schemas ====================
 
 class UpdateProfileRequest(BaseModel):
@@ -200,6 +208,7 @@ class UpdatePreferencesRequest(BaseModel):
     push_notifications: Optional[bool] = None
     sms_alerts: Optional[bool] = None
     marketing_emails: Optional[bool] = None
+    email_frequency: Optional[EmailFrequency] = None
     daily_digest: Optional[bool] = None
     daily_digest_time: Optional[str] = Field(None, regex=r"^\d{2}:\d{2}$")
     price_alerts: Optional[bool] = None
@@ -212,6 +221,7 @@ class UpdatePreferencesRequest(BaseModel):
             "example": {
                 "email_alerts": True,
                 "push_notifications": False,
+                "email_frequency": "daily",
                 "daily_digest": True,
                 "daily_digest_time": "09:00",
                 "allow_analytics": True
@@ -227,6 +237,7 @@ class PreferencesResponse(BaseModel):
     push_notifications: bool
     sms_alerts: bool
     marketing_emails: bool
+    email_frequency: EmailFrequency
     daily_digest: bool
     daily_digest_time: str
     price_alerts: bool

@@ -16,7 +16,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, verify_password, get_password_hash
 from app.models.user import User
 from app.models.user_settings import (
-    UserProfile, SecuritySettings, PreferencesSettings,
+    UserProfile, SecuritySettings, PreferencesSettings, EmailFrequency,
     APIKey, ActivityLog, UserSession, ActivityType
 )
 from app.schemas.settings import (
@@ -413,6 +413,8 @@ def update_preferences(
         prefs.sms_alerts = request.sms_alerts
     if request.marketing_emails is not None:
         prefs.marketing_emails = request.marketing_emails
+    if request.email_frequency is not None:
+        prefs.email_frequency = request.email_frequency
     if request.daily_digest is not None:
         prefs.daily_digest = request.daily_digest
     if request.daily_digest_time is not None:

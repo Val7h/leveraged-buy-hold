@@ -11,7 +11,7 @@ interface BacktestComparisonPanelProps {
 }
 
 const STRATEGY_LABELS: Record<string, string> = {
-  adaptive: "Adaptativo (SUA ESTRATÉGIA)",
+  adaptive: "Adaptativo (modelo do sistema)",
   buy_hold_1x: "B&H 1x (Baseline)",
   buy_hold_2x: "B&H 2x",
   sp500: "S&P 500 (Benchmark)",
@@ -62,12 +62,12 @@ export default function BacktestComparisonPanel({
   // Generate verdict
   const verdict =
     adaptiveWins === totalCategories
-      ? "Excelente — Adaptativo vence em TODOS os critérios"
+      ? "Cenário simulado mostra Adaptativo à frente em TODOS os critérios"
       : adaptiveWins >= totalCategories * 0.75
-        ? "Muito Bom — Adaptativo é superior"
+        ? "Cenário simulado mostra Adaptativo à frente na maioria dos critérios"
         : adaptiveWins >= totalCategories * 0.5
-          ? "Competitivo — Trade-off entre estratégias"
-          : "Considerar Alternativa — Outra estratégia pode ser melhor";
+          ? "Cenário simulado mostra trade-off entre estratégias"
+          : "Cenário simulado mostra outra estratégia à frente em vários critérios";
 
   const verdictColor =
     adaptiveWins === totalCategories
@@ -229,7 +229,7 @@ export default function BacktestComparisonPanel({
         <p className="text-xs font-bold text-primary uppercase mb-3">💡 Insights Principais</p>
         <div className="space-y-2 text-xs text-text-secondary">
           <p>
-            <strong>CAGR:</strong> Seu Adaptativo alcançou{" "}
+            <strong>CAGR:</strong> O modelo Adaptativo alcançou{" "}
             <span className="text-primary font-semibold">{adaptive.cagr_pct.toFixed(1)}%</span>
             {" "}vs{" "}
             <span className="font-semibold">{buyHold1x?.cagr_pct.toFixed(1)}%</span>
@@ -245,8 +245,8 @@ export default function BacktestComparisonPanel({
           <p>
             <strong>Risco/Retorno (Sharpe):</strong>{" "}
             {adaptive.sharpe_ratio > (buyHold2x?.sharpe_ratio || 0)
-              ? "Seu Adaptativo supera B&H 2x em qualidade de retorno ajustado"
-              : "Trade-off: maior leverage = maior retorno mas também maior drawdown"}
+              ? "O modelo Adaptativo supera B&H 2x em qualidade de retorno ajustado na simulação"
+              : "Trade-off observado: maior alavancagem associada a maior retorno e também a maior drawdown"}
           </p>
           <p>
             <strong>Proteção (Drawdown):</strong> Pior caso foi{" "}
@@ -259,17 +259,20 @@ export default function BacktestComparisonPanel({
         </div>
       </div>
 
-      {/* Recommendation */}
+      {/* Síntese técnica do modelo */}
       <div className="bg-success/10 border border-success/20 rounded-lg p-4">
-        <p className="text-xs font-bold text-success uppercase mb-2">✅ Recomendação</p>
+        <p className="text-xs font-bold text-success uppercase mb-2">Síntese do modelo</p>
         <p className="text-sm text-text-secondary">
           {adaptiveWins === totalCategories
-            ? "A estratégia Adaptativa é estatisticamente superior. Você pode avançar com confiança."
+            ? "No backtest simulado, a estratégia Adaptativa apresentou desempenho superior em todos os critérios analisados."
             : adaptiveWins >= totalCategories * 0.75
-              ? "A estratégia Adaptativa é sólida e recomendada para uso em produção."
+              ? "No backtest simulado, a estratégia Adaptativa apresentou desempenho consistente na maioria dos critérios."
               : adaptiveWins >= totalCategories * 0.5
-                ? "A estratégia é viável mas considere ajustes baseado nos dados de crises."
-                : "Considere revisar a estratégia ou testar diferentes parâmetros de alavancagem."}
+                ? "No backtest simulado, observa-se trade-off entre estratégias. Resultados passados não garantem resultados futuros."
+                : "No backtest simulado, outras estratégias apresentaram desempenho superior em vários critérios. Resultados passados não garantem resultados futuros."}
+        </p>
+        <p className="text-[10px] text-text-muted/70 mt-2 leading-tight">
+          Análise quantitativa do modelo. Não constitui recomendação de investimento. CVM Of-Circ 04/2023.
         </p>
       </div>
     </div>
