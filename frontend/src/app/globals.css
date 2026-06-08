@@ -6,6 +6,12 @@
 :root {
   --color-background: #080B0F;
   --color-surface: #0F1419;
+
+  /* Safe area insets for notched devices (iPhone X+, Android) */
+  --safe-area-inset-top: env(safe-area-inset-top, 0);
+  --safe-area-inset-right: env(safe-area-inset-right, 0);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0);
+  --safe-area-inset-left: env(safe-area-inset-left, 0);
 }
 
 * {
@@ -16,6 +22,8 @@
 
 html {
   scroll-behavior: smooth;
+  /* Use dynamic viewport height when available */
+  height: 100dvh;
 }
 
 body {
@@ -24,6 +32,20 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Prevent rubber-band scroll on iOS */
+  overscroll-behavior-y: none;
+
+  /* Improve touch performance on mobile */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection in content areas */
+input, textarea, .text-selectable {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 ::-webkit-scrollbar {
@@ -44,20 +66,53 @@ body {
     @apply bg-surface border border-border rounded-lg p-4;
   }
   .btn-primary {
-    @apply bg-primary text-background font-semibold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors;
+    @apply bg-primary text-background font-semibold px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors
+           active:bg-primary-dark min-h-11 touch-manipulation;
   }
   .btn-ghost {
-    @apply text-text-secondary hover:text-text-primary px-4 py-2 rounded-lg hover:bg-surface-2 transition-colors;
+    @apply text-text-secondary hover:text-text-primary px-4 py-2 rounded-lg hover:bg-surface-2 transition-colors
+           active:bg-surface-2 min-h-11 touch-manipulation;
   }
   .badge {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium;
   }
   .input {
-    @apply bg-surface-2 border border-border text-text-primary rounded-lg px-3 py-2 text-sm
+    @apply bg-surface-2 border border-border text-text-primary rounded-lg px-3 py-2 text-base
            focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary
-           placeholder:text-text-muted transition-colors w-full;
+           placeholder:text-text-muted transition-colors w-full
+           touch-manipulation;
   }
   .label {
     @apply text-xs font-medium text-text-secondary mb-1 block;
+  }
+
+  /* Mobile-specific utilities */
+  .touch-target {
+    @apply min-h-11 min-w-11 touch-manipulation;
+  }
+
+  .safe-area-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+
+  .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .safe-area-left {
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+
+  .safe-area-right {
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  /* Prevent zoom on input focus (iOS) */
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="password"],
+  textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
   }
 }
