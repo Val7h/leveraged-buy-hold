@@ -17,25 +17,40 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Auth real agora usa cookie httpOnly (não localStorage).
     // Limpa tokens legados e checa identidade via /me.
-    localStorage.removeItem("access_token");
+    try {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user");
+      localStorage.removeItem("auth-store");
+    } catch { /* ignore */ }
 
     let cancelled = false;
-    fetch("/api/v1/auth/me", { credentials: "include" })
+    // Timeout duro de 4s: evita travamento se /me nao responder.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    fetch("/api/v1/auth/me", {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then((r) => {
+        clearTimeout(timeoutId);
         if (cancelled) return;
         if (!r.ok) {
           router.replace("/login");
           return;
         }
-        // Atualiza o store local com os dados do user autenticado.
         if (!user) fetchMe();
       })
       .catch(() => {
+        clearTimeout(timeoutId);
         if (!cancelled) router.replace("/login");
       });
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
+      controller.abort();
     };
   }, []);
 

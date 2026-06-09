@@ -19,8 +19,18 @@ export default function Home() {
     } catch { /* SSR ou storage bloqueado */ }
 
     let cancelled = false;
-    fetch("/api/v1/auth/me", { credentials: "include" })
+    // Timeout duro de 4s: se /me nao responder, assume "deslogado" e mostra landing.
+    // Evita spinner infinito quando Render esta com cold start ou ha problema de rede.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    fetch("/api/v1/auth/me", {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then((r) => {
+        clearTimeout(timeoutId);
         if (cancelled) return;
         if (r.ok) {
           router.replace("/dashboard");
@@ -29,19 +39,24 @@ export default function Home() {
         }
       })
       .catch(() => {
+        clearTimeout(timeoutId);
+        // AbortError (timeout) ou erro de rede: assume deslogado, mostra landing.
         if (!cancelled) setHasToken(false);
       });
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
+      controller.abort();
     };
   }, [router]);
 
-  // Aguardando checagem do token
+  // Aguardando checagem do token (max 4s, depois cai para landing).
   if (hasToken === null) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-screen flex-col items-center justify-center bg-background gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-xs text-text-muted">Verificando sessão…</p>
       </div>
     );
   }
