@@ -28,18 +28,53 @@ export default function PerfilPage() {
     email: "",
   });
 
-  // Hidrata o form a partir do authStore — se ainda nao carregou, busca /me.
+  // Hidrata o form. Se authStore vazio, busca direto da API (mais resiliente que
+  // depender do authStore — evita spinner infinito quando store esta sujo).
   useEffect(() => {
-    if (user) {
-      setForm({
-        fullName: user.fullName ?? "",
-        riskProfile: user.riskProfile ?? "moderate",
-        email: user.email,
-      });
-      setLoading(false);
-    } else {
-      fetchMe().finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function load() {
+      // Caminho rapido: store ja tem dados
+      if (user) {
+        setForm({
+          fullName: user.fullName ?? "",
+          riskProfile: user.riskProfile ?? "moderate",
+          email: user.email,
+        });
+        setLoading(false);
+        return;
+      }
+      // Fallback: busca direto da API (nao depende do authStore)
+      try {
+        const res = await fetch("/api/v1/account/profile", { credentials: "same-origin" });
+        if (cancelled) return;
+        if (!res.ok) {
+          // 401 -> redireciona pra login (cookie expirado/ausente)
+          if (res.status === 401) {
+            window.location.href = "/login";
+            return;
+          }
+          throw new Error("HTTP " + res.status);
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        setForm({
+          fullName: data.fullName ?? "",
+          riskProfile: data.riskProfile ?? "moderate",
+          email: data.email ?? "",
+        });
+        // Atualiza store em paralelo (sem bloquear)
+        fetchMe().catch(() => {});
+      } catch (e) {
+        console.error("[perfil] load error", e);
+        toast.error("Não foi possível carregar seu perfil. Tente recarregar.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
+    load();
+    return () => { cancelled = true; };
   }, [user, fetchMe]);
 
   const handleSubmit = async (e: FormEvent) => {

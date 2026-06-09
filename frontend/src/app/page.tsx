@@ -10,10 +10,13 @@ export default function Home() {
   const [hasToken, setHasToken] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Limpa tokens antigos do localStorage (legacy demo mode).
-    // Auth real agora usa cookie httpOnly — checa via /api/v1/auth/me.
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
+    // Limpa estado legado do localStorage (modo demo + persist do authStore).
+    // Auth real usa cookie httpOnly; localStorage so polui e quebra sincronia.
+    try {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user");
+      localStorage.removeItem("auth-store");
+    } catch { /* SSR ou storage bloqueado */ }
 
     let cancelled = false;
     fetch("/api/v1/auth/me", { credentials: "include" })

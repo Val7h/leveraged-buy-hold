@@ -45,17 +45,10 @@ export default function LoginPage() {
     }
   };
 
-  // Demo mode: bypass login completely
-  const handleDemoMode = () => {
-    localStorage.setItem("access_token", "demo_" + Date.now());
-    localStorage.setItem("user", JSON.stringify({
-      id: "1",
-      email: "demo@lbhsystem.com",
-      fullName: "Demo User",
-      riskProfile: "balanced",
-    }));
-    router.push("/dashboard");
-  };
+  // Modo Demo REMOVIDO: auth real esta funcionando (bcrypt + JWT + cookie httpOnly).
+  // O antigo handler escrevia em localStorage e causava conflito com a sessao real
+  // (tela em branco quando user logado real tinha access_token legado).
+  // Quem quiser testar sem se cadastrar usa email/senha quaisquer ja persistidos.
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -162,25 +155,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-4">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-text-muted">ou</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
-
-          {/* Demo Mode Button */}
-          <button
-            onClick={handleDemoMode}
-            className="w-full py-2.5 rounded-lg border border-primary/30 text-primary text-sm font-medium hover:bg-primary/5 transition-colors flex items-center justify-center gap-2"
-          >
-            <span>⚡</span>
-            Entrar em Modo Demo
-          </button>
-
-          <p className="text-center text-xs text-text-muted mt-3">
-            Modo Demo: explore todas as features sem criar conta
-          </p>
         </div>
 
         <p className="text-center text-xs text-text-muted mt-6">
