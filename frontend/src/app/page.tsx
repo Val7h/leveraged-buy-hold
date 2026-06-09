@@ -18,6 +18,23 @@ export default function Home() {
       localStorage.removeItem("auth-store");
     } catch { /* SSR ou storage bloqueado */ }
 
+    // KILL SWITCH de Service Worker:
+    // Versoes antigas do sw.js interceptavam chunks e geravam 503 quando o
+    // hash mudava no deploy. Aqui desregistramos QUALQUER SW e limpamos
+    // todos os Cache Storage no boot.
+    (async () => {
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+      } catch { /* ignore */ }
+    })();
+
     let cancelled = false;
     // Timeout duro de 4s: se /me nao responder, assume "deslogado" e mostra landing.
     // Evita spinner infinito quando Render esta com cold start ou ha problema de rede.

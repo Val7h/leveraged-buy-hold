@@ -1,48 +1,41 @@
-// LBH System — Service Worker (Push Notifications)
-const CACHE_NAME = "lbh-v1";
+// LBH System — Service Worker KILL SWITCH
+//
+// IMPORTANTE: este arquivo SUBSTITUI qualquer SW anterior (incluindo versoes
+// antigas que tinham fetch handler e estavam servindo 503 para chunks JS).
+// Quando o browser do usuario detectar este novo sw.js, ele dispara
+// install -> activate -> e o codigo abaixo desregistra a si mesmo e limpa
+// todos os caches, voltando o site ao funcionamento normal.
 
-self.addEventListener("install", (e) => {
+self.addEventListener("install", (event) => {
+  // Pula a fase de waiting e ativa imediatamente.
   self.skipWaiting();
 });
 
-self.addEventListener("activate", (e) => {
-  e.waitUntil(clients.claim());
-});
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        // Limpa TODOS os caches deste Service Worker.
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((n) => caches.delete(n)));
 
-// Handle push events from server
-self.addEventListener("push", (e) => {
-  if (!e.data) return;
-  const data = e.data.json();
-  const options = {
-    body: data.body || "",
-    icon: "/icon-192.png",
-    badge: "/badge-72.png",
-    tag: data.tag || "lbh-notification",
-    data: { url: data.url || "/notifications" },
-    actions: [
-      { action: "open", title: "Ver detalhes" },
-      { action: "dismiss", title: "Dispensar" },
-    ],
-  };
-  e.waitUntil(self.registration.showNotification(data.title || "LBH System", options));
-});
+        // Toma controle de todas as abas abertas imediatamente.
+        await self.clients.claim();
 
-// Handle notification click
-self.addEventListener("notificationclick", (e) => {
-  e.notification.close();
-  if (e.action === "dismiss") return;
+        // Desregistra a si mesmo — proxima request vai direto para o servidor.
+        await self.registration.unregister();
 
-  const url = e.notification.data?.url || "/notifications";
-  e.waitUntil(
-    clients.matchAll({ type: "window" }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && "focus" in client) {
-          client.focus();
-          client.navigate(url);
-          return;
+        // Forca reload de todas as abas para limpar o estado.
+        const allClients = await self.clients.matchAll({ type: "window" });
+        for (const client of allClients) {
+          client.navigate(client.url);
         }
+      } catch {
+        // Se algo falhar, melhor nao deixar o SW funcionando — auto-unregister
+        try { await self.registration.unregister(); } catch {}
       }
-      if (clients.openWindow) return clients.openWindow(url);
-    })
+    })()
   );
 });
+
+// Sem fetch handler. Sem push handler. Este SW so existe pra se autodestruir.

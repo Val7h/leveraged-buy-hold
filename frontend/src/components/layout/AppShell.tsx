@@ -23,6 +23,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("auth-store");
     } catch { /* ignore */ }
 
+    // Kill switch de SW antigo (mesma logica da landing).
+    (async () => {
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+      } catch { /* ignore */ }
+    })();
+
     let cancelled = false;
     // Timeout duro de 4s: evita travamento se /me nao responder.
     const controller = new AbortController();
