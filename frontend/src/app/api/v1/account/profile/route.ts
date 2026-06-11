@@ -10,9 +10,12 @@ import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
+// Auditoria: regex restritivo p/ evitar XSS stored (HTML/JS no fullName).
+const NAME_REGEX = /^[\p{L}\p{N}\s.'-]{1,120}$/u;
+
 const PatchSchema = z
   .object({
-    fullName: z.string().trim().min(1).max(120).optional(),
+    fullName: z.string().trim().regex(NAME_REGEX, "invalid_name").optional(),
     riskProfile: z.enum(["conservador", "moderado", "agressivo"]).optional(),
     email: z.string().optional(), // capturado apenas para devolver 501
   })

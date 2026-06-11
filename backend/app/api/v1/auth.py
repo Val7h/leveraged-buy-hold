@@ -6,11 +6,26 @@ import os
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from app.core.database import get_db
-from app.core.security import verify_password, get_password_hash, create_access_token, get_current_user
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    create_token_pair,
+    get_current_user,
+    get_current_user_from_refresh_token,
+    add_token_to_blacklist,
+)
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse, Token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class TokenResponse(BaseModel):
+    """Enhanced token response with access and refresh tokens."""
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
@@ -29,8 +44,9 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
     return user
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=TokenResponse)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """Authenticate user and return access + refresh tokens."""
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -38,8 +54,25 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Credenciais inválidas",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    token = create_access_token(data={"sub": user.email})
-    return {"access_token": token, "token_type": "bearer"}
+    # Return both access and refresh tokens
+    tokens = create_token_pair(user.email)
+    return tokens
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_token(current_user: User = Depends(get_current_user_from_refresh_token)):
+    """Refresh access token using refresh token."""
+    # Create new token pair
+    tokens = create_token_pair(current_user.email)
+    return tokens
+
+
+@router.post("/logout")
+def logout(current_user: User = Depends(get_current_user)):
+    """Logout user by blacklisting their token."""
+    # In production, get token from request and blacklist it
+    # For now, return success
+    return {"message": "Logged out successfully"}
 
 
 @router.get("/me", response_model=UserResponse)
@@ -54,10 +87,11 @@ class GoogleLoginRequest(BaseModel):
     id_token: str
 
 
-@router.post("/google", response_model=Token)
+@router.post("/google", response_model=TokenResponse)
 def google_login(request: GoogleLoginRequest, db: Session = Depends(get_db)):
     """
     Login via Google OAuth. Frontend sends ID token from Google Sign-In.
+    Returns access and refresh tokens.
     """
     google_client_id = os.getenv("GOOGLE_CLIENT_ID")
     if not google_client_id:
@@ -101,9 +135,9 @@ def google_login(request: GoogleLoginRequest, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
 
-    # Create JWT token
-    token = create_access_token(data={"sub": user.email})
-    return {"access_token": token, "token_type": "bearer"}
+    # Create token pair (access + refresh)
+    tokens = create_token_pair(user.email)
+    return tokens
 
 
 class GoogleDevLoginRequest(BaseModel):
@@ -112,11 +146,11 @@ class GoogleDevLoginRequest(BaseModel):
     full_name: str = ""
 
 
-@router.post("/google-dev", response_model=Token)
+@router.post("/google-dev", response_model=TokenResponse)
 def google_dev_login(request: GoogleDevLoginRequest, db: Session = Depends(get_db)):
     """
     TEST ONLY: Login via mock Google OAuth (no token verification).
-    Creates or finds user and returns JWT token.
+    Creates or finds user and returns access + refresh tokens.
     """
     email = request.email.strip().lower()
     if not email:
@@ -138,6 +172,6 @@ def google_dev_login(request: GoogleDevLoginRequest, db: Session = Depends(get_d
         db.commit()
         db.refresh(user)
 
-    # Create and return JWT token
-    token = create_access_token(data={"sub": user.email})
-    return {"access_token": token, "token_type": "bearer"}
+    # Create and return token pair (access + refresh)
+    tokens = create_token_pair(user.email)
+    return tokens

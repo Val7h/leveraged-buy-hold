@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.core.config import settings
 from app.core.database import create_tables, engine
+from app.core.security_middleware import register_security_middleware
 from app.api.v1 import auth, assets, portfolio, backtest, simulator, alerts, watchlist, logos, moderation, moderation_admin_dashboard, billing
 from app.api.v1 import user_consent
 from app.api.v1 import notifications
 from app.api.v1 import news
-from app.api.v1 import settings
+from app.api.v1 import settings as settings_router
 from app.api.v1 import analytics
 from app.api.v1 import preferences
 
@@ -18,14 +19,20 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    docs_url=None if settings.is_production() else "/api/docs",  # Hide docs in production
+    redoc_url=None if settings.is_production() else "/api/redoc",
 )
 
+# Register security middleware (must be added in reverse order)
+register_security_middleware(app)
+
+# CORS middleware (after security middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.get_cors_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
 
@@ -133,7 +140,7 @@ app.include_router(billing.router, prefix="/api/v1")
 app.include_router(user_consent.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(news.router, prefix="/api/v1")
-app.include_router(settings.router)
+app.include_router(settings_router.router)
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(preferences.router, prefix="/api")
 

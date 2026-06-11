@@ -26,8 +26,26 @@ model User {
   alerts           Alert[]
   subscription     Subscription?
   emailPreference  EmailPreference?
+  passwordResets   PasswordResetToken[]
 
   @@map("users")
+}
+
+// Reset de senha por email. Token e sha256 do valor enviado por email
+// (nunca armazenamos plain). Expira em 1h, used uma vez.
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // LGPD art. 18 — direito de opt-out de comunicacoes nao-essenciais.

@@ -1,11 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  // Compilacao falha se houver erro de tipo ou ESLint. Configuracao anterior
+  // (ignoreBuildErrors=true) foi apontada como critica pela auditoria externa:
+  // bugs financeiros podiam chegar em producao sem deteccao.
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "",

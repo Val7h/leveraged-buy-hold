@@ -17,13 +17,18 @@ export const runtime = "nodejs";
  * Resp 429: rate limited (3/hora/IP)
  */
 
+// Regex restritivo para nome proprio (auditoria Dra. Mascarenhas — XSS stored).
+// Aceita letras Unicode (inclui acentos PT-BR), numeros, espaco, ponto, apostrofo,
+// hifen. Rejeita <, >, /, &, ", ", { } e qualquer payload de injecao.
+const NAME_REGEX = /^[\p{L}\p{N}\s.'-]{1,120}$/u;
+
 // Aceita camelCase E snake_case (legado) para fullName/riskProfile.
 const RegisterSchema = z
   .object({
     email: z.string().email().max(254),
     password: z.string().min(8).max(256),
-    fullName: z.string().min(1).max(120).optional(),
-    full_name: z.string().min(1).max(120).optional(),
+    fullName: z.string().regex(NAME_REGEX, "invalid_name").optional(),
+    full_name: z.string().regex(NAME_REGEX, "invalid_name").optional(),
     riskProfile: z
       .enum(["conservador", "moderado", "agressivo", "conservative", "balanced", "aggressive"])
       .optional(),

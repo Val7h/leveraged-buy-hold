@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import SectorBreakdownWidget from "@/components/portfolio/SectorBreakdownWidget";
@@ -11,7 +11,7 @@ import PortfolioEquityCurve from "@/components/charts/PortfolioEquityCurve";
 import { Plus, Trash2, TrendingUp, Lightbulb, Pencil, Check, X, Loader2, Lock, Unlock, RefreshCw } from "lucide-react";
 import type { ContributionSuggestion } from "@/types";
 
-export default function PortfolioPage() {
+function PortfolioPageInner() {
   const searchParams = useSearchParams();
   const { activePortfolioId, portfolios, metrics, positions, fetchPortfolios, fetchMetrics, fetchPositions, addPosition, updatePosition, removePosition, toggleSeed, toggleCycle } = usePortfolioStore();
   const [suggestions, setSuggestions] = useState<ContributionSuggestion[]>([]);
@@ -379,5 +379,13 @@ export default function PortfolioPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+export default function PortfolioPage() {
+  return (
+    <Suspense fallback={null}>
+      <PortfolioPageInner />
+    </Suspense>
   );
 }

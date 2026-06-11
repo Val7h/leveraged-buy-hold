@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import AssetCard from "@/components/assets/AssetCard";
@@ -80,7 +80,7 @@ const PRESET_LISTS: Record<string, { tickers: string; label: string; flag?: stri
   tokenized:  { tickers: "TSLAONUSDT,NVDAONUSDT,AAPLONUSDT,AMZNONUSDT,GOOGLONUSDT,MSFTONUSDT,METAONUSDT", label: "Tokenizadas (Bitget)", flag: "🪙" },
 };
 
-export default function AssetsPage() {
+function AssetsPageInner() {
   const searchParams = useSearchParams();
   const [tickers, setTickers] = useState(PRESET_LISTS.defensive.tickers);
   const [minScore, setMinScore] = useState(0);
@@ -269,5 +269,13 @@ export default function AssetsPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+export default function AssetsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AssetsPageInner />
+    </Suspense>
   );
 }

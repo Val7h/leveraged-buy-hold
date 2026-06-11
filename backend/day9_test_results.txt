@@ -1,0 +1,147 @@
+============================= test session starts =============================
+platform win32 -- Python 3.10.9, pytest-9.0.3, pluggy-1.6.0 -- C:\Users\Admin\AppData\Local\Programs\Python\Python310\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Admin\leveraged-buy-hold\backend
+plugins: anyio-4.13.0, timeout-2.4.0
+collecting ... collected 72 items
+
+tests/test_day9_standalone.py::TestAPIEndpoints::test_01_analytics_api_endpoint_exists PASSED [  1%]
+tests/test_day9_standalone.py::TestAPIEndpoints::test_02_analytics_portfolio_endpoint PASSED [  2%]
+tests/test_day9_standalone.py::TestAPIEndpoints::test_03_analytics_performance_endpoint PASSED [  4%]
+tests/test_day9_standalone.py::TestAPIEndpoints::test_04_analytics_allocation_endpoint PASSED [  5%]
+tests/test_day9_standalone.py::TestAPIEndpoints::test_05_analytics_comparison_endpoint PASSED [  6%]
+tests/test_day9_standalone.py::TestAPIEndpoints::test_06_database_transaction_integrity PASSED [  8%]
+tests/test_day9_standalone.py::TestAPIEndpoints::test_07_data_consistency_across_features PASSED [  9%]
+tests/test_day9_standalone.py::TestAPIEndpoints::test_08_cache_layer_functionality_hit PASSED [ 11%]
+tests/test_day9_standalone.py::TestAPIEndpoints::test_09_cache_layer_functionality_miss PASSED [ 12%]
+tests/test_day9_standalone.py::TestAPIEndpoints::test_10_cache_expiration PASSED [ 13%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_11_analytics_notification_sync PASSED [ 15%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_12_notification_delivery_tracking PASSED [ 16%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_13_analytics_notification_filtering PASSED [ 18%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_14_portfolio_notification_trigger PASSED [ 19%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_15_notification_batch_delivery PASSED [ 20%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_16_mobile_i18n_language_setting_persists PASSED [ 22%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_17_mobile_i18n_currency_conversion PASSED [ 23%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_18_mobile_responsive_api_response_size PASSED [ 25%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_19_mobile_offline_sync_capability PASSED [ 26%]
+tests/test_day9_standalone.py::TestFeatureInteractions::test_20_mobile_i18n_timezone_handling PASSED [ 27%]
+tests/test_day9_standalone.py::TestMicroserviceIntegration::test_21_websocket_connection_established FAILED [ 29%]
+tests/test_day9_standalone.py::TestMicroserviceIntegration::test_22_websocket_message_broadcast FAILED [ 30%]
+tests/test_day9_standalone.py::TestMicroserviceIntegration::test_23_websocket_reconnection_handling FAILED [ 31%]
+tests/test_day9_standalone.py::TestMicroserviceIntegration::test_24_websocket_disconnect_cleanup FAILED [ 33%]
+tests/test_day9_standalone.py::TestMicroserviceIntegration::test_25_email_service_queue_job_creation PASSED [ 34%]
+tests/test_day9_standalone.py::TestMicroserviceIntegration::test_26_email_service_queue_job_status PASSED [ 36%]
+tests/test_day9_standalone.py::TestMicroserviceIntegration::test_27_email_service_retry_mechanism PASSED [ 37%]
+tests/test_day9_standalone.py::TestMicroserviceIntegration::test_28_email_service_rate_limiting PASSED [ 38%]
+tests/test_day9_standalone.py::TestSecurityIntegration::test_29_jwt_token_validation_flow PASSED [ 40%]
+tests/test_day9_standalone.py::TestSecurityIntegration::test_30_refresh_token_generation PASSED [ 41%]
+tests/test_day9_standalone.py::TestSecurityIntegration::test_31_token_expiration_enforcement PASSED [ 43%]
+tests/test_day9_standalone.py::TestSecurityIntegration::test_32_multi_factor_auth_flow PASSED [ 44%]
+tests/test_day9_standalone.py::TestSecurityIntegration::test_33_authorization_role_based_access_control PASSED [ 45%]
+tests/test_day9_standalone.py::TestSecurityIntegration::test_34_authorization_resource_ownership_check PASSED [ 47%]
+tests/test_day9_standalone.py::TestSecurityIntegration::test_35_authorization_permission_inheritance PASSED [ 48%]
+tests/test_day9_standalone.py::TestSecurityIntegration::test_36_authorization_api_key_validation PASSED [ 50%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_37_load_balancing_request_distribution PASSED [ 51%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_38_concurrent_request_handling PASSED [ 52%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_39_request_timeout_handling PASSED [ 54%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_40_connection_pooling_efficiency PASSED [ 55%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_41_memory_usage_stability PASSED [ 56%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_42_response_time_under_load PASSED [ 58%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_43_database_query_optimization PASSED [ 59%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_44_cache_effectiveness_under_load PASSED [ 61%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_45_scalability_request_rate_increase PASSED [ 62%]
+tests/test_day9_standalone.py::TestPerformanceIntegration::test_46_graceful_degradation_partial_failure PASSED [ 63%]
+tests/test_day9_standalone.py::TestInputValidation::test_sec_01_sql_injection_prevention_portfolio PASSED [ 65%]
+tests/test_day9_standalone.py::TestInputValidation::test_sec_02_sql_injection_prevention_analytics PASSED [ 66%]
+tests/test_day9_standalone.py::TestInputValidation::test_sec_03_sql_injection_prevention_search PASSED [ 68%]
+tests/test_day9_standalone.py::TestInputValidation::test_sec_04_xss_prevention_title PASSED [ 69%]
+tests/test_day9_standalone.py::TestInputValidation::test_sec_05_xss_prevention_description PASSED [ 70%]
+tests/test_day9_standalone.py::TestAuthenticationSecurity::test_sec_06_jwt_signature_verification PASSED [ 72%]
+tests/test_day9_standalone.py::TestAuthenticationSecurity::test_sec_07_jwt_algorithm_validation PASSED [ 73%]
+tests/test_day9_standalone.py::TestAuthenticationSecurity::test_sec_08_jwt_issued_at_claim_validation PASSED [ 75%]
+tests/test_day9_standalone.py::TestAuthenticationSecurity::test_sec_09_session_fixation_prevention PASSED [ 76%]
+tests/test_day9_standalone.py::TestAuthenticationSecurity::test_sec_10_session_timeout_enforcement PASSED [ 77%]
+tests/test_day9_standalone.py::TestAuthorizationSecurity::test_sec_11_privilege_escalation_prevention PASSED [ 79%]
+tests/test_day9_standalone.py::TestAuthorizationSecurity::test_sec_12_horizontal_privilege_escalation_prevention PASSED [ 80%]
+tests/test_day9_standalone.py::TestAuthorizationSecurity::test_sec_13_object_reference_disclosure_prevention PASSED [ 81%]
+tests/test_day9_standalone.py::TestAuthorizationSecurity::test_sec_14_missing_function_level_access_control PASSED [ 83%]
+tests/test_day9_standalone.py::TestDataProtection::test_sec_15_https_enforcement PASSED [ 84%]
+tests/test_day9_standalone.py::TestDataProtection::test_sec_16_sensitive_data_encryption_in_transit PASSED [ 86%]
+tests/test_day9_standalone.py::TestDataProtection::test_sec_17_sensitive_data_encryption_at_rest PASSED [ 87%]
+tests/test_day9_standalone.py::TestDataProtection::test_sec_18_sensitive_data_not_logged FAILED [ 88%]
+tests/test_day9_standalone.py::TestAPISecurity::test_sec_19_rate_limiting_enabled PASSED [ 90%]
+tests/test_day9_standalone.py::TestAPISecurity::test_sec_20_cors_headers_validation PASSED [ 91%]
+tests/test_day9_standalone.py::TestAPISecurity::test_sec_21_csrf_protection_on_mutations PASSED [ 93%]
+tests/test_day9_standalone.py::TestAPISecurity::test_sec_22_api_version_compatibility PASSED [ 94%]
+tests/test_day9_standalone.py::TestExecutionMetrics::test_all_integration_tests_executed PASSED [ 95%]
+tests/test_day9_standalone.py::TestExecutionMetrics::test_all_security_tests_executed PASSED [ 97%]
+tests/test_day9_standalone.py::TestExecutionMetrics::test_zero_critical_security_issues PASSED [ 98%]
+tests/test_day9_standalone.py::TestExecutionMetrics::test_all_endpoints_accessible PASSED [100%]
+
+================================== FAILURES ===================================
+____ TestMicroserviceIntegration.test_21_websocket_connection_established _____
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+_______ TestMicroserviceIntegration.test_22_websocket_message_broadcast _______
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+_____ TestMicroserviceIntegration.test_23_websocket_reconnection_handling _____
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+______ TestMicroserviceIntegration.test_24_websocket_disconnect_cleanup _______
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+__________ TestDataProtection.test_sec_18_sensitive_data_not_logged ___________
+tests\test_day9_standalone.py:589: in test_sec_18_sensitive_data_not_logged
+    assert "password" not in json.dumps(response.json()).lower() or response.status_code != 200
+E   assert ('password' not in '{"email": "...e_password"}'
+E     
+E     'password' is contained here:
+E       {"email": "test@example.com", "password": "sensitive_password"}
+E     ?                                ++++++++ or 200 != 200)
+E    +  where 200 = <test_day9_standalone.MockResponse object at 0x00000255B119D3F0>.status_code
+============================== warnings summary ===============================
+tests\test_day9_standalone.py:249
+  C:\Users\Admin\leveraged-buy-hold\backend\tests\test_day9_standalone.py:249: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\test_day9_standalone.py:258
+  C:\Users\Admin\leveraged-buy-hold\backend\tests\test_day9_standalone.py:258: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\test_day9_standalone.py:263
+  C:\Users\Admin\leveraged-buy-hold\backend\tests\test_day9_standalone.py:263: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\test_day9_standalone.py:268
+  C:\Users\Admin\leveraged-buy-hold\backend\tests\test_day9_standalone.py:268: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_day9_standalone.py::TestMicroserviceIntegration::test_21_websocket_connection_established
+FAILED tests/test_day9_standalone.py::TestMicroserviceIntegration::test_22_websocket_message_broadcast
+FAILED tests/test_day9_standalone.py::TestMicroserviceIntegration::test_23_websocket_reconnection_handling
+FAILED tests/test_day9_standalone.py::TestMicroserviceIntegration::test_24_websocket_disconnect_cleanup
+FAILED tests/test_day9_standalone.py::TestDataProtection::test_sec_18_sensitive_data_not_logged
+================== 5 failed, 67 passed, 4 warnings in 0.15s ===================

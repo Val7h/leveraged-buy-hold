@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuthStore } from "@/store/authStore";
 import { authApi } from "@/lib/api";
 
@@ -110,13 +111,12 @@ export default function LoginPage() {
               <div className="flex items-center justify-between mb-1">
                 <label className="label mb-0">Senha</label>
                 {tab === "login" && (
-                  <button
-                    type="button"
-                    onClick={() => setError("Para redefinir a senha, entre em contato: suporte@lbhsystem.com")}
+                  <Link
+                    href="/forgot-password"
                     className="text-xs text-primary hover:underline"
                   >
                     Esqueci a senha
-                  </button>
+                  </Link>
                 )}
               </div>
               <input

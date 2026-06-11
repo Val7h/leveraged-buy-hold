@@ -211,10 +211,11 @@ export default function Home() {
       <section className="py-12 px-4 sm:px-6 bg-surface border-y border-border">
         <div className="max-w-3xl mx-auto">
           <div className="grid grid-cols-3 gap-6 text-center">
+            {/* Trust chips factuais — sem números fabricados (auditoria externa). */}
             {[
-              { value: "1.200+", label: "Backtests rodados" },
-              { value: "14 dias", label: "Trial gratuito" },
-              { value: "R$ 19", label: "Plano Pro por mês" },
+              { value: "Beta", label: "Em desenvolvimento ativo" },
+              { value: "14 dias", label: "Trial gratuito do Pro" },
+              { value: "R$ 59", label: "Plano Pro por mês" },
             ].map(({ value, label }, i) => (
               <div key={i}>
                 <p className="text-2xl sm:text-3xl font-bold text-primary mb-1">{value}</p>
@@ -232,8 +233,8 @@ export default function Home() {
           <p className="text-text-secondary text-sm mb-8">Plano gratuito para sempre. Upgrade quando precisar.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left mb-8">
             {[
-              { plan: "Gratuito", price: "R$ 0/mês", items: ["5 screenings/mês", "1 backtest", "1 carteira", "Suporte comunidade"] },
-              { plan: "Pro", price: "R$ 19/mês", items: ["Screening ilimitado", "10 backtests/mês", "5 carteiras", "Monte Carlo + Alertas"], highlight: true },
+              { plan: "Gratuito", price: "R$ 0/mês", items: ["1 estratégia", "1 ativo", "Backtest até 5 anos", "Sinais técnicos"] },
+              { plan: "Pro", price: "R$ 59/mês", items: ["10 estratégias", "Todos os ativos", "Backtest 20+ anos", "Alertas por email"], highlight: true },
             ].map(({ plan, price, items, highlight }, i) => (
               <div key={i} className={`rounded-xl p-5 border ${highlight ? 'border-primary bg-primary/5' : 'border-border bg-surface'}`}>
                 <div className="flex items-center justify-between mb-3">

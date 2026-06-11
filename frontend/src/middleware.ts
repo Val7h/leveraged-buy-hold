@@ -78,21 +78,19 @@ function generateNonce(): string {
 }
 
 function buildCsp(nonce: string): string {
+  // CSP hardened (apos auditoria Dra. Mascarenhas):
+  // - Removido 'unsafe-inline' (script + style): strict-dynamic + nonce cobre.
+  // - Removido wildcard https: em script-src (permitia CDN qualquer).
+  // - Removido *.stripe.com (Asaas e o gateway; Stripe nao esta em uso).
+  // - frame-src removido (nao ha iframes externos).
+  // Tailwind compila build-time, entao style-src nonce funciona.
   return [
     "default-src 'self'",
-    // 'strict-dynamic' faz browsers modernos ignorarem whitelists de host
-    // quando há nonce válido. 'unsafe-inline' fica como fallback para browsers
-    // antigos (eles ignoram quando há nonce); navegadores que entendem nonce
-    // ignoram unsafe-inline. https: permite Stripe/Google libs carregadas via nonce.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https: 'unsafe-inline'`,
-    // Tailwind compila tudo build-time. Se aparecer "Refused to apply inline style"
-    // em algum componente Radix, adicionar 'unsafe-hashes' + hash específico.
-    `style-src 'self' 'nonce-${nonce}' 'unsafe-inline'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `style-src 'self' 'nonce-${nonce}'`,
     "img-src 'self' data: https:",
     "font-src 'self' data:",
-    // Backend FastAPI + Yahoo Finance
-    "connect-src 'self' https://query1.finance.yahoo.com https://query2.finance.yahoo.com https://lbh-system.onrender.com https://*.stripe.com",
-    "frame-src https://js.stripe.com https://hooks.stripe.com",
+    "connect-src 'self' https://query1.finance.yahoo.com https://query2.finance.yahoo.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
