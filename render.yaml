@@ -22,6 +22,14 @@ services:
       # Database (futuro). Configurar no dashboard quando reativar Postgres.
       - key: DATABASE_URL
         sync: false
+      # Email transacional (Resend). Sem RESEND_API_KEY o envio fica em modo stub.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # URL publica usada nos links de email (reset de senha etc).
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://lbh-system.onrender.com
       # Stripe (opcional - modo demo nao precisa).
       - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
         sync: false

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { sendEmail, passwordResetEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 
@@ -16,9 +17,9 @@ const ForgotSchema = z.object({
  *
  * Body: { email }
  * Sempre retorna 200 com mensagem generica (mitigacao user enumeration).
- * Se o user existir: gera token, armazena hash + expiracao 1h.
- * Quando Resend estiver integrado: dispara email com link reset?token=<plain>.
- * Por enquanto: loga o link no servidor (visivel no Render logs).
+ * Se o user existir: gera token, armazena hash + expiracao 1h, dispara email.
+ * Envio via Resend (lib/email). Sem RESEND_API_KEY o client opera em modo stub
+ * (loga payload) — fluxo continua funcional em dev/local.
  */
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
@@ -64,16 +65,30 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const origin = request.nextUrl.origin;
+    // NEXT_PUBLIC_APP_URL garante o dominio publico correto mesmo atras de proxy.
+    const origin = process.env.NEXT_PUBLIC_APP_URL?.trim() || request.nextUrl.origin;
     const link = `${origin}/reset-password?token=${plain}`;
 
-    // TODO: enviar via Resend quando RESEND_API_KEY estiver configurada.
-    // Por enquanto, logamos para o admin (Render logs visiveis a quem tem acesso).
-    logger.info("[forgot-password] link gerado", {
-      email: user.email,
-      link,
-      expiresAt: expiresAt.toISOString(),
+    const { subject, html, text } = passwordResetEmail({
+      name: user.fullName ?? user.email,
+      resetUrl: link,
+      expiresIn: "1 hora",
     });
+
+    const sent = await sendEmail({ to: user.email, subject, html, text });
+    if (!sent.ok) {
+      // Nao vazamos a falha pro cliente (resposta generica), mas registramos pro admin.
+      logger.error("[forgot-password] falha ao enviar email", {
+        email: user.email,
+        error: sent.error,
+      });
+    } else {
+      logger.info("[forgot-password] email enviado", {
+        email: user.email,
+        id: sent.id,
+        expiresAt: expiresAt.toISOString(),
+      });
+    }
 
     return genericReply;
   } catch (err) {
