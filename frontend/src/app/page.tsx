@@ -35,45 +35,52 @@ export default function Home() {
       } catch { /* ignore */ }
     })();
 
-    let cancelled = false;
-    // Timeout duro de 4s: se /me nao responder, assume "deslogado" e mostra landing.
-    // Evita spinner infinito quando Render esta com cold start ou ha problema de rede.
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    let alive = true;
+    let settled = false;
 
-    fetch("/api/v1/auth/me", {
+    // Hard timeout de 3.5s — Promise.race garante que SEMPRE saia do spinner,
+    // mesmo se o fetch nao rejeitar/resolver (caso conhecido: AbortController
+    // ignorado por algum navegador ou camada intermediaria).
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), 3500)
+    );
+
+    const fetchPromise = fetch("/api/v1/auth/me", {
       credentials: "same-origin",
       cache: "no-store",
-      signal: controller.signal,
-    })
-      .then((r) => {
-        clearTimeout(timeoutId);
-        if (cancelled) return;
-        if (r.ok) {
-          router.replace("/dashboard");
-        } else {
-          setHasToken(false);
-        }
-      })
-      .catch(() => {
-        clearTimeout(timeoutId);
-        // AbortError (timeout) ou erro de rede: assume deslogado, mostra landing.
-        if (!cancelled) setHasToken(false);
-      });
+    }).catch(() => null);
+
+    Promise.race([fetchPromise, timeoutPromise]).then((res) => {
+      if (!alive || settled) return;
+      settled = true;
+      // res === null  => timeout OU erro de fetch => mostra landing
+      // res.ok = true => autenticado => dashboard
+      // res.ok = false (401, etc) => mostra landing
+      if (res && res.ok) {
+        router.replace("/dashboard");
+      } else {
+        setHasToken(false);
+      }
+    });
 
     return () => {
-      cancelled = true;
-      clearTimeout(timeoutId);
-      controller.abort();
+      alive = false;
     };
   }, [router]);
 
-  // Aguardando checagem do token (max 4s, depois cai para landing).
+  // Aguardando checagem do token (max 3.5s, depois cai pra landing).
+  // Botao "Continuar" e escape se algo travar (defesa profunda).
   if (hasToken === null) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center bg-background gap-3">
+      <div className="flex h-screen flex-col items-center justify-center bg-background gap-3 px-4">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         <p className="text-xs text-text-muted">Verificando sessão…</p>
+        <button
+          onClick={() => setHasToken(false)}
+          className="mt-4 text-xs text-text-muted/70 hover:text-primary underline"
+        >
+          Continuar sem aguardar
+        </button>
       </div>
     );
   }

@@ -37,34 +37,33 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       } catch { /* ignore */ }
     })();
 
-    let cancelled = false;
-    // Timeout duro de 4s: evita travamento se /me nao responder.
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    let alive = true;
+    let settled = false;
 
-    fetch("/api/v1/auth/me", {
+    // Promise.race garante saida do limbo mesmo se fetch nao rejeitar.
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), 3500)
+    );
+    const fetchPromise = fetch("/api/v1/auth/me", {
       credentials: "same-origin",
       cache: "no-store",
-      signal: controller.signal,
-    })
-      .then((r) => {
-        clearTimeout(timeoutId);
-        if (cancelled) return;
-        if (!r.ok) {
-          router.replace("/login");
-          return;
-        }
-        if (!user) fetchMe();
-      })
-      .catch(() => {
-        clearTimeout(timeoutId);
-        if (!cancelled) router.replace("/login");
-      });
+    }).catch(() => null);
+
+    Promise.race([fetchPromise, timeoutPromise]).then((res) => {
+      if (!alive || settled) return;
+      settled = true;
+      // res === null  => timeout/erro de rede => login
+      // res.ok = true => autenticado => mantem
+      // res.ok = false => login
+      if (!res || !res.ok) {
+        router.replace("/login");
+        return;
+      }
+      if (!user) fetchMe();
+    });
 
     return () => {
-      cancelled = true;
-      clearTimeout(timeoutId);
-      controller.abort();
+      alive = false;
     };
   }, []);
 
