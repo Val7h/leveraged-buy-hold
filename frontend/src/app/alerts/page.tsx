@@ -32,6 +32,7 @@ export default function AlertsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ticker: "", alert_type: "rsi_oversold", threshold: "30", message: "" });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [checkResult, setCheckResult] = useState<{ triggered: Array<{ ticker: string; type: string; message: string; value: number; threshold: number }> } | null>(null);
 
   useEffect(() => {
@@ -83,10 +84,13 @@ export default function AlertsPage() {
 
   const handleDismissTriggered = async () => {
     setLoading(true);
+    setError("");
     try {
       await alertsApi.dismissTriggered();
       setCheckResult(null);
       await loadAlerts();
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || "Erro ao limpar alertas disparados.");
     } finally {
       setLoading(false);
     }
@@ -151,6 +155,10 @@ export default function AlertsPage() {
               <button onClick={() => setShowForm(false)} className="btn-ghost text-sm">Cancelar</button>
             </div>
           </div>
+        )}
+
+        {error && (
+          <div className="bg-danger/10 border border-danger/20 rounded-lg px-4 py-3 text-sm text-danger mb-4">{error}</div>
         )}
 
         {/* Triggered alerts */}

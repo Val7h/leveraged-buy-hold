@@ -6,6 +6,11 @@ export const metadata: Metadata = {
   description: "Sistema de Buy & Hold Alavancado Adaptativo para investimentos defensivos de longo prazo",
 };
 
+// Render every route per-request. The dashboard pages are client components that
+// call useSearchParams(); without this, Next tries to statically prerender them
+// and the build fails ("useSearchParams() should be wrapped in a suspense boundary").
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>

@@ -174,6 +174,13 @@ export default function AssetsPage() {
         {/* Results */}
         {result && (
           <>
+            {result.failed_tickers && result.failed_tickers.length > 0 && (
+              <div className="bg-warning/10 border border-warning/20 rounded-lg px-4 py-3 text-sm text-warning mb-4">
+                Análise parcial: {result.failed_tickers.join(", ")} não retornou dados
+                {" "}(Yahoo Finance pode estar com rate limit).
+              </div>
+            )}
+
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm text-text-secondary">
                 <span className="text-text-primary font-semibold">{result.total_assets}</span> ativos encontrados

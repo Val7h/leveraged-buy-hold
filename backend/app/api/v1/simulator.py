@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -141,13 +141,14 @@ def get_deleverage_projection(
     initial_equity: float = 50000,
     total_exposure: float = 100000,
     monthly_contribution: float = 1000,
+    dividend_yield: float = Query(0.04, ge=0, le=0.5),
     user: User = Depends(get_current_user),
 ):
     timeline = deleverage_timeline(
         initial_equity=initial_equity,
         initial_notional=total_exposure,
         monthly_contribution=monthly_contribution,
-        dividend_yield_annual=0.04,
+        dividend_yield_annual=dividend_yield,
         expected_cagr=0.08,
     )
     return timeline

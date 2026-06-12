@@ -12,7 +12,7 @@ import httpx
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class LogoResponse(BaseModel):
 
 
 @router.get("/search/{ticker}", response_model=LogoResponse)
-async def search_logo(ticker: str = Query(..., description="Ticker symbol (e.g., AAPL, PETR4)")) -> LogoResponse:
+async def search_logo(ticker: str = Path(..., description="Ticker symbol (e.g., AAPL, PETR4)")) -> LogoResponse:
     """
     Search for company logo using FMP API with secure backend key.
 

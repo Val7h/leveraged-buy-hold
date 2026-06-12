@@ -39,6 +39,17 @@ def create_alert(data: AlertCreate, db: Session = Depends(get_db), user: User = 
     return alert
 
 
+@router.delete("/triggered")
+def dismiss_triggered_alerts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Remove todos os alertas já disparados do usuário."""
+    count = db.query(Alert).filter(
+        Alert.user_id == user.id,
+        Alert.is_triggered == True,
+    ).update({"is_active": False})
+    db.commit()
+    return {"dismissed": count}
+
+
 @router.delete("/{alert_id}")
 def delete_alert(alert_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     alert = db.query(Alert).filter(Alert.id == alert_id, Alert.user_id == user.id).first()
@@ -114,14 +125,3 @@ def check_alerts(
             continue
 
     return {"triggered": triggered, "checked": len(active_alerts)}
-
-
-@router.delete("/triggered")
-def dismiss_triggered_alerts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Remove todos os alertas já disparados do usuário."""
-    count = db.query(Alert).filter(
-        Alert.user_id == user.id,
-        Alert.is_triggered == True,
-    ).update({"is_active": False})
-    db.commit()
-    return {"dismissed": count}

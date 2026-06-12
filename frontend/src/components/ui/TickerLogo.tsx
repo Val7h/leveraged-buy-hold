@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 const TICKER_COLORS: Record<string, string> = {
@@ -44,7 +44,7 @@ const US_DOMAINS: Record<string, string> = {
   SPLK:"splunk.com",           OKTA:"okta.com",
   CYBR:"cyberark.com",         CHKP:"checkpoint.com",
   PANW:"paloaltonetworks.com", SENTIENT:"sentientai.com",
-  TTD: "thetradedesk.com",     ADBE:"adobe.com",
+  TTD: "thetradedesk.com",
   // Semiconductors
   MU:  "micron.com",           SK:  "sk.com",
   NXPI:"nxp.com",              MCHP:"microchip.com",
@@ -53,8 +53,8 @@ const US_DOMAINS: Record<string, string> = {
   MCD: "mcdonalds.com",        SBUX:"starbucks.com",
   NKE: "nike.com",             LULU:"lululemon.com",
   HD:  "homedepot.com",        LOW: "lowes.com",
-  TJX: "tjx.com",              AMZN:"amazon.com",
-  EBAY:"ebay.com",             NCLH:"ncl.com",
+  TJX: "tjx.com",              EBAY:"ebay.com",
+  NCLH:"ncl.com",
   RCL: "rci.com",              CCL: "carnival.com",
   MAR: "marriott.com",         HLT: "hilton.com",
   EXPE:"expedia.com",          ORLY:"oreilly.com",
@@ -199,7 +199,7 @@ const ASIAN_DOMAINS: Record<string, string> = {
   // Hong Kong (HKEX)
   "0700": "tencent.com",         "0939": "citic.com",
   "0883": "chinaso.com",         "0175": "geely.com",
-  "1299": "aig.com",             "1398": "icbcltd.com",
+  "1299": "aia.com",             "1398": "icbcltd.com",
   "0941": "chinamobile.com",     "0016": "sfc.hk",
   "2333": "baic.com.cn",         "2382": "spreadtrum.com",
   "1088": "sinopectrade.com",    "3988": "chinaelements.com",
@@ -221,16 +221,16 @@ const CANADIAN_DOMAINS: Record<string, string> = {
   RY:   "rbc.com",             TD:   "td.com",
   BNS:  "bns.com",             CM:   "cibc.com",
   BMO:  "bmo.com",             BCE:  "bce.ca",
-  T:    "telus.com",           ENB:  "enbridge.com",
-  CNQ:  "cnooc.com",           CVE:  "cenovus.com",
-  IMV:  "imvglobal.com",       SU:   "suncor.com",
-  MG:   "macquarie.com",       AQN:  "aequi.ca",
-  FTS:  "fortisbc.com",        REI:  "riocanomall.com",
-  NWC:  "northwest.com",       NTR:  "nutritional.com",
-  TRP:  "transcanada.com",     WN:   "westjet.com",
+  // NOTE: bare "T" intentionally omitted — it collides with AT&T (US, far more
+  // common). Telus trades as "T.TO" and is resolved via the .TO suffix path.
+  ENB:  "enbridge.com",        CVE:  "cenovus.com",
+  CNQ:  "cnrl.com",            SU:   "suncor.com",
+  MG:   "magna.com",           AQN:  "algonquinpower.com",
+  FTS:  "fortisinc.com",       REI:  "riocan.com",
+  NWC:  "northwest.ca",        NTR:  "nutrien.com",
+  TRP:  "tcenergy.com",        WN:   "weston.ca",
   AC:   "aircanada.com",       CNR:  "cn.ca",
-  CP:   "cpr.ca",              WPK:  "weston.com",
-  TTH:  "toromont.com",        SKX:  "skechers.com",
+  CP:   "cpr.ca",              TTH:  "toromont.com",
 };
 
 // ── European ticker → company domain (Clearbit) ─────────────────────────────
@@ -249,8 +249,7 @@ const EUROPEAN_DOMAINS: Record<string, string> = {
   HER: "hermes.com",           OR:  "loreal.com",
   DANOY:"danone.com",          KER: "kering.com",
   AIR: "airfrance-klm.com",    VIE: "vivendi.com",
-  EOAN:"eoan.com",             SAN: "sanofi.com",
-  ENGI:"engie.com",
+  EOAN:"eoan.com",             ENGI:"engie.com",
   // FTSE (UK / London Stock Exchange)
   SHEL:"shell.com",            HSBA:"hsbc.com",
   AZN: "astrazeneca.com",      ULVR:"unilever.com",
@@ -261,8 +260,8 @@ const EUROPEAN_DOMAINS: Record<string, string> = {
   IMB: "imb.com",              EXPN:"experian.com",
   // SIX (Switzerland)
   NSRGY:"nestle.com",          NOVN:"novartis.com",
-  RHHBY:"roche.com",           ASML:"asml.com",
-  ROG: "roche.com",            CSGN:"credit-suisse.com",
+  RHHBY:"roche.com",           ROG: "roche.com",
+  CSGN:"credit-suisse.com",
   UBS: "ubs.com",              GEBN:"geberit.com",
   // Ibex 35 (Spain)
   BBVA:"bbva.com",             RENO:"repsol.com",
@@ -372,10 +371,11 @@ function isEU(ticker: string): boolean {
 /** Returns true if ticker looks like Asian (Hong Kong, Singapore, India). */
 function isAsia(ticker: string): boolean {
   const upper = ticker.toUpperCase();
+  // Suffix (.HK/.SI) or a known Asian ticker. The bare numeric HK codes
+  // (e.g. "0700") are covered by ASIAN_DOMAINS — matching any 4-5 digit
+  // string here wrongly captured unrelated numeric tickers.
   return /\.(HK|SI)$/.test(upper) ||
-         /^\d{4,5}$/.test(upper) ||
-         /^[A-Z]+$/.test(upper) && upper.length >= 3 &&
-         (Object.keys(ASIAN_DOMAINS).some(k => k === upper));
+         Object.keys(ASIAN_DOMAINS).some(k => k === upper);
 }
 
 /**
@@ -386,7 +386,6 @@ function isAsia(ticker: string): boolean {
  */
 function getSources(logoTicker: string): string[] {
   const sources: string[] = [];
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
   if (isBR(logoTicker)) {
     // B3 (Brazil): Clearbit → FMP (.SA) → Parqet
@@ -421,15 +420,12 @@ function getSources(logoTicker: string): string[] {
     sources.push(`https://assets.parqet.com/logos/symbol/${logoTicker}?format=jpg`);
   }
 
-  // Backend API endpoint (secure, with API key)
-  sources.push(`${apiBase}/api/v1/logos/search/${logoTicker}`);
-
-  // FMP Search API as final fallback (free tier)
-  const fmpKey = process.env.NEXT_PUBLIC_FMP_API_KEY;
-  const fmpSearch = fmpKey
-    ? `https://financialmodelingprep.com/api/v3/search?query=${logoTicker}&limit=1&apikey=${fmpKey}`
-    : `https://financialmodelingprep.com/api/v3/search?query=${logoTicker}&limit=1`;
-  sources.push(fmpSearch);
+  // NOTE: the backend `/api/v1/logos/search/{ticker}` and the FMP `/api/v3/search`
+  // endpoints return JSON (not an image), so they cannot be used directly as an
+  // <img src>. They were removed from this chain — every render that reached them
+  // only triggered onError and, for FMP search, burned API quota with no benefit.
+  // The Clearbit → FMP image-stock → Parqet image sources above already cover the
+  // common markets; unmatched tickers fall back to the initials avatar.
 
   return sources;
 }
@@ -459,7 +455,7 @@ function cleanupOldCache(): void {
   if (typeof window === "undefined") return;
   const keys = Object.keys(localStorage);
   keys.forEach(k => {
-    if (k.startsWith("logo_cache_") && !k.includes(CACHE_VERSION)) {
+    if (k.startsWith("logo_cache_") && !k.endsWith(`_${CACHE_VERSION}`)) {
       localStorage.removeItem(k);
     }
   });
@@ -470,8 +466,10 @@ function preloadPopularLogos(): void {
   if (typeof window === "undefined") return;
   const popular = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "JPM", "SPY"];
   popular.forEach(ticker => {
+    const domain = US_DOMAINS[ticker];
+    if (!domain) return;
     const img = new Image();
-    img.src = `https://logo.clearbit.com/apple.com`;
+    img.src = `https://logo.clearbit.com/${domain}`;
   });
 }
 
@@ -488,12 +486,10 @@ export default function TickerLogo({ ticker, size = 28, className }: TickerLogoP
   const isInCache = getFailedLogos().has(logoTicker);
 
   // Cleanup old cache and preload popular logos on first mount
-  useState(() => {
-    if (typeof window !== "undefined") {
-      cleanupOldCache();
-      preloadPopularLogos();
-    }
-  });
+  useEffect(() => {
+    cleanupOldCache();
+    preloadPopularLogos();
+  }, []);
 
   const handleError = () => {
     if (srcIndex < sources.length - 1) {

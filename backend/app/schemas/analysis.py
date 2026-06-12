@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -87,7 +87,7 @@ class SimulationRequest(BaseModel):
     inflation_rate: float = 0.03
     num_simulations: int = 1000
     rebalancing: str = "none"       # none | monthly | quarterly | annual
-    dividend_yield: float = 0.04    # yield anual da carteira (0.04 = 4%)
+    dividend_yield: float = Field(0.04, ge=0, le=0.5)  # yield anual da carteira (0.04 = 4%)
     drip: bool = True               # reinvestir dividendos automaticamente
     fx_brl_usd: Optional[float] = None  # taxa BRL/USD para mostrar em reais (ex: 5.7)
 
