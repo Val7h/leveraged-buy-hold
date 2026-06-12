@@ -1,5 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
+// NAO REMOVER: a landing precisa ser renderizada por request para que o
+// Next 14 injete o atributo `nonce=` (vindo do middleware CSP) nos scripts
+// de hydration `self.__next_f.push(...)`. Sem isso, a CSP strict-dynamic
+// bloqueia os scripts inline, React nunca hidrata e o spinner
+// "Verificando sessao..." fica eterno. (Ver middleware.ts e fix #f3af00a.)
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { TrendingUp, BarChart3, FlaskConical, Zap, ChevronRight, Check } from "lucide-react";

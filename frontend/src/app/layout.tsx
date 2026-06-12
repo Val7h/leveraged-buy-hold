@@ -2,6 +2,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 import CookieBanner from "@/components/legal/CookieBanner";
 
+// CRITICO — habilita renderizacao dinamica por request em TODAS as paginas.
+// Necessario para que o Next 14 injete o atributo `nonce=` (vindo do
+// middleware via request header `Content-Security-Policy`) nos scripts
+// inline `self.__next_f.push(...)` de hydration. Sem dynamic='force-dynamic',
+// paginas estaticas (ex: `/`) sao pre-renderizadas em build time, sem
+// contexto de request, e os scripts saem sem nonce → CSP bloqueia →
+// React nunca hidrata → spinner "Verificando sessao..." eterno.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: { default: "LBH System — Buy & Hold Alavancado Adaptativo", template: "%s | LBH System" },
   description: "Sistema quantitativo para Buy & Hold alavancado adaptativo. Screening de ativos defensivos, backtest, simulador Monte Carlo. Modo demo gratuito.",
