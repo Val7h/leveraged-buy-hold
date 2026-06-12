@@ -5,7 +5,7 @@
 FROM node:20-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+&& rm -rf /var/lib/apt/lists/*
 COPY frontend/package*.json ./
 COPY frontend/prisma ./prisma
 # --legacy-peer-deps tolera peer dep mismatches (radix-ui + zod + @react-oauth/google)
@@ -15,7 +15,7 @@ RUN npm ci --legacy-peer-deps --no-audit --no-fund
 FROM node:20-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+&& rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ ./
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -33,9 +33,9 @@ ENV PORT=3000
 
 # Runtime deps: openssl (Prisma engine), curl (HEALTHCHECK)
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates curl \
- && rm -rf /var/lib/apt/lists/* \
- && groupadd -r nodejs -g 1001 \
- && useradd -r -g nodejs -u 1001 -s /sbin/nologin nextjs
+&& rm -rf /var/lib/apt/lists/* \
+&& groupadd -r nodejs -g 1001 \
+&& useradd -r -g nodejs -u 1001 -s /sbin/nologin nextjs
 
 # Copy Next.js standalone output with correct ownership.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
@@ -52,6 +52,6 @@ USER nextjs
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://localhost:3000/api/health || exit 1
+CMD curl -fsS http://localhost:3000/api/health || exit 1
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node server.js"]
