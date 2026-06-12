@@ -37,10 +37,16 @@ export default function PortfolioEquityCurve({
 }: Props) {
   const [activeDays, setActiveDays] = useState(365);
 
-  // Filter curve client-side based on selected period
-  const filtered = activeDays >= 99999
-    ? curve
-    : curve.slice(-activeDays);
+  // Filter curve client-side by actual calendar date (the curve has ~252
+  // trading-day points per year, so slicing by point count gave wrong windows).
+  const filtered = (() => {
+    if (activeDays >= 99999 || curve.length === 0) return curve;
+    const lastDate = new Date(curve[curve.length - 1].date + "T12:00:00");
+    const cutoff = new Date(lastDate);
+    cutoff.setDate(cutoff.getDate() - activeDays);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    return curve.filter((p) => p.date >= cutoffStr);
+  })();
 
   const lastEquity  = filtered.at(-1)?.equity ?? 0;
   const firstEquity = filtered[0]?.equity ?? 0;

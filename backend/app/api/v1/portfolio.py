@@ -298,7 +298,7 @@ def get_equity_curve(
         return {"curve": [], "total_invested": 0.0, "positions_count": 0,
                 "pnl_pct": 0.0, "max_drawdown": 0.0}
 
-    period = "5y" if days > 730 else "2y" if days > 365 else "1y"
+    period = "10y" if days > 1825 else "5y" if days > 730 else "2y" if days > 365 else "1y"
 
     # Fetch close prices for each position
     price_map: dict[str, pd.Series] = {}
@@ -352,8 +352,20 @@ def get_equity_curve(
     first_eq = curve[0]["equity"] if curve else 0
     last_eq  = curve[-1]["equity"] if curve else 0
     pnl_pct  = ((last_eq / first_eq) - 1) * 100 if first_eq > 0 else 0.0
-    max_eq   = max((c["equity"] for c in curve), default=0)
-    max_dd   = ((max_eq - last_eq) / max_eq * 100) if max_eq > 0 else 0.0
+
+    # Max drawdown = largest peak-to-trough drop over the whole curve
+    # (not just peak-to-last-point, which hides intra-period drawdowns).
+    peak = 0.0
+    max_dd = 0.0
+    for c in curve:
+        eq = c["equity"]
+        if eq > peak:
+            peak = eq
+        if peak > 0:
+            dd = (peak - eq) / peak * 100
+            if dd > max_dd:
+                max_dd = dd
+
     total_invested = sum(pos.shares * pos.avg_price for pos in positions)
 
     return {

@@ -65,23 +65,29 @@ def _simulate_leveraged_hold(
         final = equity_vals[-1]
 
         if margin_called:
-            total_ret = -100.0
-            ann_ret   = -100.0
+            # Once liquidated, equity steps to 0 and stays there. Computing
+            # vol/Sharpe/drawdown over that step-to-zero series yields garbage,
+            # so use sentinels representing a total loss instead.
+            total_ret  = -100.0
+            ann_ret    = -100.0
+            ann_vol    = 0.0
+            sharpe_val = -99.0   # worst possible — sorts liquidated names last
+            max_dd     = -100.0
         else:
             total_ret = (final / capital - 1) * 100 if capital > 0 else 0.0
             ann_ret   = ((final / capital) ** (1 / years) - 1) * 100 if years > 0 and capital > 0 else 0.0
 
-        daily_rets = eq.pct_change().dropna()
-        ann_vol    = float(daily_rets.std() * (252 ** 0.5) * 100) if len(daily_rets) > 1 else 0.0
+            daily_rets = eq.pct_change().dropna()
+            ann_vol    = float(daily_rets.std() * (252 ** 0.5) * 100) if len(daily_rets) > 1 else 0.0
 
-        # Sharpe ratio
-        rf_daily   = risk_free / 252
-        excess     = daily_rets - rf_daily
-        sharpe_val = float(excess.mean() / excess.std() * (252 ** 0.5)) if excess.std() > 0 else 0.0
+            # Sharpe ratio
+            rf_daily   = risk_free / 252
+            excess     = daily_rets - rf_daily
+            sharpe_val = float(excess.mean() / excess.std() * (252 ** 0.5)) if excess.std() > 0 else 0.0
 
-        # Max drawdown
-        roll_max = eq.cummax().replace(0, 1e-10)
-        max_dd   = float(((eq - roll_max) / roll_max).min() * 100)
+            # Max drawdown
+            roll_max = eq.cummax().replace(0, 1e-10)
+            max_dd   = float(((eq - roll_max) / roll_max).min() * 100)
 
         # Beta vs benchmark (SPY or equivalent)
         beta_val = 0.0
@@ -159,6 +165,8 @@ def run_sharpe_compare(
                 logger.error(f"[SharpeCompare] Future failed for {ticker}: {exc}")
 
     survivors  = sorted([r for r in results if not r["margin_call"]], key=lambda x: x["sharpe"], reverse=True)
-    liquidated = sorted([r for r in results if r["margin_call"]],     key=lambda x: x["sharpe"], reverse=True)
+    # Liquidated names all share the -99 Sharpe sentinel, so rank them by how
+    # long they survived (later margin-call date = less bad) instead.
+    liquidated = sorted([r for r in results if r["margin_call"]],     key=lambda x: x.get("margin_call_date") or "", reverse=True)
 
     return survivors + liquidated

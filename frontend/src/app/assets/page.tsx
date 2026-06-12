@@ -91,19 +91,18 @@ export default function AssetsPage() {
   useEffect(() => {
     const t = searchParams.get("tickers");
     const auto = searchParams.get("autorun");
-    if (t) {
-      setTickers(t);
-      if (auto === "1") {
-        // Small delay to let state settle
-        setTimeout(() => {
-          assetsApi.screen({ tickers: t.toUpperCase(), min_score: 0 })
-            .then((res) => setResult(res.data))
-            .catch((e) => setError(e?.response?.data?.detail || "Erro ao buscar ativos"))
-            .finally(() => setLoading(false));
-          setLoading(true);
-        }, 100);
-      }
-    }
+    if (!t) return;
+    setTickers(t);
+    if (auto !== "1") return;
+    // Use the local `t` (not state) so we can fire immediately and keep the
+    // loading flag consistent with the request lifecycle.
+    setLoading(true);
+    setError("");
+    setResult(null);
+    assetsApi.screen({ tickers: t.toUpperCase(), min_score: 0 })
+      .then((res) => setResult(res.data))
+      .catch((e) => setError(e?.response?.data?.detail || "Erro ao buscar ativos"))
+      .finally(() => setLoading(false));
   }, [searchParams]);
 
   const handleScreen = async () => {
