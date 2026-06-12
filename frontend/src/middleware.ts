@@ -147,9 +147,16 @@ export async function middleware(req: NextRequest) {
   const csp = buildCsp(nonce);
 
   // Propaga nonce para Server Components via header de request.
-  // layout.tsx lê via headers().get('x-nonce').
+  // CRITICO: o Next 14 auto-injeta o atributo `nonce=` em TODOS os <script>
+  // que ele emite (incluindo os `self.__next_f.push(...)` de hydration) SOMENTE
+  // se o header `Content-Security-Policy` estiver presente nos *request headers*
+  // forwardados pelo middleware. Setar so na response NAO ativa a injecao
+  // automatica, e o resultado e: scripts inline sem nonce -> CSP bloqueia ->
+  // React nunca hidrata -> spinner "Verificando sessao..." eterno.
+  // Ref: https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy
   const reqHeaders = new Headers(req.headers);
   reqHeaders.set("x-nonce", nonce);
+  reqHeaders.set("Content-Security-Policy", csp);
 
   const res = NextResponse.next({
     request: { headers: reqHeaders },
