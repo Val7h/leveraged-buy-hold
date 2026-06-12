@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
+import logging
 
 from app.core.security import get_current_user
 from app.models.user import User
@@ -8,6 +9,7 @@ from app.services.market_data import fetch_multiple_price_history
 from app.quantitative.backtest import run_backtest
 from app.quantitative.sharpe_compare import run_sharpe_compare
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 
@@ -45,17 +47,25 @@ def sharpe_compare(request: SharpeCompareRequest, user: User = Depends(get_curre
     if not price_data:
         raise HTTPException(400, "Não foi possível obter dados históricos")
 
-    # Filter by date range
+    # Filter by date range. `.loc[start:]` needs a sorted DatetimeIndex; if the
+    # filter fails we drop the ticker instead of silently keeping it unfiltered.
     for ticker in list(price_data.keys()):
+        df = price_data[ticker]
         try:
+            if not df.index.is_monotonic_increasing:
+                df = df.sort_index()
             if request.start:
-                price_data[ticker] = price_data[ticker].loc[request.start:]
+                df = df.loc[request.start:]
             if request.end:
-                price_data[ticker] = price_data[ticker].loc[:request.end]
-            if len(price_data[ticker]) < 30:
-                del price_data[ticker]
-        except Exception:
-            pass
+                df = df.loc[:request.end]
+        except Exception as exc:
+            logger.warning(f"[SharpeCompare] date filter failed for {ticker}: {exc}; dropping")
+            del price_data[ticker]
+            continue
+        if len(df) < 30:
+            del price_data[ticker]
+        else:
+            price_data[ticker] = df
 
     items = run_sharpe_compare(
         price_data=price_data,

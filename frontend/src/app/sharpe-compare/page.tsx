@@ -21,7 +21,7 @@ const SHARPE_PRESETS: Record<string, { label: string; flag: string; tickers: str
   // ── EUA Tech & Growth ─────────────────────────────────────────────────────
   bigtech:       { label: "Big Tech",          flag: "💻",  tickers: "AAPL,MSFT,GOOGL,AMZN,META,NVDA,TSLA,NFLX,ORCL,ADBE" },
   tech_mid:      { label: "Tech Mid Cap",      flag: "💻",  tickers: "CRM,NOW,SNOW,DDOG,ZS,CRWD,NET,PLTR,ANET,MRVL,AMD,QCOM,TXN,AVGO,KLAC" },
-  fintech:       { label: "Fintech",           flag: "💳",  tickers: "V,MA,PYPL,SQ,FIS,FISV,GPN,AFRM,SOFI,NU" },
+  fintech:       { label: "Fintech",           flag: "💳",  tickers: "V,MA,PYPL,XYZ,FIS,FI,GPN,AFRM,SOFI,NU" },
   industrials:   { label: "Industriais EUA",   flag: "🏭",  tickers: "CAT,DE,HON,MMM,GE,RTX,LMT,NOC,BA,UPS,FDX,CSX,UNP,NSC,WAB" },
   // ── ETFs ──────────────────────────────────────────────────────────────────
   etfs_amplos:   { label: "ETFs Amplos",       flag: "📊",  tickers: "SPY,QQQ,IWM,DIA,VTI,VOO,IVV,RSP,MDY,IJH" },

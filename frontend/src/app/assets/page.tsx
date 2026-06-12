@@ -34,7 +34,7 @@ const PRESET_LISTS: Record<string, { tickers: string; label: string; flag?: stri
     label: "B3 Energia", flag: "🇧🇷",
   },
   b3_oleo:    {
-    tickers: "PETR4.SA,PETR3.SA,PRIO3.SA,CSAN3.SA,VBBR3.SA,UGPA3.SA,RRRP3.SA,RECV3.SA",
+    tickers: "PETR4.SA,PETR3.SA,PRIO3.SA,CSAN3.SA,VBBR3.SA,UGPA3.SA,BRAV3.SA,RECV3.SA",
     label: "B3 Petróleo", flag: "🇧🇷",
   },
   b3_mineral: {
@@ -50,7 +50,7 @@ const PRESET_LISTS: Record<string, { tickers: string; label: string; flag?: stri
     label: "B3 Alimentos", flag: "🇧🇷",
   },
   b3_varejo:  {
-    tickers: "LREN3.SA,ASAI3.SA,PCAR3.SA,MGLU3.SA,ARZZ3.SA,SOMA3.SA,PETZ3.SA,ALPA4.SA",
+    tickers: "LREN3.SA,ASAI3.SA,PCAR3.SA,MGLU3.SA,AZZA3.SA,PETZ3.SA,ALPA4.SA",
     label: "B3 Varejo", flag: "🇧🇷",
   },
   b3_industrial: {
