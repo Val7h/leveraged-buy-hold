@@ -167,9 +167,11 @@ export default function AssetCard({ asset, onSelect }: AssetCardProps) {
               <span className="text-xs font-mono font-semibold text-primary">
                 ½K {kelly.kelly_half.toFixed(2)}x
               </span>
-              <span className="text-[10px] text-text-muted">
-                · ¼K {kelly.kelly_quarter.toFixed(2)}x
-              </span>
+              {kelly.kelly_quarter != null && (
+                <span className="text-[10px] text-text-muted">
+                  · ¼K {kelly.kelly_quarter.toFixed(2)}x
+                </span>
+              )}
             </div>
           </div>
           {kelly.win_rate != null && (
