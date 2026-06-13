@@ -1,9 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from datetime import datetime
 
-from app.core.security import get_current_user_or_demo
-from app.models.user import User
 from app.services.market_data import analyze_asset, screen_assets, get_market_state
 from app.schemas.asset import AssetScore, AssetScreenResult, AssetFilter, MarketStateData
 
@@ -11,7 +9,7 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 
 
 @router.get("/market-state")
-def get_market_state_endpoint(current_user: User = Depends(get_current_user_or_demo)):
+def get_market_state_endpoint():
     """
     Retorna o estado atual do mercado (TOPO / NORMAL / CAPITULAÇÃO) com base
     no SPY: RSI semanal, distância da MM200 e distância do topo das 52 semanas.
@@ -26,9 +24,8 @@ def get_market_state_endpoint(current_user: User = Depends(get_current_user_or_d
 def screen(
     tickers: Optional[str] = Query(None, description="CSV de tickers, ex: NEE,SO,JNJ"),
     min_score: float = Query(0.0, ge=0, le=100),
-    current_user: User = Depends(get_current_user_or_demo),
+    risk_profile: str = Query("moderate", description="conservative | moderate | aggressive"),
 ):
-    risk_profile = current_user.risk_profile.value
     ticker_list = [t.strip().upper() for t in tickers.split(",")] if tickers else None
     results, market_state, failed = screen_assets(ticker_list, risk_profile, min_score)
     attempted = len(ticker_list) if ticker_list else len(results) + len(failed)
@@ -43,10 +40,7 @@ def screen(
 
 
 @router.get("/{ticker}/price")
-def get_current_price(
-    ticker: str,
-    current_user: User = Depends(get_current_user_or_demo),
-):
+def get_current_price(ticker: str):
     """Retorna apenas o preço atual do ativo — endpoint leve, sem análise completa."""
     from app.services.market_data import fetch_price_history
     import yfinance as yf
@@ -70,12 +64,12 @@ def get_current_price(
 @router.get("/{ticker}", response_model=AssetScore)
 def get_asset(
     ticker: str,
-    current_user: User = Depends(get_current_user_or_demo),
+    risk_profile: str = Query("moderate", description="conservative | moderate | aggressive"),
 ):
     ticker = ticker.upper()
     # Pega estado do mercado para o sinal de entrada correto
     market_state = get_market_state()
-    result = analyze_asset(ticker, current_user.risk_profile.value,
+    result = analyze_asset(ticker, risk_profile,
                            market_multiplier=market_state.get("multiplier", 3))
     if not result:
         raise HTTPException(status_code=404, detail=f"Ativo {ticker} não encontrado ou sem dados suficientes")
@@ -86,7 +80,6 @@ def get_asset(
 def get_price_history(
     ticker: str,
     period: str = Query("1y", description="1mo, 3mo, 6mo, 1y, 2y, 5y, 10y"),
-    current_user: User = Depends(get_current_user_or_demo),
 ):
     from app.services.market_data import fetch_price_history
     ticker = ticker.upper()

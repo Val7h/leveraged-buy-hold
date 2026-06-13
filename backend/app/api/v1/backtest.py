@@ -1,8 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from datetime import datetime
 
-from app.core.security import get_current_user_or_demo as get_current_user
-from app.models.user import User
 from app.schemas.analysis import BacktestRequest, BacktestResult, SharpeCompareRequest, SharpeCompareResult
 from app.services.market_data import fetch_multiple_price_history
 from app.quantitative.backtest import run_backtest
@@ -12,7 +10,7 @@ router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 
 @router.post("", response_model=BacktestResult)
-def run(request: BacktestRequest, user: User = Depends(get_current_user)):
+def run(request: BacktestRequest):
     all_tickers = list(set(request.tickers + ["SPY"]))
     price_data  = fetch_multiple_price_history(all_tickers, "20y")
 
@@ -34,7 +32,7 @@ def run(request: BacktestRequest, user: User = Depends(get_current_user)):
 
 
 @router.post("/sharpe-compare", response_model=SharpeCompareResult)
-def sharpe_compare(request: SharpeCompareRequest, user: User = Depends(get_current_user)):
+def sharpe_compare(request: SharpeCompareRequest):
     tickers_list = [t.strip().upper() for t in request.tickers.split(",") if t.strip()]
     if not tickers_list:
         raise HTTPException(400, "Nenhum ticker informado")

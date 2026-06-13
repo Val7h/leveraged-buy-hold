@@ -33,11 +33,14 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 # Endpoint 11: GET /api/portfolio/{portfolio_id}/ytd-performance
 # ────────────────────────────────────────────────────────────────────────────────
 
-@router.get("/portfolio/{portfolio_id}/ytd-performance", response_model=YTDPerformanceResponse)
-def get_ytd_performance(
+# TODO(sprint-portfolio-hybrid): este endpoint depende de user; chamada vai vir do Next BFF com tickers/shares no payload
+@router.get("/portfolio/{portfolio_id}/ytd-performance")
+def get_ytd_performance(portfolio_id: int):
+    raise HTTPException(410, "Moved to Next BFF. Send positions[] in payload.")
+
+
+def _disabled_get_ytd_performance(
     portfolio_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Calculate year-to-date performance metrics including daily returns,
@@ -202,8 +205,6 @@ def get_volatility_metrics(
     tickers: str = Query(..., description="Comma-separated ticker list"),
     start_date: str = Query("2020-01-01"),
     end_date: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Calculate volatility metrics for multiple tickers across different time periods.
@@ -320,8 +321,6 @@ def get_sharpe_ratio_metrics(
     tickers: str = Query(..., description="Comma-separated ticker list"),
     period: str = Query("1y", regex="^(1m|3m|6m|1y|2y|5y)$"),
     risk_free_rate: float = Query(0.05, description="Annual risk-free rate (0.05 = 5%)"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Calculate Sharpe ratio, Sortino ratio, and Calmar ratio for multiple assets.
@@ -441,8 +440,6 @@ def get_sharpe_ratio_metrics(
 @router.post("/backtest-results", response_model=BacktestResultsResponse)
 def backtest_results(
     request: BacktestResultsRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Run backtest on portfolio and return comprehensive results including
@@ -631,11 +628,14 @@ def backtest_results(
 # Endpoint 15: GET /api/analytics/risk-analysis
 # ────────────────────────────────────────────────────────────────────────────────
 
-@router.get("/risk-analysis", response_model=RiskAnalysisResponse)
-def risk_analysis(
+# TODO(sprint-portfolio-hybrid): este endpoint depende de user; chamada vai vir do Next BFF com tickers/shares no payload
+@router.get("/risk-analysis")
+def risk_analysis(portfolio_id: int):
+    raise HTTPException(410, "Moved to Next BFF. Send positions[] in payload.")
+
+
+def _disabled_risk_analysis(
     portfolio_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Comprehensive risk analysis including VaR, CVaR, stress scenarios,
@@ -825,11 +825,14 @@ def risk_analysis(
 # Endpoint 16: GET /api/analytics/sector-breakdown
 # ────────────────────────────────────────────────────────────────────────────────
 
-@router.get("/sector-breakdown", response_model=SectorBreakdownResponse)
-def get_sector_breakdown(
+# TODO(sprint-portfolio-hybrid): este endpoint depende de user; chamada vai vir do Next BFF com tickers/shares no payload
+@router.get("/sector-breakdown")
+def get_sector_breakdown(portfolio_id: int):
+    raise HTTPException(410, "Moved to Next BFF. Send positions[] in payload.")
+
+
+def _disabled_get_sector_breakdown(
     portfolio_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Analyze portfolio by sectors with concentration metrics,
@@ -980,11 +983,14 @@ def get_sector_breakdown(
 # Endpoint 17: GET /api/analytics/geographic-breakdown
 # ────────────────────────────────────────────────────────────────────────────────
 
-@router.get("/geographic-breakdown", response_model=GeographicBreakdownResponse)
-def get_geographic_breakdown(
+# TODO(sprint-portfolio-hybrid): este endpoint depende de user; chamada vai vir do Next BFF com tickers/shares no payload
+@router.get("/geographic-breakdown")
+def get_geographic_breakdown(portfolio_id: int):
+    raise HTTPException(410, "Moved to Next BFF. Send positions[] in payload.")
+
+
+def _disabled_get_geographic_breakdown(
     portfolio_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Analyze portfolio geographic exposure with country concentration,
@@ -1121,11 +1127,14 @@ def get_geographic_breakdown(
 # Endpoint 18: POST /api/analytics/portfolio-rebalancing
 # ────────────────────────────────────────────────────────────────────────────────
 
-@router.post("/portfolio-rebalancing", response_model=PortfolioRebalancingResponse)
-def portfolio_rebalancing(
+# TODO(sprint-portfolio-hybrid): este endpoint depende de user; chamada vai vir do Next BFF com tickers/shares no payload
+@router.post("/portfolio-rebalancing")
+def portfolio_rebalancing(request: PortfolioRebalancingRequest):
+    raise HTTPException(410, "Moved to Next BFF. Send positions[] in payload.")
+
+
+def _disabled_portfolio_rebalancing(
     request: PortfolioRebalancingRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Generate rebalancing recommendations to bring portfolio to target allocation,
@@ -1250,11 +1259,14 @@ def portfolio_rebalancing(
 # Endpoint 19: GET /api/analytics/tax-efficiency
 # ────────────────────────────────────────────────────────────────────────────────
 
-@router.get("/tax-efficiency", response_model=TaxEfficiencyResponse)
-def get_tax_efficiency(
+# TODO(sprint-portfolio-hybrid): este endpoint depende de user; chamada vai vir do Next BFF com tickers/shares no payload
+@router.get("/tax-efficiency")
+def get_tax_efficiency(portfolio_id: int):
+    raise HTTPException(410, "Moved to Next BFF. Send positions[] in payload.")
+
+
+def _disabled_get_tax_efficiency(
     portfolio_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Comprehensive tax efficiency analysis with loss harvesting opportunities,
@@ -1376,11 +1388,14 @@ def get_tax_efficiency(
 # Endpoint 20: POST /api/analytics/export-report
 # ────────────────────────────────────────────────────────────────────────────────
 
-@router.post("/export-report", response_model=ExportReportResponse)
-def export_report(
+# TODO(sprint-portfolio-hybrid): este endpoint depende de user; chamada vai vir do Next BFF com tickers/shares no payload
+@router.post("/export-report")
+def export_report(request: ExportReportRequest):
+    raise HTTPException(410, "Moved to Next BFF. Send positions[] in payload.")
+
+
+def _disabled_export_report(
     request: ExportReportRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """
     Generate comprehensive portfolio report in multiple formats

@@ -1,10 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from app.core.security import get_current_user_or_demo as get_current_user
-from app.models.user import User
 from app.schemas.analysis import SimulationRequest, SimulationResult
 from app.services.market_data import fetch_price_history
 from app.quantitative.monte_carlo import run_monte_carlo, run_stress_test
@@ -73,7 +71,7 @@ def _build_portfolio_close(tickers: list[str], rebalancing: str = "none") -> pd.
 
 
 @router.post("", response_model=SimulationResult)
-def simulate(request: SimulationRequest, user: User = Depends(get_current_user)):
+def simulate(request: SimulationRequest):
     tickers = [t.strip().upper() for t in request.tickers if t.strip()] or ["SPY"]
     close = _build_portfolio_close(tickers, rebalancing=request.rebalancing)
     starting_lev = LEVERAGE_MAP.get(request.risk_profile, 1.75)
@@ -141,7 +139,6 @@ def get_deleverage_projection(
     initial_equity: float = 50000,
     total_exposure: float = 100000,
     monthly_contribution: float = 1000,
-    user: User = Depends(get_current_user),
 ):
     timeline = deleverage_timeline(
         initial_equity=initial_equity,
