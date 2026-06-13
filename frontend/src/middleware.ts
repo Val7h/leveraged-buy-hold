@@ -30,7 +30,18 @@ function isProtectedApi(pathname: string): boolean {
   return PROTECTED_API_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+const SOLO_COOKIE = "lbh_solo";
+
+function hasSoloCookie(req: NextRequest): boolean {
+  const secret = process.env.LBH_SOLO_SECRET;
+  if (!secret || secret.length < 16) return false;
+  return req.cookies.get(SOLO_COOKIE)?.value === secret;
+}
+
 async function hasValidSession(req: NextRequest): Promise<boolean> {
+  // SOLO-MODE: cookie no navegador do dono bate com LBH_SOLO_SECRET -> entra direto.
+  // Amigos sem o cookie caem no fluxo normal de login.
+  if (hasSoloCookie(req)) return true;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return false;
   const secret = process.env.AUTH_SECRET;

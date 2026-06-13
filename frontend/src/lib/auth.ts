@@ -53,19 +53,38 @@ export function clearSessionCookie(): void {
 }
 
 export async function getCurrentUser() {
+  const userSelect = {
+    id: true,
+    email: true,
+    fullName: true,
+    riskProfile: true,
+    createdAt: true,
+  } as const;
+
+  // SOLO-MODE: cookie lbh_solo no navegador do dono bate com LBH_SOLO_SECRET ->
+  // devolve o user de LBH_SOLO_EMAIL direto. Amigos sem cookie caem no fluxo normal.
+  const soloSecret = process.env.LBH_SOLO_SECRET;
+  const soloEmail = process.env.LBH_SOLO_EMAIL;
+  const soloCookie = cookies().get("lbh_solo")?.value;
+  if (
+    soloSecret &&
+    soloSecret.length >= 16 &&
+    soloEmail &&
+    soloCookie === soloSecret
+  ) {
+    return prisma.user.findUnique({
+      where: { email: soloEmail.toLowerCase() },
+      select: userSelect,
+    });
+  }
+
   const token = cookies().get(COOKIE_NAME)?.value;
   if (!token) return null;
   const userId = await verifySession(token);
   if (!userId) return null;
   return prisma.user.findUnique({
     where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      riskProfile: true,
-      createdAt: true,
-    },
+    select: userSelect,
   });
 }
 
