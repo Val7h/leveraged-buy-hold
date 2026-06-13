@@ -5,10 +5,8 @@ import { Bell, Check, CheckCheck, Trash2, ExternalLink, Zap, TrendingUp, BarChar
 import { useRouter } from "next/navigation";
 import { registerServiceWorker, requestPushPermission, subscribePush } from "@/lib/push";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
-
 interface Notification {
-  id: number;
+  id: string;
   type: string;
   title: string;
   body: string;
@@ -44,47 +42,42 @@ export default function NotificationBell() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const token = () => typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "";
-
-  const headers = () => ({
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token()}`,
-  });
+  const jsonHeaders = { "Content-Type": "application/json" };
 
   async function fetchCount() {
     try {
-      const r = await fetch(`${API_URL}/api/v1/notifications/unread-count`, { headers: headers() });
+      const r = await fetch("/api/v1/notifications/unread-count", { credentials: "include" });
       if (r.ok) setUnread((await r.json()).count);
     } catch {}
   }
 
   async function fetchNotifications() {
     try {
-      const r = await fetch(`${API_URL}/api/v1/notifications?limit=20`, { headers: headers() });
+      const r = await fetch("/api/v1/notifications?limit=20", { credentials: "include" });
       if (r.ok) setNotifications(await r.json());
     } catch {}
   }
 
   async function markAllRead() {
-    await fetch(`${API_URL}/api/v1/notifications/mark-read`, {
-      method: "POST", headers: headers(),
+    await fetch("/api/v1/notifications/mark-read", {
+      method: "POST", headers: jsonHeaders, credentials: "include",
       body: JSON.stringify({ ids: null }),
     });
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnread(0);
   }
 
-  async function markRead(id: number) {
-    await fetch(`${API_URL}/api/v1/notifications/mark-read`, {
-      method: "POST", headers: headers(),
+  async function markRead(id: string) {
+    await fetch("/api/v1/notifications/mark-read", {
+      method: "POST", headers: jsonHeaders, credentials: "include",
       body: JSON.stringify({ ids: [id] }),
     });
     setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
     setUnread((c) => Math.max(0, c - 1));
   }
 
-  async function deleteNotification(id: number) {
-    await fetch(`${API_URL}/api/v1/notifications/${id}`, { method: "DELETE", headers: headers() });
+  async function deleteNotification(id: string) {
+    await fetch(`/api/v1/notifications/${id}`, { method: "DELETE", credentials: "include" });
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   }
 

@@ -296,7 +296,7 @@ export interface StressScenario {
 }
 
 export interface TradeHistoryItem {
-  id: number;
+  id: string;
   ticker: string;
   action: string;          // COMPRA | VENDA | AJUSTE | SEMENTE | CICLO
   shares: number;

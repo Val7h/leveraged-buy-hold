@@ -26,25 +26,29 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
   });
   if (!portfolio) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Build a synthetic history from position creation events
-  const events = portfolio.positions.map((p) => ({
-    id: p.id,
-    type: "buy",
-    ticker: p.ticker,
-    shares: Number(p.quantity),
-    price: Number(p.avgPrice),
-    amount: Number(p.quantity) * Number(p.avgPrice),
-    leverage: Number(p.leverage),
-    date: p.createdAt.toISOString(),
-    note: "Posição adicionada",
-  }));
+  // Build a synthetic history from position creation events.
+  // Field names match TradeHistoryItem type used by history/page.tsx.
+  const events = portfolio.positions.map((p) => {
+    const total_value = Number(p.quantity) * Number(p.avgPrice);
+    return {
+      id: p.id,
+      action: "COMPRA",
+      ticker: p.ticker,
+      shares: Number(p.quantity),
+      price: Number(p.avgPrice),
+      total_value,
+      leverage: Number(p.leverage),
+      executed_at: p.createdAt.toISOString(),
+      notes: "Posição registrada",
+    };
+  });
 
   return NextResponse.json(
     {
       portfolio_id: id,
       portfolio_name: portfolio.name,
       events,
-      total_invested: events.reduce((s, e) => s + e.amount, 0),
+      total_invested: events.reduce((s, e) => s + e.total_value, 0),
       event_count: events.length,
     },
     { headers: { "Cache-Control": "no-store" } }

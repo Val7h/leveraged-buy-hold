@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { Newspaper, TrendingUp, AlertCircle, Loader2 } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
-
 interface Article {
   id: string;
   title: string;
@@ -31,21 +29,12 @@ export default function NewsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "";
-
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-
   async function fetchNews(category?: string) {
     try {
       setLoading(true);
-      const url = new URL(`${API_URL}/api/v1/news`);
-      if (category && category !== "Todos") {
-        url.searchParams.append("category", category);
-      }
-      const res = await fetch(url.toString(), { headers });
+      const params = new URLSearchParams();
+      if (category && category !== "Todos") params.append("category", category);
+      const res = await fetch(`/api/v1/news?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Falha ao carregar notícias");
       const data: NewsResponse = await res.json();
       setArticles(data.articles);
@@ -59,7 +48,7 @@ export default function NewsPage() {
 
   async function fetchCategories() {
     try {
-      const res = await fetch(`${API_URL}/api/v1/news/categories`, { headers });
+      const res = await fetch("/api/v1/news/categories", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setCategories(data.categories);
