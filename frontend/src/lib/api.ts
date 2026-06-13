@@ -61,24 +61,24 @@ export const portfolioApi = {
   list: () => api.get("/api/v1/portfolio"),
   create: (data: { name: string; initial_equity: number; monthly_contribution: number; currency: string }) =>
     api.post("/api/v1/portfolio", data),
-  getMetrics: (id: number) => api.get(`/api/v1/portfolio/${id}/metrics`),
-  getPositions: (id: number) => api.get(`/api/v1/portfolio/${id}/positions`),
-  addPosition: (id: number, data: { ticker: string; shares: number; avg_price: number; leverage: number }) =>
+  getMetrics: (id: string) => api.get(`/api/v1/portfolio/${id}/metrics`),
+  getPositions: (id: string) => api.get(`/api/v1/portfolio/${id}/positions`),
+  addPosition: (id: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) =>
     api.post(`/api/v1/portfolio/${id}/positions`, data),
-  updatePosition: (portfolioId: number, positionId: number, data: { ticker: string; shares: number; avg_price: number; leverage: number }) =>
+  updatePosition: (portfolioId: string, positionId: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) =>
     api.put(`/api/v1/portfolio/${portfolioId}/positions/${positionId}`, data),
-  removePosition: (portfolioId: number, positionId: number) =>
+  removePosition: (portfolioId: string, positionId: string) =>
     api.delete(`/api/v1/portfolio/${portfolioId}/positions/${positionId}`),
-  toggleSeed: (portfolioId: number, positionId: number) =>
+  toggleSeed: (portfolioId: string, positionId: string) =>
     api.patch(`/api/v1/portfolio/${portfolioId}/positions/${positionId}/seed`),
-  toggleCycle: (portfolioId: number, positionId: number) =>
+  toggleCycle: (portfolioId: string, positionId: string) =>
     api.patch(`/api/v1/portfolio/${portfolioId}/positions/${positionId}/cycle`),
-  getSuggestions: (id: number, capital: number) =>
+  getSuggestions: (id: string, capital: number) =>
     api.get(`/api/v1/portfolio/${id}/suggestions`, { params: { available_capital: capital } }),
-  getHistory: (id: number) =>
+  getHistory: (id: string) =>
     api.get(`/api/v1/portfolio/${id}/history`),
-  getEquityCurve: (id: number, days = 730) =>
-    api.get(`/api/v1/portfolio/${id}/equity-curve`, { params: { days } }),
+  getEquityCurve: (id: string, startDate?: string) =>
+    api.get(`/api/v1/portfolio/${id}/equity-curve`, { params: startDate ? { start_date: startDate } : {} }),
 };
 
 // Backtest

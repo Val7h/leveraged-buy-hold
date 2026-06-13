@@ -4,20 +4,20 @@ import { portfolioApi } from "@/lib/api";
 
 interface PortfolioState {
   portfolios: Portfolio[];
-  activePortfolioId: number | null;
+  activePortfolioId: string | null;
   metrics: PortfolioMetrics | null;
   positions: Position[];
   isLoading: boolean;
   error: string | null;
   fetchPortfolios: () => Promise<void>;
-  setActivePortfolio: (id: number) => void;
-  fetchMetrics: (id: number) => Promise<void>;
-  fetchPositions: (id: number) => Promise<void>;
-  addPosition: (portfolioId: number, data: { ticker: string; shares: number; avg_price: number; leverage: number }) => Promise<void>;
-  updatePosition: (portfolioId: number, positionId: number, data: { ticker: string; shares: number; avg_price: number; leverage: number }) => Promise<void>;
-  removePosition: (portfolioId: number, positionId: number) => Promise<void>;
-  toggleSeed: (portfolioId: number, positionId: number) => Promise<void>;
-  toggleCycle: (portfolioId: number, positionId: number) => Promise<void>;
+  setActivePortfolio: (id: string) => void;
+  fetchMetrics: (id: string) => Promise<void>;
+  fetchPositions: (id: string) => Promise<void>;
+  addPosition: (portfolioId: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) => Promise<void>;
+  updatePosition: (portfolioId: string, positionId: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) => Promise<void>;
+  removePosition: (portfolioId: string, positionId: string) => Promise<void>;
+  toggleSeed: (portfolioId: string, positionId: string) => Promise<void>;
+  toggleCycle: (portfolioId: string, positionId: string) => Promise<void>;
 }
 
 export const usePortfolioStore = create<PortfolioState>((set, get) => ({
@@ -36,7 +36,7 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
       if (res.data.length > 0 && !get().activePortfolioId) {
         set({ activePortfolioId: res.data[0].id });
       }
-    } catch (e: unknown) {
+    } catch {
       set({ error: "Erro ao carregar carteiras" });
     } finally {
       set({ isLoading: false });

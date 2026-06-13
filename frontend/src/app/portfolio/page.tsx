@@ -22,7 +22,7 @@ function PortfolioPageInner() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPos, setNewPos] = useState({ ticker: "", shares: "", avg_price: "", leverage: "1" });
   const [fetchingPrice, setFetchingPrice] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ shares: "", avg_price: "", leverage: "1" });
 
   useEffect(() => {
@@ -37,7 +37,17 @@ function PortfolioPageInner() {
       setCurveLoading(true);
       setCurveError(false);
       portfolioApi.getEquityCurve(activePortfolioId)
-        .then((res) => setEquityCurve(res.data))
+        .then((res) => {
+          // New endpoint returns { equity_curve: [], summary: {} }
+          // PortfolioEquityCurve expects { curve: [], ... } — adapt here
+          const d = res.data;
+          setEquityCurve({
+            curve: d.equity_curve ?? d.curve ?? [],
+            total_invested: d.initial_capital ?? d.total_invested ?? 0,
+            pnl_pct: d.summary?.total_return_pct ?? d.pnl_pct ?? 0,
+            max_drawdown: Math.abs(d.summary?.max_drawdown_pct ?? d.max_drawdown ?? 0),
+          });
+        })
         .catch(() => setCurveError(true))
         .finally(() => setCurveLoading(false));
     }
@@ -80,13 +90,13 @@ function PortfolioPageInner() {
   };
 
   const handleStartEdit = (pos: any) => {
-    setEditingId(pos.id);
-    setEditForm({ shares: String(pos.shares), avg_price: String(pos.avg_price), leverage: String(pos.leverage) });
+    setEditingId(String(pos.id));
+    setEditForm({ shares: String(pos.shares ?? pos.quantity), avg_price: String(pos.avg_price ?? pos.avgPrice), leverage: String(pos.leverage) });
   };
 
   const handleSaveEdit = async (pos: any) => {
     if (!activePortfolioId || !pos.id) return;
-    await updatePosition(activePortfolioId, pos.id, {
+    await updatePosition(activePortfolioId, String(pos.id), {
       ticker: pos.ticker,
       shares: parseFloat(editForm.shares),
       avg_price: parseFloat(editForm.avg_price),
@@ -168,10 +178,26 @@ function PortfolioPageInner() {
         {metrics && (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-6">
             {[
-              { label: "Patrimônio", value: formatCurrency(metrics.equity, "USD", true) },
-              { label: "Alavancagem Efetiva", value: formatLeverage(metrics.effective_leverage), color: getLeverageColor(metrics.effective_leverage) },
-              { label: "Dividend Yield", value: `${metrics.dividend_yield.toFixed(2)}%` },
-              { label: "VaR 95%", value: `-${metrics.var_95.toFixed(1)}%`, color: "text-danger" },
+              {
+                label: "Patrimônio",
+                // Supports both old (equity) and new (total_equity) field names
+                value: formatCurrency((metrics as any).total_equity ?? (metrics as any).equity ?? 0, "USD", true),
+              },
+              {
+                label: "Alavancagem Média",
+                value: formatLeverage((metrics as any).weighted_avg_leverage ?? (metrics as any).effective_leverage ?? 1),
+                color: getLeverageColor((metrics as any).weighted_avg_leverage ?? (metrics as any).effective_leverage ?? 1),
+              },
+              {
+                label: "P&L Total",
+                value: formatCurrency((metrics as any).total_pnl ?? 0, "USD", true),
+                color: ((metrics as any).total_pnl ?? 0) >= 0 ? "text-success" : "text-danger",
+              },
+              {
+                label: "P&L %",
+                value: `${((metrics as any).total_pnl_pct ?? 0) >= 0 ? "+" : ""}${((metrics as any).total_pnl_pct ?? 0).toFixed(2)}%`,
+                color: ((metrics as any).total_pnl_pct ?? 0) >= 0 ? "text-success" : "text-danger",
+              },
             ].map((m) => (
               <div key={m.label} className="card-sm">
                 <p className="text-xs text-text-muted mb-1">{m.label}</p>
@@ -220,7 +246,7 @@ function PortfolioPageInner() {
                 </thead>
                 <tbody>
                   {positions.map((pos) => {
-                    const isEditing = editingId === pos.id;
+                    const isEditing = editingId === String(pos.id);
                     return (
                       <tr key={pos.ticker} className="border-b border-border/40 hover:bg-surface-2/40 transition-colors">
                         <td className="py-2.5 pr-3">
