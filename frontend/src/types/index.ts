@@ -140,24 +140,33 @@ export interface AssetScreenResult {
 }
 
 export interface PortfolioMetrics {
-  equity: number;
-  total_exposure: number;
-  effective_leverage: number;
-  portfolio_beta: number;
-  dividend_yield: number;
-  current_drawdown: number;
-  max_drawdown: number;
+  // BFF fields (current)
+  total_equity?: number;
+  total_pnl?: number;
+  total_pnl_pct?: number;
+  weighted_avg_leverage?: number;
+  portfolio_volatility_pct?: number;
+  portfolio_sharpe?: number;
+  allocation?: Array<{ ticker: string; weight_pct: number; current_value: number }>;
+  // Legacy FastAPI fields (fallback)
+  equity?: number;
+  total_exposure?: number;
+  effective_leverage?: number;
+  portfolio_beta?: number;
+  dividend_yield?: number;
+  current_drawdown?: number;
+  max_drawdown?: number;
   sharpe_ratio?: number;
   sortino_ratio?: number;
-  var_95: number;
-  cvar_95: number;
-  safety_margin: number;
-  projected_cagr: number;
-  deleverage_years: number;
+  var_95?: number;
+  cvar_95?: number;
+  safety_margin?: number;
+  projected_cagr?: number;
+  deleverage_years?: number;
 }
 
 export interface Position {
-  id?: number;
+  id?: string;
   ticker: string;
   company_name?: string;
   sector?: string;
@@ -176,13 +185,13 @@ export interface Position {
 }
 
 export interface WatchlistItem {
-  id: number;
+  id: string;
   ticker: string;
   added_at: string;
 }
 
 export interface Portfolio {
-  id: number;
+  id: string;
   name: string;
   initial_equity: number;
   monthly_contribution: number;

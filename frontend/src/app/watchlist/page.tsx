@@ -56,7 +56,7 @@ export default function WatchlistPage() {
     }
   };
 
-  const handleRemove = async (id: number) => {
+  const handleRemove = async (id: string) => {
     await watchlistApi.remove(id);
     setScores((prev) => {
       const copy = { ...prev };

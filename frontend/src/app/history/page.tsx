@@ -46,7 +46,7 @@ export default function HistoryPage() {
     if (activePortfolioId) loadHistory(activePortfolioId);
   }, [activePortfolioId]);
 
-  const loadHistory = async (portfolioId: number) => {
+  const loadHistory = async (portfolioId: string) => {
     setLoading(true);
     setError("");
     try {

@@ -213,47 +213,53 @@ export default function DashboardPage() {
         {/* ── Portfolio Metrics ─────────────────────────────── */}
         {metrics && (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4">
-              <MetricCard label="Patrimônio (Equity)" value={formatCurrency(metrics.equity, "USD", true)}
-                accent="primary" icon={<DollarSign size={16} className="text-primary" />} large
-                tooltip="Valor total do seu portfólio em reais" />
-              <MetricCard label="Exposição Total"
-                value={formatCurrency(metrics.total_exposure, "USD", true)}
-                subValue={`Alavancagem: ${formatLeverage(metrics.effective_leverage)}`}
-                accent={metrics.effective_leverage > 2.5 ? "danger" : metrics.effective_leverage > 1.5 ? "warning" : "success"}
-                icon={<TrendingUp size={16} className={getLeverageColor(metrics.effective_leverage)} />}
-                tooltip="Percentual do patrimônio investido em ativos" />
-              <MetricCard label="Dividend Yield" value={`${metrics.dividend_yield.toFixed(2)}%`}
-                subValue="Yield da carteira" accent="success"
-                icon={<Percent size={16} className="text-success" />}
-                tooltip="Rendimento de dividendos anualizados das suas posições" />
-              <MetricCard label="Margem de Segurança" value={`${metrics.safety_margin.toFixed(1)}%`}
-                subValue={`VaR 95%: -${metrics.var_95.toFixed(1)}%`}
-                accent={metrics.safety_margin > 60 ? "success" : metrics.safety_margin > 30 ? "warning" : "danger"}
-                icon={<Shield size={16} className="text-success" />}
-                tooltip="Perda máxima esperada em 95% dos cenários (próximos 30 dias)" />
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-5">
-              <MetricCard label="Drawdown Atual"
-                value={formatPercent(metrics.current_drawdown)}
-                subValue={`Máx. histórico: ${formatPercent(metrics.max_drawdown)}`}
-                accent={metrics.current_drawdown < -15 ? "danger" : "default"}
-                icon={<AlertTriangle size={16} className="text-warning" />}
-                tooltip="Queda percentual máxima do seu patrimônio desde o pico" />
-              <MetricCard label="Sharpe Ratio" value={(metrics.sharpe_ratio || 0).toFixed(2)}
-                subValue={`Sortino: ${(metrics.sortino_ratio || 0).toFixed(2)}`}
-                icon={<BarChart2 size={16} className="text-primary" />}
-                tooltip="Retorno ajustado ao risco (quanto retorno por unidade de risco)" />
-              <MetricCard label="CAGR Projetado" value={`${metrics.projected_cagr.toFixed(1)}%`}
-                subValue="Estimativa conservadora" accent="success"
-                icon={<TrendingUp size={16} className="text-success" />}
-                tooltip="Retorno anualizado composto da sua carteira" />
-              <MetricCard label="Desalavancagem" value={`${metrics.deleverage_years.toFixed(1)} anos`}
-                subValue="Para alavanc. natural ~1.0x" accent="primary"
-                icon={<Clock size={16} className="text-primary" />}
-                tooltip="Alavancagem média ponderada de todas suas posições" />
-            </div>
+            {(() => {
+              const equity    = metrics.total_equity ?? metrics.equity ?? 0;
+              const pnl       = metrics.total_pnl ?? 0;
+              const pnlPct    = metrics.total_pnl_pct ?? 0;
+              const leverage  = metrics.weighted_avg_leverage ?? metrics.effective_leverage ?? 1;
+              const vol       = metrics.portfolio_volatility_pct ?? null;
+              const sharpe    = metrics.portfolio_sharpe ?? metrics.sharpe_ratio ?? null;
+              const drawdown  = metrics.current_drawdown ?? null;
+              const maxDD     = metrics.max_drawdown ?? null;
+              return (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4">
+                    <MetricCard label="Patrimônio (Equity)" value={formatCurrency(equity, "USD", true)}
+                      accent="primary" icon={<DollarSign size={16} className="text-primary" />} large
+                      tooltip="Valor total do portfólio simulado" />
+                    <MetricCard label="P&L Total"
+                      value={formatCurrency(pnl, "USD", true)}
+                      subValue={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}% vs PM`}
+                      accent={pnl >= 0 ? "success" : "danger"}
+                      icon={pnl >= 0 ? <TrendingUp size={16} className="text-success" /> : <TrendingDown size={16} className="text-danger" />}
+                      tooltip="Lucro/Prejuízo total acumulado vs preço médio" />
+                    <MetricCard label="Alavancagem Média"
+                      value={formatLeverage(leverage)}
+                      accent={leverage > 2.5 ? "danger" : leverage > 1.5 ? "warning" : "success"}
+                      icon={<TrendingUp size={16} className={getLeverageColor(leverage)} />}
+                      tooltip="Alavancagem média ponderada de todas as posições" />
+                    <MetricCard label="Sharpe Ratio"
+                      value={sharpe != null ? sharpe.toFixed(2) : "—"}
+                      subValue={vol != null ? `Volatil. ${vol.toFixed(1)}%` : undefined}
+                      icon={<BarChart2 size={16} className="text-primary" />}
+                      tooltip="Retorno ajustado ao risco (modelo)" />
+                  </div>
+                  {(drawdown != null || maxDD != null) && (
+                    <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-5">
+                      {drawdown != null && (
+                        <MetricCard label="Drawdown Atual"
+                          value={formatPercent(drawdown)}
+                          subValue={maxDD != null ? `Máx. histórico: ${formatPercent(maxDD)}` : undefined}
+                          accent={drawdown < -15 ? "danger" : "default"}
+                          icon={<AlertTriangle size={16} className="text-warning" />}
+                          tooltip="Queda desde o pico do patrimônio" />
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* ── Two-col: Ciclo em Atenção + Sementes ─────── */}
             {(cyclePositions.length > 0 || seedPositions.length > 0) && (

@@ -21,7 +21,7 @@ const BACKEND_URL =
   (process.env.NODE_ENV !== "production" ? "http://localhost:8001" : "");
 const INTERNAL_TOKEN = process.env.BACKEND_INTERNAL_TOKEN ?? "";
 
-function bHeaders() {
+function bHeaders(): Record<string, string> {
   return INTERNAL_TOKEN ? { "X-Internal-Token": INTERNAL_TOKEN } : {};
 }
 
