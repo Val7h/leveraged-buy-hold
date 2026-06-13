@@ -41,6 +41,7 @@ from app.quantitative.scoring import (
     risk_rating, opportunity_rating,
 )
 from app.quantitative.market_state import detect_market_state, compute_entry_signal
+from app.cache import redis_cache
 
 logger = logging.getLogger(__name__)
 
@@ -269,6 +270,13 @@ def fetch_price_history(
         logger.warning(f"[BITGET] {ticker} — sem dados reais, usando sintético")
         return _synthetic_price_history(ticker, period)
 
+    # ── Upstash Redis: shared cache que sobrevive a cold start ────────────────
+    cache_key = f"pxh:{ticker.upper()}:{period}:{interval}"
+    cached = redis_cache.cache_get_df(cache_key)
+    if cached is not None and len(cached) >= 50:
+        logger.info(f"[REDIS HIT] {ticker} ({period}) — {len(cached)} dias do cache")
+        return cached
+
     # ── Yahoo Finance (yfinance) ──────────────────────────────────────────────
     for attempt in range(3):
         try:
@@ -279,6 +287,8 @@ def fetch_price_history(
                 return _synthetic_price_history(ticker, period)
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
+            # Guarda no Redis para os próximos requests (inclusive pós-restart)
+            redis_cache.cache_set_df(cache_key, df)
             return df
         except Exception as e:
             err_str = str(e)
