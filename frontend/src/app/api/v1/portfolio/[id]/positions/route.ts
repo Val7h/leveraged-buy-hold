@@ -16,7 +16,7 @@ const PositionCreateSchema = z.object({
 type RouteCtx = { params: { id: string } };
 
 const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000";
-const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? "";
+const INTERNAL_TOKEN = process.env.BACKEND_INTERNAL_TOKEN ?? "";
 
 async function fetchPrice(ticker: string): Promise<number | null> {
   try {
