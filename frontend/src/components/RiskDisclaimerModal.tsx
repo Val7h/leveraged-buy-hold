@@ -8,7 +8,6 @@ import ConsentCheckbox, {
 } from "@/components/legal/ConsentCheckbox";
 import { LEGAL_VERSIONS } from "@/lib/legal/versions";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 interface RiskDisclaimerModalProps {
   onConfirm?: () => void;
@@ -63,16 +62,10 @@ const RiskDisclaimerModal: React.FC<RiskDisclaimerModalProps> = ({
     }
 
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("access_token")
-          : null;
-      const resp = await fetch(`${API_URL}/api/v1/user/consent`, {
+      const resp = await fetch("/api/v1/user/consent", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildConsentPayload(consents)),
       });
 

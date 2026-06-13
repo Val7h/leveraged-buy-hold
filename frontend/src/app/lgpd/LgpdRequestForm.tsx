@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 const REQUEST_TYPES = [
   { value: "confirmation", label: "Confirmacao de tratamento" },
@@ -36,7 +35,7 @@ export default function LgpdRequestForm() {
     setStatus("loading");
     setErrorMsg(null);
     try {
-      const resp = await fetch(`${API_URL}/api/v1/lgpd/request`, {
+      const resp = await fetch("/api/v1/lgpd/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

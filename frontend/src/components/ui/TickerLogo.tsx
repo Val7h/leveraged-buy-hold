@@ -386,7 +386,7 @@ function isAsia(ticker: string): boolean {
  */
 function getSources(logoTicker: string): string[] {
   const sources: string[] = [];
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+  const apiBase = "";
 
   if (isBR(logoTicker)) {
     // B3 (Brazil): Clearbit → FMP (.SA) → Parqet
