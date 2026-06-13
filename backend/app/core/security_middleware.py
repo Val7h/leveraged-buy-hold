@@ -300,8 +300,10 @@ def register_security_middleware(app):
     # 5. HTTP method restriction
     app.add_middleware(HTTPMethodRestrictionMiddleware)
 
-    # 6. CORS enforcement
-    app.add_middleware(CORSEnforcementMiddleware)
+    # 6. CORS enforcement — Sprint 1 (hybrid plan): CORS agora vem do CORSMiddleware
+    # restrito em app/main.py, lendo CORS_ORIGINS do env. Removido daqui pra evitar
+    # duplicação de headers Access-Control-* e conflito de policy.
+    # app.add_middleware(CORSEnforcementMiddleware)
 
     # 7. Security headers (last, adds headers to response)
     app.add_middleware(SecurityHeadersMiddleware)

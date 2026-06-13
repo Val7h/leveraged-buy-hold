@@ -35,3 +35,40 @@ services:
         sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
+      # Token compartilhado pro BFF Next chamar o FastAPI. Render sincroniza
+      # automaticamente do serviço lbh-backend (mesmo valor nos 2 lados).
+      - key: BACKEND_INTERNAL_TOKEN
+        fromService:
+          name: lbh-backend
+          type: web
+          envVarKey: BACKEND_INTERNAL_TOKEN
+      - key: BACKEND_INTERNAL_URL
+        value: https://lbh-backend.onrender.com
+
+  # ---------------------------------------------------------------------------
+  # Backend FastAPI (stateless). DATABASE_URL nao e setado aqui de proposito —
+  # Sprint 1 do plano hibrido: API stateless, sem Postgres direto.
+  # Plano starter pra subir; subir pra Standard antes do go-live.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: lbh-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        generateValue: false
+      - key: BACKEND_INTERNAL_TOKEN
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://lbh-system.onrender.com
+      - key: SENTRY_DSN
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false

@@ -25,5 +25,6 @@ stripe==7.8.0
 google-auth==2.25.2
 pyotp==2.9.0
 slowapi==0.1.9
-locust==2.17.0
+limits==3.6.0
 cryptography==41.0.7
+sentry-sdk[fastapi]==1.40.0
