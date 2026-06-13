@@ -122,7 +122,7 @@ export const simulatorApi = {
 export const watchlistApi = {
   list: () => api.get("/api/v1/watchlist"),
   add: (ticker: string) => api.post(`/api/v1/watchlist?ticker=${encodeURIComponent(ticker)}`),
-  remove: (id: number) => api.delete(`/api/v1/watchlist/${id}`),
+  remove: (id: string) => api.delete(`/api/v1/watchlist/${id}`),
   getSignals: () => api.get("/api/v1/watchlist/signals"),
 };
 
@@ -131,8 +131,10 @@ export const alertsApi = {
   list: () => api.get("/api/v1/alerts"),
   create: (data: { ticker: string; alert_type: string; threshold: number; message?: string }) =>
     api.post("/api/v1/alerts", data),
-  delete: (id: number) => api.delete(`/api/v1/alerts/${id}`),
-  check: (tickers: string[]) => api.post("/api/v1/alerts/check", tickers),
+  delete: (id: string) => api.delete(`/api/v1/alerts/${id}`),
+  update: (id: string, data: { active?: boolean; threshold?: number; message?: string }) =>
+    api.patch(`/api/v1/alerts/${id}`, data),
+  check: () => api.get("/api/v1/alerts/check"),
   dismissTriggered: () => api.delete("/api/v1/alerts/triggered"),
 };
 
