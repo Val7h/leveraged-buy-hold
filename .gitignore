@@ -53,4 +53,8 @@ desktop.ini
 # ── Misc ─────────────────────────────────────────
 *.log
 cache/
+# EXCEÇÃO: backend/app/cache/ é CÓDIGO-FONTE, não cache de build. Sempre versionar.
+# (sem isso, backtest_cache.py/redis_cache.py somem no clone do Render → import quebra)
+!backend/app/cache/
+!backend/app/cache/**
 frontend;C/
