@@ -266,7 +266,7 @@ class HTTPMethodRestrictionMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         # Block dangerous HTTP methods
-        if request.method not in self.allowed_METHODS:
+        if request.method not in self.ALLOWED_METHODS:
             return JSONResponse(
                 status_code=405,
                 content={
