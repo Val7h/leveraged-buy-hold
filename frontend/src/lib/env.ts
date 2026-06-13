@@ -4,7 +4,7 @@
 
 const REQUIRED_SERVER = [
   "DATABASE_URL",
-  "NEXTAUTH_SECRET",
+  "AUTH_SECRET",            // lib/auth.ts assina/verifica a sessão JWT com esta var
   "BACKEND_INTERNAL_URL",
   "BACKEND_INTERNAL_TOKEN",
 ] as const;

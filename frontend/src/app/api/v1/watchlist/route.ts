@@ -12,8 +12,12 @@ const AddItemSchema = z.object({
 
 /**
  * GET /api/v1/watchlist
- * Retorna a watchlist "Default" do usuário com itens.
- * Cria a default on-demand se ainda não existir (UX comum).
+ * Retorna os itens da watchlist "Default" do usuário.
+ *
+ * NÃO escreve no banco: se a watchlist ainda não existe, retorna [] — o POST
+ * cria a default sob demanda ao adicionar o primeiro ticker. Um GET que fazia
+ * write (create-on-read) era a causa de "Não foi possível carregar a watchlist":
+ * falhava onde os GETs read-only de portfolio/alerts passavam.
  */
 export async function GET() {
   const user = await getCurrentUser();
@@ -21,21 +25,14 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  let watchlist = await prisma.watchlist.findFirst({
+  const watchlist = await prisma.watchlist.findFirst({
     where: { userId: user.id },
     orderBy: { createdAt: "asc" },
     include: { items: { orderBy: { createdAt: "desc" } } },
   });
 
-  if (!watchlist) {
-    watchlist = await prisma.watchlist.create({
-      data: { userId: user.id, name: "Default" },
-      include: { items: true },
-    });
-  }
-
   // Achatamos para o shape antigo (lista de items) para preservar callers.
-  return NextResponse.json(watchlist.items);
+  return NextResponse.json(watchlist?.items ?? []);
 }
 
 /**

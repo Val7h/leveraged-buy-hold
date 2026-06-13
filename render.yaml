@@ -1,7 +1,7 @@
 # Render Blueprint — LBH System
-# 1 service web (Next.js standalone, API routes incluidas).
-# Backend Python foi removido. Quando o Track Backend reativar Postgres,
-# adicione a seccao "databases:" e o envVar DATABASE_URL.fromDatabase.
+# CONTAINER ÚNICO: Next.js (standalone) + FastAPI (motor quant) no mesmo serviço.
+# O Next.js fala com o FastAPI em http://127.0.0.1:8001 (interno, não exposto).
+# Ver Dockerfile + start.sh.
 
 services:
   - type: web
@@ -9,66 +9,45 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    plan: starter
+    plan: starter        # subir p/ standard se faltar memória (Next + pandas/numpy juntos)
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
-      # Cache (Upstash Redis - HTTP). Configurar no dashboard do Render.
+
+      # ── BFF interno: Next → FastAPI no mesmo container ──────────────────────
+      - key: BACKEND_INTERNAL_URL
+        value: http://127.0.0.1:8001
+      # Token compartilhado: lido pelo BFF (Node) e pelo FastAPI (Python) — mesmo container.
+      - key: BACKEND_INTERNAL_TOKEN
+        generateValue: true
+
+      # ── Cache (Upstash Redis - HTTP). Configurar no dashboard. ──────────────
       - key: UPSTASH_REDIS_REST_URL
         sync: false
       - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
-      # Database (futuro). Configurar no dashboard quando reativar Postgres.
+
+      # ── Notícias (Finnhub). Sem a chave, /news retorna vazio graciosamente. ─
+      - key: FINNHUB_API_KEY
+        sync: false
+
+      # ── Banco (Prisma/Supabase) ─────────────────────────────────────────────
       - key: DATABASE_URL
         sync: false
-      # Email transacional (Resend). Sem RESEND_API_KEY o envio fica em modo stub.
+
+      # ── Email transacional (Resend). Sem RESEND_API_KEY fica em modo stub. ──
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
         sync: false
-      # URL publica usada nos links de email (reset de senha etc).
+
+      # ── URL pública (links de email, reset de senha etc) ────────────────────
       - key: NEXT_PUBLIC_APP_URL
         value: https://lbh-system.onrender.com
-      # Stripe (opcional - modo demo nao precisa).
+
+      # ── Stripe (opcional - modo demo não precisa) ───────────────────────────
       - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
         sync: false
       - key: STRIPE_SECRET_KEY
-        sync: false
-      # Token compartilhado pro BFF Next chamar o FastAPI. Render sincroniza
-      # automaticamente do serviço lbh-backend (mesmo valor nos 2 lados).
-      - key: BACKEND_INTERNAL_TOKEN
-        fromService:
-          name: lbh-backend
-          type: web
-          envVarKey: BACKEND_INTERNAL_TOKEN
-      - key: BACKEND_INTERNAL_URL
-        value: https://lbh-backend.onrender.com
-
-  # ---------------------------------------------------------------------------
-  # Backend FastAPI (stateless). DATABASE_URL nao e setado aqui de proposito —
-  # Sprint 1 do plano hibrido: API stateless, sem Postgres direto.
-  # Plano starter pra subir; subir pra Standard antes do go-live.
-  # ---------------------------------------------------------------------------
-  - type: web
-    name: lbh-backend
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: .
-    plan: starter
-    healthCheckPath: /api/health
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        generateValue: false
-      - key: BACKEND_INTERNAL_TOKEN
-        generateValue: true
-      - key: CORS_ORIGINS
-        value: https://lbh-system.onrender.com
-      - key: SENTRY_DSN
-        sync: false
-      - key: UPSTASH_REDIS_REST_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
