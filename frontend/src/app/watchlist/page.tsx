@@ -195,7 +195,7 @@ export default function WatchlistPage() {
                       <div className="w-24 flex-shrink-0 text-center">
                         <p className="text-[10px] text-text-muted mb-0.5">Alavancagem</p>
                         <p className="text-sm font-mono font-bold text-primary">
-                          {score.entry_leverage?.toFixed(2) || "—"}x
+                          {(score.entry_leverage ?? score.recommended_leverage)?.toFixed(2) || "—"}x
                         </p>
                         {score.kelly?.kelly_half != null && (
                           <p className="text-[10px] text-text-muted">½K {score.kelly.kelly_half.toFixed(2)}x</p>
@@ -206,7 +206,7 @@ export default function WatchlistPage() {
                       <div className="w-16 flex-shrink-0 text-center">
                         <p className="text-[10px] text-text-muted mb-0.5">RSI Sem.</p>
                         <p className="text-sm font-mono text-text-primary">
-                          {score.technicals?.rsi_14_weekly?.toFixed(1) ?? score.technicals?.rsi_14?.toFixed(1) ?? "—"}
+                          {score.technicals?.rsi_weekly?.toFixed(1) ?? score.technicals?.rsi_14_weekly?.toFixed(1) ?? score.technicals?.rsi_14?.toFixed(1) ?? "—"}
                         </p>
                       </div>
 

@@ -51,6 +51,7 @@ export async function GET(request: Request) {
     assets,
     market_state: { state: "NORMAL", multiplier: 1.5 },
     screening_date: new Date().toISOString(),
+    screened_at: new Date().toISOString(), // alias — a UI lê screened_at
     total_analyzed: assets.length,
   });
 }

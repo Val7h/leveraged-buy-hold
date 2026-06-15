@@ -15,6 +15,7 @@ export interface TechnicalIndicators {
   price: number;
   rsi_14?: number;
   rsi_14_weekly?: number;      // RSI semanal — critério primário de entrada
+  rsi_weekly?: number;         // nome retornado pela rota /assets/screen (BFF Node)
   stoch_k?: number;
   stoch_d?: number;
   ma_200?: number;
