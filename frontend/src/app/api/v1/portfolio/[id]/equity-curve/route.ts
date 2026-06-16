@@ -80,16 +80,19 @@ export async function GET(req: NextRequest, { params: { id } }: RouteCtx) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
 
+  // Shape REAL do FastAPI /backtest: equity_curves.{adaptive,...} com {date,value},
+  // drawdown_curves.{...} com {date,value}, e metrics[] por estratégia.
+  type CurvePt = { date: string; value: number };
+  type Metric = {
+    strategy?: string; period?: string;
+    total_return?: number | null; cagr?: number | null;
+    sharpe?: number | null; max_drawdown?: number | null;
+    annualized_vol?: number | null; final_equity?: number | null;
+  };
   let backtestData: {
-    results?: {
-      equity_curve?: { date: string; equity: number }[];
-      total_return_pct?: number;
-      cagr_pct?: number;
-      sharpe_ratio?: number;
-      max_drawdown_pct?: number;
-      annualized_volatility_pct?: number;
-      final_equity?: number;
-    };
+    equity_curves?: Record<string, CurvePt[]>;
+    drawdown_curves?: Record<string, CurvePt[]>;
+    metrics?: Metric[];
   } | null = null;
 
   try {
@@ -116,7 +119,27 @@ export async function GET(req: NextRequest, { params: { id } }: RouteCtx) {
     );
   }
 
-  const results = backtestData?.results;
+  // Estratégia "adaptive" é a principal da metodologia LBH.
+  const adaptiveCurve = backtestData?.equity_curves?.adaptive ?? [];
+  const ddCurve = backtestData?.drawdown_curves?.adaptive ?? [];
+  const adaptiveMetric =
+    backtestData?.metrics?.find(
+      (m) => m.strategy === "adaptive" && m.period === "full"
+    ) ?? backtestData?.metrics?.find((m) => m.strategy === "adaptive");
+
+  // Mapeia {date,value} -> {date,equity} (shape que o componente PortfolioEquityCurve lê)
+  const equity_curve = adaptiveCurve.map((p) => ({
+    date: p.date,
+    equity: p.value,
+    value: p.value,
+  }));
+
+  const firstEq = adaptiveCurve[0]?.value ?? 0;
+  const lastEq = adaptiveCurve[adaptiveCurve.length - 1]?.value ?? 0;
+  const pnl_pct = firstEq > 0 ? (lastEq / firstEq - 1) * 100 : 0;
+  const max_drawdown = ddCurve.length
+    ? Math.min(...ddCurve.map((d) => d.value))
+    : (adaptiveMetric?.max_drawdown ?? 0);
 
   return NextResponse.json(
     {
@@ -125,16 +148,18 @@ export async function GET(req: NextRequest, { params: { id } }: RouteCtx) {
       start_date: startDate,
       initial_capital: body.initial_capital,
       leverage: body.leverage,
-      equity_curve: results?.equity_curve ?? [],
-      summary: results
+      equity_curve,
+      // Top-level — lidos pelo adapter do portfolio/page.tsx
+      pnl_pct,
+      max_drawdown,
+      summary: adaptiveMetric
         ? {
-            final_equity: results.final_equity ?? null,
-            total_return_pct: results.total_return_pct ?? null,
-            cagr_pct: results.cagr_pct ?? null,
-            sharpe_ratio: results.sharpe_ratio ?? null,
-            max_drawdown_pct: results.max_drawdown_pct ?? null,
-            annualized_volatility_pct:
-              results.annualized_volatility_pct ?? null,
+            final_equity: adaptiveMetric.final_equity ?? lastEq ?? null,
+            total_return_pct: adaptiveMetric.total_return ?? pnl_pct,
+            cagr_pct: adaptiveMetric.cagr ?? null,
+            sharpe_ratio: adaptiveMetric.sharpe ?? null,
+            max_drawdown_pct: adaptiveMetric.max_drawdown ?? max_drawdown,
+            annualized_volatility_pct: adaptiveMetric.annualized_vol ?? null,
           }
         : null,
       computed_at: new Date().toISOString(),

@@ -162,10 +162,65 @@ export async function POST(req: NextRequest, { params: { id } }: RouteCtx) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  const ticker = parsed.ticker.toUpperCase();
+
+  // Consolidação: se o ticker já existe na carteira, mescla em vez de duplicar.
+  // - quantidade: soma
+  // - preço médio: média ponderada pela quantidade
+  // - alavancagem: média ponderada pelo nocional (qty*preço)
+  const existing = await prisma.position.findFirst({
+    where: { portfolioId: id, ticker },
+  });
+
+  if (existing) {
+    const q1 = Number(existing.quantity);
+    const p1 = Number(existing.avgPrice);
+    const l1 = Number(existing.leverage);
+    const q2 = parsed.shares;
+    const p2 = parsed.avg_price;
+    const l2 = parsed.leverage;
+
+    const totalQty = q1 + q2;
+    const newAvgPrice = totalQty > 0 ? (q1 * p1 + q2 * p2) / totalQty : p2;
+    const notional1 = q1 * p1;
+    const notional2 = q2 * p2;
+    const totalNotional = notional1 + notional2;
+    const newLeverage =
+      totalNotional > 0 ? (notional1 * l1 + notional2 * l2) / totalNotional : l2;
+
+    const updated = await prisma.position.update({
+      where: { id: existing.id },
+      data: {
+        quantity: Math.round(totalQty * 1e6) / 1e6,
+        avgPrice: Math.round(newAvgPrice * 1e4) / 1e4,
+        leverage: Math.round(newLeverage * 1e2) / 1e2,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        id: updated.id,
+        portfolio_id: updated.portfolioId,
+        portfolioId: updated.portfolioId,
+        ticker: updated.ticker,
+        shares: Number(updated.quantity),
+        quantity: Number(updated.quantity),
+        avg_price: Number(updated.avgPrice),
+        avgPrice: Number(updated.avgPrice),
+        leverage: Number(updated.leverage),
+        merged: true, // sinaliza que foi consolidado numa posição existente
+        is_seed: false,
+        is_cycle: false,
+        created_at: updated.createdAt,
+      },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
   const created = await prisma.position.create({
     data: {
       portfolioId: id,
-      ticker: parsed.ticker.toUpperCase(),
+      ticker,
       quantity: parsed.shares,
       avgPrice: parsed.avg_price,
       leverage: parsed.leverage,
@@ -183,6 +238,7 @@ export async function POST(req: NextRequest, { params: { id } }: RouteCtx) {
       avg_price: Number(created.avgPrice),
       avgPrice: Number(created.avgPrice),
       leverage: Number(created.leverage),
+      merged: false,
       is_seed: false,
       is_cycle: false,
       created_at: created.createdAt,
