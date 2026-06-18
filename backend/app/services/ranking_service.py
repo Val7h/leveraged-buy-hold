@@ -40,6 +40,57 @@ from app.services.market_data import fetch_price_history, fetch_fundamentals
 
 logger = logging.getLogger(__name__)
 
+# ─────────────────────────── Fetch confiável p/ índices e barra de mercado ──────
+# yfinance é instável com tickers especiais (^VIX, ^BVSP, ^STOXX50E, GC=F, USDBRL=X)
+# e cai num FALLBACK SINTÉTICO (valores fabricados) → indicadores ERRADOS. Para esses,
+# buscamos direto na Yahoo chart API (query1), que é confiável para todos os tipos.
+# Em falha, retorna None (NUNCA sintético — melhor um indicador ausente que errado).
+import urllib.request as _urlreq
+import ssl as _ssl
+import json as _json
+import time as _time
+try:
+    import certifi as _certifi
+    _CHART_CTX = _ssl.create_default_context(cafile=_certifi.where())
+except Exception:
+    _CHART_CTX = _ssl.create_default_context()
+# Fallback p/ ambientes sem CA bundle (dado público via GET, sem credenciais).
+_CHART_CTX_NOVERIFY = _ssl.create_default_context()
+_CHART_CTX_NOVERIFY.check_hostname = False
+_CHART_CTX_NOVERIFY.verify_mode = _ssl.CERT_NONE
+
+
+def _chart_api_series(ticker: str, days: int):
+    """(closes np.array, {date_iso: close}) via Yahoo chart API. (None, None) em falha."""
+    try:
+        end = int(_time.time())
+        start = end - int(days * 86400)
+        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+               f"?period1={start}&period2={end}&interval=1d")
+        req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        try:
+            r = _urlreq.urlopen(req, timeout=20, context=_CHART_CTX)
+        except Exception:
+            # CA bundle indisponível / erro de cert → tenta sem verificação (dado público)
+            r = _urlreq.urlopen(req, timeout=20, context=_CHART_CTX_NOVERIFY)
+        with r:
+            d = _json.loads(r.read())
+        res = d["chart"]["result"][0]
+        ts = res["timestamp"]
+        q = res["indicators"]["quote"][0]
+        adj = (res["indicators"].get("adjclose") or [{}])[0].get("adjclose")
+        cl = adj or q.get("close") or []
+        pairs = [(t, c) for t, c in zip(ts, cl) if c is not None]
+        if len(pairs) < 2:
+            return None, None
+        closes = np.array([c for _, c in pairs], dtype=float)
+        dm = {dt.date.fromtimestamp(t).isoformat(): float(c) for t, c in pairs}
+        return closes, dm
+    except Exception as e:
+        logger.warning(f"[CHART API] {ticker} falhou: {e}")
+        return None, None
+
+
 # ─────────────────────────── Cache em memória com TTL ───────────────────────────
 RANKING_TTL = int(os.environ.get("RANKING_TTL", "1200"))      # ~20 min
 MARKET_BAR_TTL = int(os.environ.get("MARKET_BAR_TTL", "300"))  # ~5 min
@@ -295,14 +346,10 @@ def _fetch_indices() -> Tuple[Dict[str, Optional[np.ndarray]], Dict[str, Optiona
     idxc: Dict[str, Optional[np.ndarray]] = {}
     idxdm: Dict[str, Optional[dict]] = {}
     for ix in set(INDEX_BY_CAT.values()) | {"^GSPC"}:
-        try:
-            df = fetch_price_history(ix, period="6y")
-            idxc[ix] = _closes(df) if df is not None else None
-            idxdm[ix] = _datemap(df) if df is not None else None
-        except Exception as e:
-            logger.warning(f"[RANKING] índice {ix} falhou: {e}")
-            idxc[ix] = None
-            idxdm[ix] = None
+        # Índices são tickers especiais (^...) → chart API confiável (evita sintético)
+        closes, dm = _chart_api_series(ix, 6 * 366)
+        idxc[ix] = closes
+        idxdm[ix] = dm
     equity_regime = regime(idxc.get("^GSPC"))
     return idxc, idxdm, equity_regime
 
@@ -444,11 +491,9 @@ _MARKET_BAR_SPEC = [
 
 def _market_item(key: str, label: str, ticker: str) -> Optional[dict]:
     try:
-        df = fetch_price_history(ticker, period="2y")
-        if df is None or len(df) < 50:
-            return None
-        a = _closes(df)
-        if a is None or len(a) < 2:
+        # Tickers especiais (^VIX, ^BVSP, GC=F, USDBRL=X, BTC-USD) → chart API confiável.
+        a, _ = _chart_api_series(ticker, 2 * 366)
+        if a is None or len(a) < 50:
             return None
         value = float(a[-1])
         prev = float(a[-2])
