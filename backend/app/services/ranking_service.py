@@ -362,7 +362,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # Alavancagem = multiplicador do regime; só em candidato de compra (não RESERVA)
         is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3))
         leverage = float(mult) if (is_buy_candidate and bucket != "RESERVA") else 1.0
-        stops = A.staggered_stops(leverage)
+        stops = S.staggered_stops(leverage)
 
         return {
             "ticker": tk,
