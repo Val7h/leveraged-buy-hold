@@ -43,7 +43,141 @@ from app.quantitative.scoring import (
 from app.quantitative.market_state import detect_market_state, compute_entry_signal
 from app.cache import redis_cache
 
+# ─── Scoring V2 (Fase 1) — aditivo, atrás de flag. NUNCA substitui o v1. ──────
+# SCORING_V2=0 desliga completamente. Default ligado (só ADICIONA a chave
+# "scoring_v2" ao resultado; os campos v1 permanecem idênticos). Todo o bloco
+# é blindado por try/except — se o v2 falhar, o v1 segue intacto.
+_SCORING_V2_ON = _os.environ.get("SCORING_V2", "1") != "0"
+try:
+    from app.quantitative.scoring_v2 import (
+        compute_quality_score_v2, quality_gate,
+        compute_opportunity_score_v2, beta_amplifier,
+        classify_profile, regime_from_multiplier, leverage_recommendation,
+        risk_rating as risk_rating_v2,
+        opportunity_rating as opportunity_rating_v2,
+    )
+    from app.quantitative.indicators_v2 import (
+        recovery_days_from_max_dd, annual_return_std,
+        distance_from_ath, distance_from_52w_high, reversal_confirmation,
+    )
+    _SCORING_V2_AVAILABLE = True
+except Exception:  # módulo ausente/erro de import nunca derruba o serviço
+    _SCORING_V2_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+
+# Distância de stop por classe (regime favorável) — usado no sizing do v2
+_STOP_DISTANCE_FAVORAVEL = {"br": 18.0, "us": 15.0, "crypto": 25.0}
+
+
+def _compute_scoring_v2(ticker, close, fund, technicals, rsi_weekly, max_dd, sharpe, beta,
+                        market_multiplier=3):
+    """Calcula o bloco scoring_v2 de forma 100% blindada. Retorna dict ou None."""
+    if not (_SCORING_V2_ON and _SCORING_V2_AVAILABLE):
+        return None
+    try:
+        recovery = recovery_days_from_max_dd(close)
+        ret_std = annual_return_std(close)
+        disc_top = distance_from_ath(close)
+        rev_conf = reversal_confirmation(close)
+
+        quality, q_break = compute_quality_score_v2(
+            sharpe=sharpe,
+            max_drawdown_pct=max_dd,
+            recovery_days=recovery,
+            payout_ratio=fund.get("payout_ratio"),
+            debt_to_equity=fund.get("debt_to_equity"),
+            roe=fund.get("roe"),
+            roic=fund.get("roic"),
+            fcf_yield=fund.get("fcf_yield"),
+            annual_return_std_pct=ret_std,
+        )
+        gate = quality_gate(quality)
+
+        rsi_for_scoring = rsi_weekly if rsi_weekly is not None else technicals.get("rsi_14")
+        opp, o_break = compute_opportunity_score_v2(
+            distance_ma200=technicals.get("distance_from_ma200"),
+            stoch_k=technicals.get("stoch_k"),
+            discount_from_top=disc_top,
+            reversal_confirmation=rev_conf,
+            rsi=rsi_for_scoring,
+        )
+
+        amp = beta_amplifier(opp, beta)
+        ranking_score = round(min(100.0, opp * amp["factor"]), 2)
+
+        # classe p/ distância de stop
+        if ticker.upper().endswith(".SA"):
+            klass = "br"
+        elif _is_tokenized(ticker):
+            klass = "crypto"
+        else:
+            klass = "us"
+        stop_dist = _STOP_DISTANCE_FAVORAVEL[klass]
+
+        # Perfil do ativo: defensiva (beta baixo + bom DY) e/ou oportunidade (descontada)
+        profile = classify_profile(
+            beta=beta,
+            dividend_yield=fund.get("dividend_yield"),
+            discount_from_top=disc_top,
+            reversal_confirmation=rev_conf,
+        )
+
+        # Regime de mercado a partir do multiplicador (4=capitulação, 3=neutro, 2=topo)
+        regime = regime_from_multiplier(market_multiplier)
+        dma = technicals.get("distance_from_ma200")
+        clear_trend = dma is not None and dma >= 0  # acima da MM200 = tendência clara
+
+        # Alavancagem por matriz de regime + perfil (só entre os elegíveis)
+        if gate["eligible"]:
+            sizing = leverage_recommendation(
+                regime, profile, quality, gate["leverage_cap"], clear_trend
+            )
+        else:
+            sizing = {
+                "leverage": 1.0,
+                "reason": "qualidade abaixo do portão (eliminado)",
+                "stops": None,
+            }
+
+        rr = None
+        if disc_top and disc_top > 0 and stop_dist > 0:
+            rr = round(disc_top / stop_dist, 2)
+
+        leveraged = gate["eligible"] and sizing["leverage"] > 1.0
+
+        return {
+            "quality_score": quality,
+            "quality_breakdown": q_break,
+            "gate": gate,
+            "opportunity_score": opp,
+            "opportunity_breakdown": o_break,
+            "beta_amplifier": amp,
+            "ranking_score": ranking_score,
+            "profile": profile,
+            "market_regime": regime,
+            "buy_leveraged": leveraged,
+            "recommended_leverage": sizing["leverage"],
+            "sizing": sizing,
+            "risk_rating": risk_rating_v2(quality),
+            "opportunity_rating": opportunity_rating_v2(opp),
+            "inputs": {
+                "recovery_days": recovery,
+                "annual_return_std_pct": ret_std,
+                "discount_from_top_pct": disc_top,
+                "distance_52w_high_pct": distance_from_52w_high(close),
+                "reversal_confirmation": rev_conf,
+                "stop_distance_pct": stop_dist,
+                "beta": beta,
+                "dividend_yield": fund.get("dividend_yield"),
+                "clear_trend": clear_trend,
+                "rr_ratio": rr,
+            },
+        }
+    except Exception as e:
+        logger.warning(f"scoring_v2 falhou para {ticker}: {e}")
+        return None
 
 # ─── Bitget Tokenized Stocks ────────────────────────────────────────────────
 # Ações tokenizadas disponíveis na Bitget (sufixo ON = "on-chain", par USDT)
@@ -400,6 +534,12 @@ def analyze_asset(
     composite = compute_composite_score(quality_score, opp_score)
     lev_rec = leverage_from_score(composite, risk_profile)
 
+    # Scoring V2 (aditivo, blindado) — não altera nenhum campo v1 abaixo
+    scoring_v2 = _compute_scoring_v2(
+        ticker, close, fund, technicals, rsi_weekly, max_dd, sharpe, beta,
+        market_multiplier=market_multiplier,
+    )
+
     # Sinal de entrada baseado no estado do mercado + RSI semanal do ativo
     entry = compute_entry_signal(
         rsi_weekly=rsi_weekly,
@@ -460,6 +600,7 @@ def analyze_asset(
         "technicals":              technicals_out,
         "fundamentals":            fundamentals_out,
         "score_breakdown":         score_breakdown,
+        "scoring_v2":              scoring_v2,
     }
 
 

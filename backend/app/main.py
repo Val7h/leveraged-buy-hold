@@ -54,6 +54,8 @@ from app.observability import init_sentry, StructuredLoggingMiddleware
 init_sentry()
 # Stateless-safe routers (mantidos ativos): assets, backtest, simulator, analytics
 from app.api.v1 import assets, backtest, simulator, analytics
+# Ranking de aporte (stateless-safe): rotas já trazem o prefixo /api completo
+from app.api.v1 import ranking
 # TODO(sprint-2): FastAPI vira stateless. Routers DB-dependentes desativados.
 # from app.api.v1 import auth, portfolio, alerts, watchlist, logos, moderation, moderation_admin_dashboard, billing
 # from app.api.v1 import user_consent
@@ -192,6 +194,27 @@ app.include_router(assets.router, prefix="/api/v1")
 app.include_router(backtest.router, prefix="/api/v1")
 app.include_router(simulator.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
+# Ranking: rotas trazem /api completo → SEM prefixo aqui
+app.include_router(ranking.router)
+
+
+# Warm-up do cache do Ranking (NÃO-bloqueante): pré-popula em segundo plano para
+# a 1ª requisição não rodar ~116 tickers síncronos e estourar o timeout do proxy.
+# Não toca em DB (mantém o FastAPI stateless). Daemon thread → startup não bloqueia.
+@app.on_event("startup")
+def _warmup_ranking_cache():
+    import threading
+
+    def _run():
+        try:
+            from app.services import ranking_service as _R
+            _R.compute_market_bar(force=True)
+            _R.compute_ranking(force=True)
+            logging.getLogger(__name__).info("[warmup] cache de ranking + market-bar populado")
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"[warmup] falhou (segue sem cache quente): {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
 # TODO(sprint-2): FastAPI vira stateless. Routers DB-dependentes desativados.
 # app.include_router(auth.router, prefix="/api/v1")
 # app.include_router(portfolio.router, prefix="/api/v1")

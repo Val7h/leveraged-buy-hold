@@ -7,12 +7,13 @@ import { cn } from "@/lib/utils";
 import Tooltip from "@/components/ui/Tooltip";
 import {
   LayoutDashboard, Briefcase, Search, FlaskConical,
-  TrendingUp, Bell, LogOut, ChevronRight, Bookmark, History, BarChart3, X,
+  TrendingUp, Bell, LogOut, ChevronRight, Bookmark, History, BarChart3, X, Trophy,
 } from "lucide-react";
 
 const navItems = [
   // ── CORE (Main workflow) ──────────────────────────────
   { href: "/dashboard",      label: "Dashboard",  icon: LayoutDashboard, badge: null, section: "CORE", tooltip: "Estado do mercado, RSI SPY, e overview da carteira" },
+  { href: "/ranking",        label: "Ranking",    icon: Trophy,          badge: null, section: "CORE", tooltip: "Ranking de aporte por categoria: qualidade, momentum, veredito e stops escalonados" },
   { href: "/assets",         label: "Screening",  icon: Search,          badge: null, section: "CORE", tooltip: "Encontre ativos com scores de qualidade e oportunidade. Compare lado a lado" },
   { href: "/portfolio",      label: "Carteira",   icon: Briefcase,       badge: null, section: "CORE", tooltip: "Gerencie posições, P&L, drawdown e composição por setor" },
 
