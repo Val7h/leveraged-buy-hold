@@ -610,18 +610,23 @@ def score_dividend_sustainable(avg10: Optional[float], worst_year: Optional[floa
     """
     Dividendo por CONSISTÊNCIA (decisão do usuário): nível ao longo do ciclo × nunca cortou.
       - nível = nota sobre a MÉDIA de 10 anos (não o pico de um ano de bonança).
-      - multiplicador de consistência pelo PIOR ANO: cortou na crise = renda não confiável.
-        pior≥4% → ×1.0 (âncora real) · 2–4% → ×0.7 · <2% → ×0.4 (cortou na crise, ex PETR4 2020).
+      - consistência RELATIVA (neutro de mercado): pior_ano / média. Funciona tanto p/
+        aristocrata US de yield baixo (KO ~2.5% mas nunca corta → ratio ~0.9) quanto p/
+        high-yielder BR (PETR4 cortou a 0% → ratio 0). Absoluto puniria a KO injustamente.
+        ratio≥0.6 → ×1.0 · 0.4–0.6 → ×0.7 · <0.4 → ×0.4 (cortou feio em algum ano).
+    Growth/não-renda (média <1.5%): pontua só o nível, SEM castigo de corte (dividendo
+    simbólico oscila muito em termos relativos — não tankar NVDA/GOOGL por isso).
     Sem média 10a (jovem/sem dados) → cai no score trailing tradicional.
     """
     if avg10 is None:
         return score_dividend_q(trailing)
     nivel = score_dividend_q(avg10)
-    if worst_year is None:
-        return nivel                                  # histórico curto: não pune por corte
-    if worst_year >= 4.0:
+    if avg10 < 1.5 or worst_year is None:
+        return nivel                                  # growth/sem renda ou histórico curto
+    ratio = worst_year / avg10 if avg10 > 0 else 1.0
+    if ratio >= 0.6:
         mult = 1.0
-    elif worst_year >= 2.0:
+    elif ratio >= 0.4:
         mult = 0.7
     else:
         mult = 0.4

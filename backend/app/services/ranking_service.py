@@ -592,26 +592,25 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
              idxc: dict, idxdm: dict, equity_regime: str) -> Optional[dict]:
     try:
         # PREÇOS via chart API confiável (yfinance cai em SINTÉTICO em prod → preços errados).
-        # BR: fetch LONGO (desde ~2000) p/ drawdown histórico real (opção B) + dividendo 10a.
+        # Fetch LONGO (desde ~2000) p/ TODOS — drawdown histórico real (opção B) + dividendo 10a.
         # want_div=True traz o dividend yield dos dividendos REAIS (yfinance .info falhava → DY nulo).
         is_br = tk.upper().endswith(".SA")
-        if is_br:
-            df_full, dy_chart, annual_dy = _chart_api_df(tk, 25 * 366, want_div=True, want_annual=True)
-        else:
-            df_full, dy_chart = _chart_api_df(tk, 6 * 366, want_div=True)
-            annual_dy = None
+        df_full, dy_chart, annual_dy = _chart_api_df(tk, 25 * 366, want_div=True, want_annual=True)
         if df_full is None or len(df_full) < 200:
             return None
-        a_long = df_full["Close"].astype(float).values        # histórico completo (BR: ~25a)
-        # Janela recente ~6a p/ momentum/CAGR/Sharpe/beta (mantém o comportamento).
-        df = df_full.tail(1500) if (is_br and len(df_full) > 1500) else df_full
+        a_long = df_full["Close"].astype(float).values        # histórico completo (~25a)
+        # Janela recente ~6a p/ momentum/CAGR/Sharpe/beta-regressão (mantém o comportamento).
+        df = df_full.tail(1500) if len(df_full) > 1500 else df_full
         a = _closes(df)
         if a is None:
             return None
 
         # Fundamentos REAIS (FMP p/ US/Europa, brapi p/ BR; crypto/índices → None).
         fund = get_fundamentals(tk) or {}
-        beta, corr, sigma_ratio = _beta_corr_sigma(df, idxdm.get(INDEX_BY_CAT.get(cat)))
+        beta_reg, corr, sigma_ratio = _beta_corr_sigma(df, idxdm.get(INDEX_BY_CAT.get(cat)))
+        # BETA: FMP publicado é primário (regressão de 1a dá NEGATIVO p/ defensivas US —
+        # janela curta + S&P concentrado em tech). Regressão só como fallback (BR/sem FMP).
+        beta = fund.get("beta") if fund.get("beta") is not None else beta_reg
 
         # TÁTICO: cíclica descolada (corr baixa + σ alta) OU bucket curado, exceto whitelist.
         # Auto-detecção limitada ao BRASIL por enquanto (whitelist é BR; americanas serão tratadas
@@ -642,10 +641,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             dd_recovery_mult = 0.7
         else:
             dd_recovery_mult = 1.0
-        # Flag "não testado" só faz sentido p/ BR (onde puxamos histórico longo de verdade).
-        # Não-BR busca só 6a → não dá p/ inferir idade real (MSFT tem décadas).
-        hist_years = round(len(a_long) / 252.0, 1) if is_br else None
-        hist_curto = bool(is_br and hist_years is not None and hist_years < 15)
+        hist_years = round(len(a_long) / 252.0, 1)            # história real (fetch longo p/ todos)
+        hist_curto = hist_years < 15                          # jovem = não testada em crise antiga
         shp = _sharpe(a)
         rsi = _rsi(wclose if use_wk else a)                   # RSI SEMANAL
 

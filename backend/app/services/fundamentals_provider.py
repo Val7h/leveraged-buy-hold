@@ -62,6 +62,7 @@ def _empty(source=None) -> dict:
         "debt_to_equity": None,
         "dividend_yield": None,
         "fcf_yield": None,
+        "beta": None,
         "source": source,
     }
 
@@ -235,6 +236,19 @@ def _from_fmp(ticker: str) -> dict:
     except Exception as e:
         logger.warning(f"[FUNDAMENTALS] parse FMP {ticker}: {e}")
         return _empty("fmp")
+
+    # BETA via /profile — a regressão local dá negativo p/ defensivas US (janela curta +
+    # S&P concentrado em tech). O beta publicado da FMP (janela longa) é confiável.
+    prof_url = (f"https://financialmodelingprep.com/api/v3/profile/"
+                f"{_urlparse.quote(ticker)}?apikey={_urlparse.quote(key)}")
+    prof = _http_json(prof_url)
+    try:
+        prow = prof[0] if isinstance(prof, list) and prof else (prof if isinstance(prof, dict) else {})
+        b = _to_float((prow or {}).get("beta"))
+        if b is not None and b != 0:
+            out["beta"] = b
+    except Exception as e:
+        logger.warning(f"[FUNDAMENTALS] parse FMP profile {ticker}: {e}")
     return out
 
 
