@@ -401,6 +401,18 @@ def _fetch_indices() -> Tuple[Dict[str, Optional[np.ndarray]], Dict[str, Optiona
     return idxc, idxdm, equity_regime
 
 
+def _ma200_slope(a: np.ndarray, lookback: int = 40) -> Optional[float]:
+    """Direção da MM200: variação % da média de 200 dias nos últimos ~2 meses.
+    >0 = subindo (tendência longa saudável); <0 = caindo (deterioração)."""
+    if a is None or len(a) < 200 + lookback:
+        return None
+    ma = np.convolve(a, np.ones(200) / 200, mode="valid")
+    if len(ma) < lookback + 1:
+        return None
+    base = ma[-1 - lookback]
+    return float((ma[-1] / base - 1) * 100) if base else None
+
+
 def _analyze(tk: str, bucket: str, name: str, cat: str,
              idxc: dict, idxdm: dict, equity_regime: str) -> Optional[dict]:
     try:
@@ -455,6 +467,15 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             verdict = "RESERVA"
         else:
             verdict = S.aporte_verdict(momentum, quality)
+
+        # FILTRO DE DETERIORAÇÃO (anti-faca): só é faca quem NÃO criou valor no longo prazo
+        # (CAGR ≤ 0 em ~6 anos = declínio estrutural, ex: NKE/ADBE/TLT). Um ativo de CAGR
+        # positivo só corrigindo (ex: BTC em capitulação, PEP caída) SEGUE sendo compra —
+        # respeita "empresa boa caída ainda é compra contrária" e a compra de crypto no fundo.
+        deteriorating = (cagr is not None and cagr <= 0)
+        if deteriorating and verdict in ("COMPRAR FORTE", "COMPRAR"):
+            verdict = "ESPECULATIVO"   # descontado mas sem criar valor no longo prazo → faca
+
         # REGRA DO OURO: ouro em capitulação do mercado de ações → hedge → comprar forte
         if tk.upper() in ("GLD", "GC=F") and equity_regime in ("CAPITULACAO", "CAPIT.EXTREMA"):
             verdict = "COMPRAR FORTE"
@@ -464,6 +485,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # Alavancagem = multiplicador do regime; só em candidato de compra (não RESERVA)
         is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3))
         leverage = float(mult) if (is_buy_candidate and bucket != "RESERVA") else 1.0
+        # Crypto NÃO segue o 4x/5x do regime — teto 3x (defensivo não convive c/ 5x em BTC).
+        if cat == "CRYPTO":
+            leverage = min(leverage, 3.0)
         stops = S.staggered_stops(leverage)
 
         return {
