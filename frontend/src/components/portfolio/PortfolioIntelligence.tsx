@@ -94,7 +94,7 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <Stat label="Alavancagem" value={fmt(risk.leverage, "x", 2)} />
             <Stat label="VaR 95% (dia, equity)" value={fmt(risk.var95_equity_daily, "%", 1)} hint="perda diária provável" />
-            <Stat label="Liquida a" value={`-${fmt(risk.liquidation_distance_pct, "%", 0)}`} hint="queda da cesta que zera o equity" />
+            <Stat label="Liquida a" value={`-${fmt(risk.liquidation_distance_pct, "%", 0)}`} hint="queda da cesta até a margem (~-85% do equity)" />
             <Stat label="Pior tombo (cesta)" value={fmt(risk.maxdd_basket, "%", 0)} hint={`no equity ≈ ${fmt(risk.maxdd_equity, "%", 0)}`} />
           </div>
           {risk.liquidated_in_worst && (
@@ -110,7 +110,7 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
                   {i > 0 ? " · " : ""}{d.years}a → {fmt(d.leverage, "x", 1)}
                 </span>
               ))}
-              <span className="text-text-muted"> (sem fazer nada, só compondo)</span>
+              <span className="text-text-muted"> · cenário: sem novos aportes alavancados, sem choque no caminho, carry zero (Quantfury)</span>
             </div>
           )}
         </section>

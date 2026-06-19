@@ -316,21 +316,25 @@ def _candidate_max_corr(ticker: str, held_series: Dict[str, dict]) -> Optional[f
     return round(best, 2) if best is not None else None
 
 
+# (nome, início, fim, permite_desconto): GFC é crash SISTÊMICO (correlação→1, oversold não
+# protege) → SEM alívio de desconto. COVID/2022 permitem o ajuste de entrada-no-fundo.
 _STRESS_DEFS = [
-    ("Crise 2008 (GFC)", "2007-10-01", "2009-03-31"),
-    ("COVID 2020", "2020-02-01", "2020-04-30"),
-    ("Bear 2022 (juros)", "2022-01-01", "2022-10-31"),
+    ("Crise 2008 (GFC)", "2007-10-01", "2009-03-31", False),
+    ("COVID 2020", "2020-02-01", "2020-04-30", True),
+    ("Bear 2022 (juros)", "2022-01-01", "2022-10-31", True),
 ]
+_MARGIN_LIQ_PCT = 85.0   # liquida a -85% do equity (margem de manutenção, antes do zero total)
 
 
 def _discount_factor(dist_ma200: Optional[float]) -> float:
     """Quanto do crash histórico ainda 'cabe' dado o quão esticado/descontado o ativo está HOJE
-    vs a MM200 (estratégia do usuário: compra no fundo → menos chão pra cair). +30% (esticado)→1.0;
-    0%→0.75; -30% (oversold)→0.5. Reduz o stress p/ quem entrou descontado."""
+    vs a MM200 (estratégia: compra no fundo → menos chão pra cair). PISO CONSERVADOR ×0.85
+    (não 0.5) — em carteira alavancada o viés tem que apontar pro pessimista na cauda (anti
+    value-trap: oversold pode cair MAIS no crash). +30% (esticado)→1.0; -30% (oversold)→0.85."""
     if dist_ma200 is None:
         return 1.0
-    f = 0.5 + (dist_ma200 + 30.0) / 120.0
-    return max(0.5, min(1.0, f))
+    f = 0.85 + (dist_ma200 + 30.0) / 200.0   # +30→1.15→clamp 1.0 ; -30→0.85
+    return max(0.85, min(1.0, f))
 
 
 def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) -> List[dict]:
@@ -350,7 +354,7 @@ def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) ->
         except Exception:
             continue
     out = []
-    for name, s, e in _STRESS_DEFS:
+    for name, s, e, allow_disc in _STRESS_DEFS:
         sd, ed = dt.date.fromisoformat(s), dt.date.fromisoformat(e)
         ret_w, ret_adj_w, tot_w, covered = 0.0, 0.0, 0.0, 0
         for r in rrows:
@@ -361,7 +365,7 @@ def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) ->
             if len(win) < 5:
                 continue                      # ativo não existia na época
             asset_ret = (min(win) / win[0] - 1) if win[0] else 0.0   # tombo na janela
-            f = _discount_factor(r.get("distance_ma200"))            # entrada descontada cai menos
+            f = _discount_factor(r.get("distance_ma200")) if allow_disc else 1.0
             ret_w += asset_ret * r["notional"]
             ret_adj_w += asset_ret * f * r["notional"]
             tot_w += r["notional"]; covered += 1
@@ -369,14 +373,16 @@ def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) ->
             continue
         basket = ret_w / tot_w * 100
         basket_adj = ret_adj_w / tot_w * 100
+        eq_pct = max(basket * L, -100.0)
+        eq_pct_adj = max(basket_adj * L, -100.0)
         out.append({
             "scenario": name,
             "basket_pct": round(basket, 1),
             "basket_pct_adj": round(basket_adj, 1),
-            "equity_pct": round(max(basket * L, -100.0), 1),
-            "equity_pct_adj": round(max(basket_adj * L, -100.0), 1),
-            "liquidated": basket * L <= -100.0,
-            "liquidated_adj": basket_adj * L <= -100.0,
+            "equity_pct": round(eq_pct, 1),
+            "equity_pct_adj": round(eq_pct_adj, 1),
+            "liquidated": eq_pct <= -_MARGIN_LIQ_PCT,        # margem de manutenção (-85%), não -100%
+            "liquidated_adj": eq_pct_adj <= -_MARGIN_LIQ_PCT,
             "coverage": f"{covered}/{len(rrows)}",
         })
     return out
@@ -592,14 +598,16 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                 cumr = np.cumprod(1 + portr); rmr = np.maximum.accumulate(cumr)
                 maxdd_b = float(((cumr - rmr) / rmr).min() * 100)
                 L = risk_notional / eq
-                liq = round(100.0 / L, 1) if L > 0 else None
+                liq_zero = round(100.0 / L, 1) if L > 0 else None        # zera o equity
+                liq_margin = round(_MARGIN_LIQ_PCT / L, 1) if L > 0 else None  # margem manutenção
                 risk = {
                     "leverage": round(L, 2),
                     "var95_equity_daily": round(var_d * 100 * L, 2),       # VaR diário em % do EQUITY
                     "maxdd_basket": round(maxdd_b, 1),                      # pior tombo da cesta (3a)
                     "maxdd_equity": round(max(maxdd_b * L, -100.0), 1),     # como isso bate no equity
-                    "liquidation_distance_pct": liq,                       # queda da cesta que zera o equity
-                    "liquidated_in_worst": (abs(maxdd_b) >= liq) if liq else None,
+                    "liquidation_distance_pct": liq_margin,                # queda da cesta até a margem (-85% equity)
+                    "liquidation_distance_zero": liq_zero,                 # queda que zera de vez o equity
+                    "liquidated_in_worst": ((maxdd_b * L) <= -_MARGIN_LIQ_PCT) if liq_margin else None,
                 }
         except Exception:
             pass
