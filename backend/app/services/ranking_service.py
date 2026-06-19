@@ -98,12 +98,13 @@ def _chart_api_series(ticker: str, days: int):
         return None, None
 
 
-def _chart_api_df(ticker: str, days: int, want_div: bool = False):
+def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: bool = False):
     """
-    (DataFrame[index=datetime, Close], dy_trailing) via Yahoo chart API — CONFIÁVEL.
+    (DataFrame[index=datetime, Close], dy_trailing[, annual_dy]) via Yahoo chart API.
     Substitui fetch_price_history (que cai em dados SINTÉTICOS qd yfinance falha).
     dy_trailing = soma de dividendos dos últimos 365d / preço atual × 100 (None se não pediu).
-    Retorna (None, None) em falha.
+    want_annual=True → retorna também {ano: dy_anual_%} (dividendos do ano / preço atual),
+    p/ score de consistência do dividendo (média 10a + pior ano). Retorna (None, None[, None]).
     """
     try:
         import pandas as pd
@@ -136,7 +137,7 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False):
             l = lo[i] if (i < len(lo) and lo[i] and lo[i] > 0) else c
             rows.append((t, float(c), float(h), float(l)))
         if len(rows) < 60:
-            return None, None
+            return (None, None, None) if want_annual else (None, None)
         idx = pd.to_datetime([r[0] for r in rows], unit="s")
         df = pd.DataFrame(
             {"Close": [r[1] for r in rows], "High": [r[2] for r in rows], "Low": [r[3] for r in rows]},
@@ -145,16 +146,38 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False):
         pairs = [(r[0], r[1]) for r in rows]  # mantido p/ o cálculo de dividendos abaixo
 
         dy = None
-        if want_div:
+        annual = {}
+        if want_div or want_annual:
             divs = (res.get("events") or {}).get("dividends") or {}
+            price = float(pairs[-1][1])  # preço atual (ajuste≈1 na última data) → DY trailing OK
             cutoff = end - 365 * 86400
             total = sum(float(v.get("amount", 0) or 0) for k, v in divs.items() if int(k) >= cutoff)
-            price = float(pairs[-1][1])
             dy = round(total / price * 100, 2) if (price and total > 0) else 0.0
+            if want_annual:
+                # DY anual histórico CORRETO: dividendo nominal ÷ preço BRUTO médio DAQUELE ano.
+                # (usar preço de hoje subestima; usar preço AJUSTADO infla — ambos errados.)
+                raw = q.get("close") or cl
+                px_year: Dict[int, list] = {}
+                for i, t in enumerate(ts):
+                    rc = raw[i] if i < len(raw) else None
+                    if rc and rc > 0:
+                        px_year.setdefault(dt.datetime.utcfromtimestamp(int(t)).year, []).append(float(rc))
+                avg_px = {y: sum(v) / len(v) for y, v in px_year.items() if v}
+                by_year: Dict[int, float] = {}
+                for k, v in divs.items():
+                    try:
+                        y = dt.datetime.utcfromtimestamp(int(v.get("date", k))).year
+                        by_year[y] = by_year.get(y, 0.0) + float(v.get("amount", 0) or 0)
+                    except Exception:
+                        continue
+                annual = {y: round(amt / avg_px[y] * 100, 2)
+                          for y, amt in by_year.items() if avg_px.get(y)}
+        if want_annual:
+            return df, dy, annual
         return df, dy
     except Exception as e:
         logger.warning(f"[CHART DF] {ticker} falhou: {e}")
-        return None, None
+        return (None, None, None) if want_annual else (None, None)
 
 
 # ─────────────────────────── Cache em memória com TTL ───────────────────────────
@@ -371,6 +394,77 @@ def beta_aligned(asset_df, idx_dmap: Optional[Dict[str, float]]) -> Optional[flo
     return float(np.cov(ra, ri)[0, 1] / np.var(ri))
 
 
+def _beta_corr_sigma(asset_df, idx_dmap: Optional[Dict[str, float]]):
+    """(beta, correlação, σ_ação/σ_índice) alinhados POR DATA. corr baixa + σ alta =
+    assinatura de cíclica descolada (ex: PETR4 corr 0.26) — usado p/ detectar TÁTICO."""
+    if not idx_dmap:
+        return (None, None, None)
+    pairs = [(c, idx_dmap[d.isoformat()]) for d, c in _dated_closes(asset_df)
+             if d.isoformat() in idx_dmap]
+    if len(pairs) < 60:
+        return (None, None, None)
+    pairs = pairs[-252:]
+    a = np.array([p[0] for p in pairs]); ix = np.array([p[1] for p in pairs])
+    ra = np.diff(np.log(a)); ri = np.diff(np.log(ix))
+    if np.var(ri) == 0 or ra.std() == 0 or ri.std() == 0:
+        return (None, None, None)
+    beta = float(np.cov(ra, ri)[0, 1] / np.var(ri))
+    corr = float(np.corrcoef(ra, ri)[0, 1])
+    sigma_ratio = float(ra.std() / ri.std())
+    return (beta, corr, sigma_ratio)
+
+
+def _drawdown_option_b(a_long: np.ndarray, recent_years: int = 10, w_recent: float = 0.6):
+    """Opção B (decisão do usuário): usa o PIOR drawdown de toda a história, mas pondera
+    mais os últimos ~10 anos (empresa pode ter mudado — ex: Petrobras pós-Lava Jato).
+    Retorna (dd_efetivo, dd_full_historico, dd_recente)."""
+    dd_full = _max_dd(a_long)
+    if dd_full is None:
+        return (None, None, None)
+    n = int(recent_years * 252)
+    a_rec = a_long[-n:] if len(a_long) > n else a_long
+    dd_rec = _max_dd(a_rec)
+    if dd_rec is None:
+        dd_rec = dd_full
+    dd_eff = w_recent * dd_rec + (1.0 - w_recent) * dd_full
+    return (dd_eff, dd_full, dd_rec)
+
+
+def _recovered_after_maxdd(a: np.ndarray):
+    """Após o PIOR tombo, a ação recuperou o topo anterior? (queda que não volta é pior).
+    Retorna (recuperou_bool, anos_p/_recuperar, anos_desde_o_fundo).
+    anos_desde_o_fundo separa 'antigo/impairment permanente' de 'recente/oportunidade'."""
+    if a is None or len(a) < 252:
+        return (None, None, None)
+    rm = np.maximum.accumulate(a)
+    dd = (a - rm) / rm
+    trough = int(np.argmin(dd))
+    peak_before = rm[trough]
+    after = a[trough:]
+    years_since_trough = round((len(a) - 1 - trough) / 252.0, 1)
+    hit = np.where(after >= peak_before)[0]
+    if len(hit):
+        return (True, round(hit[0] / 252.0, 1), years_since_trough)
+    return (False, None, years_since_trough)
+
+
+def _dividend_consistency(annual_dy: Optional[Dict[int, float]], years: int = 10):
+    """(DY médio dos últimos `years` anos, pior ano). O pior ano expõe corte em crise
+    (PETR4 pagou 0% em 2020) — é o que separa renda confiável de janela de lucro."""
+    if not annual_dy:
+        return (None, None)
+    this_year = dt.date.today().year
+    # EXCLUI o ano corrente (incompleto) — senão entra com DY parcial baixo e vira "pior ano" falso.
+    yrs = [y for y in annual_dy if (this_year - years) <= y < this_year]
+    if not yrs:
+        return (None, None)
+    vals = [max(0.0, float(annual_dy[y])) for y in yrs]
+    avg = sum(vals) / len(vals)
+    # pior ano só conta como "corte" se a série cobre vários anos (senão jovem demais)
+    worst = min(vals) if len(yrs) >= 4 else None
+    return (round(avg, 2), (round(worst, 2) if worst is not None else None))
+
+
 def _growth5y(a: np.ndarray) -> Optional[float]:
     if a is None or len(a) < 252:
         return None
@@ -426,6 +520,17 @@ def _distance_ma200_weekly(df, current_price=None) -> Optional[float]:
         return (p / ma - 1) * 100 if ma else None
     except Exception:
         return None
+
+
+# Detecção automática de TÁTICO (cíclica descolada): corr baixa + volatilidade alta.
+_TATICO_CORR_MAX = 0.40       # anda pouco com o índice (PETR4 0.26)
+_TATICO_SIGMA_MIN = 1.40      # e balança bem mais que o índice
+# WHITELIST: empresas de qualidade que a regra de dados poderia marcar errado (corr baixa por
+# motivo idiossincrático bom, não por ser cíclica de commodity). NUNCA viram TÁTICO automático.
+_TATICO_WHITELIST = {
+    "WEGE3.SA", "ITUB4.SA", "ITSA4.SA", "BBSE3.SA", "TAEE11.SA", "EGIE3.SA",
+    "VIVT3.SA", "ABEV3.SA", "RADL3.SA", "RENT3.SA", "B3SA3.SA", "WEGE3",
+}
 
 
 # ─────────────────────────── Regime (porte de run_ranking) ───────────────────────────
@@ -487,17 +592,35 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
              idxc: dict, idxdm: dict, equity_regime: str) -> Optional[dict]:
     try:
         # PREÇOS via chart API confiável (yfinance cai em SINTÉTICO em prod → preços errados).
+        # BR: fetch LONGO (desde ~2000) p/ drawdown histórico real (opção B) + dividendo 10a.
         # want_div=True traz o dividend yield dos dividendos REAIS (yfinance .info falhava → DY nulo).
-        df, dy_chart = _chart_api_df(tk, 6 * 366, want_div=True)
-        if df is None or len(df) < 200:
+        is_br = tk.upper().endswith(".SA")
+        if is_br:
+            df_full, dy_chart, annual_dy = _chart_api_df(tk, 25 * 366, want_div=True, want_annual=True)
+        else:
+            df_full, dy_chart = _chart_api_df(tk, 6 * 366, want_div=True)
+            annual_dy = None
+        if df_full is None or len(df_full) < 200:
             return None
+        a_long = df_full["Close"].astype(float).values        # histórico completo (BR: ~25a)
+        # Janela recente ~6a p/ momentum/CAGR/Sharpe/beta (mantém o comportamento).
+        df = df_full.tail(1500) if (is_br and len(df_full) > 1500) else df_full
         a = _closes(df)
         if a is None:
             return None
 
         # Fundamentos REAIS (FMP p/ US/Europa, brapi p/ BR; crypto/índices → None).
         fund = get_fundamentals(tk) or {}
-        beta = beta_aligned(df, idxdm.get(INDEX_BY_CAT.get(cat)))
+        beta, corr, sigma_ratio = _beta_corr_sigma(df, idxdm.get(INDEX_BY_CAT.get(cat)))
+
+        # TÁTICO: cíclica descolada (corr baixa + σ alta) OU bucket curado, exceto whitelist.
+        # Auto-detecção limitada ao BRASIL por enquanto (whitelist é BR; americanas serão tratadas
+        # num bloco próprio com beta/dividendos da FMP). US/outros usam só o bucket curado.
+        auto_tatico = (is_br
+                       and corr is not None and sigma_ratio is not None
+                       and corr < _TATICO_CORR_MAX and sigma_ratio > _TATICO_SIGMA_MIN
+                       and tk.upper() not in _TATICO_WHITELIST)
+        is_tatico = (bucket == "TATICO") or auto_tatico
 
         # Série SEMANAL de fechamentos (inclui a semana corrente) — usada em
         # desconto, reversão e RSI p/ ficar coerente com o gráfico semanal.
@@ -510,11 +633,25 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         stoch_k, stoch_d = weekly_stoch_kd(df)                 # %K e %D semanais (máx/mín reais)
         sstoch = stoch_d                                       # linha lenta pontua no score
         g5 = _growth5y(a)
-        dd = _max_dd(a)
+        # Drawdown OPÇÃO B: pior tombo da história, ponderando mais os últimos ~10a (BR).
+        dd, dd_full, dd_recent = _drawdown_option_b(a_long)
+        recovered, recovery_years, years_since_trough = _recovered_after_maxdd(a_long)
+        # Modificador de recovery na nota de máxDD (decisão do usuário: só castigo, sem bônus):
+        # caiu há >3 anos e NUNCA recuperou = impairment permanente → ×0.7. Recente → não pune.
+        if recovered is False and years_since_trough is not None and years_since_trough > 3:
+            dd_recovery_mult = 0.7
+        else:
+            dd_recovery_mult = 1.0
+        # Flag "não testado" só faz sentido p/ BR (onde puxamos histórico longo de verdade).
+        # Não-BR busca só 6a → não dá p/ inferir idade real (MSFT tem décadas).
+        hist_years = round(len(a_long) / 252.0, 1) if is_br else None
+        hist_curto = bool(is_br and hist_years is not None and hist_years < 15)
         shp = _sharpe(a)
         rsi = _rsi(wclose if use_wk else a)                   # RSI SEMANAL
 
+        # Dividendo por CONSISTÊNCIA (média 10a + pior ano) — BR. Fallback: trailing.
         dy = dy_chart if dy_chart else fund.get("dividend_yield")  # dividendos reais; fallback fund
+        dy_avg10, dy_worst = _dividend_consistency(annual_dy)
         cagr = g5  # CAGR de preço (retorno total, ~6 anos)
 
         # Preço atual, variação diária e moeda — para exibição na linha do ranking.
@@ -536,7 +673,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             roe=fund.get("roe"), debt_to_equity=fund.get("debt_to_equity"),
             payout_ratio=fund.get("payout_ratio"), roic=fund.get("roic"),
             fcf_yield=fund.get("fcf_yield"), sharpe=shp, cagr=cagr, tsr_expected=tsr,
-            momentum=momentum,
+            momentum=momentum, is_tatico=is_tatico,
+            dy_avg10=dy_avg10, dy_worst=dy_worst, dd_recovery_mult=dd_recovery_mult,
         )
 
         if bucket == "RESERVA":
@@ -592,7 +730,17 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "cagr": _round_or_none(g5, 0),
             "sharpe": _round_or_none(shp, 2),
             "dividend_yield": _round_or_none(dy, 1),
+            "dy_avg10": _round_or_none(dy_avg10, 1),
+            "dy_worst_year": _round_or_none(dy_worst, 1),
             "max_dd": _round_or_none(dd, 0),
+            "max_dd_full": _round_or_none(dd_full, 0),
+            "max_dd_recent": _round_or_none(dd_recent, 0),
+            "recovered": recovered,
+            "recovery_years": _round_or_none(recovery_years, 1),
+            "years_since_trough": _round_or_none(years_since_trough, 1),
+            "hist_years": hist_years,
+            "hist_curto": hist_curto,
+            "is_tatico": is_tatico,
             "tsr_expected": _round_or_none(tsr, 1),
             "leverage": round(leverage, 1),
             "regime": reg,

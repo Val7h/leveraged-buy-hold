@@ -554,17 +554,22 @@ def score_beta_low(beta: Optional[float]) -> float:
     return _floor(100 - (beta - 0.5) / 1.3 * 80)
 
 
-def score_beta_contextual(beta: Optional[float], momentum: Optional[float] = None) -> float:
+def score_beta_contextual(beta: Optional[float], momentum: Optional[float] = None,
+                          is_tatico: bool = False) -> float:
     """
     Beta AMPLIFICADOR (decisão do usuário): a nota do beta depende do momento.
       - Beta BAIXO (≤0.9): defensivo, bom sempre.
       - Beta ALTO (≥1.2): depende do momento — oversold/boa entrada (momento alto) AMPLIFICA
         (beta alto em ativo de qualidade no fundo = recupera mais forte, ex MSFT); sobrecomprado
         (momento baixo) PENALIZA (cai mais forte na virada).
+    is_tatico: cíclica descolada (PETR4/VALE3) tem beta baixo FALSO (anda por petróleo/minério,
+      não pelo índice) → NÃO ganha o bônus de "defensivo"; trata como neutro.
     """
     if beta is None:
         return 55.0
     if beta <= 0.9:
+        if is_tatico:
+            return 62.0                                 # cíclica: beta baixo é falso → neutro
         return _floor(100 - (beta / 0.9) * 25)          # 0→100, 0.9→75 (defensivo)
     if beta < 1.2:
         return 62.0                                      # neutro
@@ -598,6 +603,29 @@ def score_dividend_q(dy: Optional[float]) -> float:
     if dy <= 7:
         return _floor(80 + (dy - 3) / 4 * 20)  # 80→100
     return _floor(100 - (dy - 7) * 5)          # yield alto demais penaliza leve
+
+
+def score_dividend_sustainable(avg10: Optional[float], worst_year: Optional[float],
+                               trailing: Optional[float] = None) -> float:
+    """
+    Dividendo por CONSISTÊNCIA (decisão do usuário): nível ao longo do ciclo × nunca cortou.
+      - nível = nota sobre a MÉDIA de 10 anos (não o pico de um ano de bonança).
+      - multiplicador de consistência pelo PIOR ANO: cortou na crise = renda não confiável.
+        pior≥4% → ×1.0 (âncora real) · 2–4% → ×0.7 · <2% → ×0.4 (cortou na crise, ex PETR4 2020).
+    Sem média 10a (jovem/sem dados) → cai no score trailing tradicional.
+    """
+    if avg10 is None:
+        return score_dividend_q(trailing)
+    nivel = score_dividend_q(avg10)
+    if worst_year is None:
+        return nivel                                  # histórico curto: não pune por corte
+    if worst_year >= 4.0:
+        mult = 1.0
+    elif worst_year >= 2.0:
+        mult = 0.7
+    else:
+        mult = 0.4
+    return _floor(nivel * mult)
 
 
 def score_growth_5y(cagr_pct: Optional[float]) -> float:
@@ -652,18 +680,24 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
                           growth_5y=None, roe=None, debt_to_equity=None,
                           payout_ratio=None, roic=None, fcf_yield=None,
                           sharpe=None, cagr=None, tsr_expected=None,
-                          momentum=None):
+                          momentum=None, is_tatico=False,
+                          dy_avg10=None, dy_worst=None, dd_recovery_mult=1.0):
     """
     Qualidade (0-100) — pesos (nada exclui). Beta é CONTEXTUAL (amplificador):
     oversold + beta alto = bônus; sobrecomprado + beta alto = penalidade (depende do momento).
+    is_tatico: mata o bônus de beta "defensivo falso" das cíclicas.
+    dy_avg10/dy_worst: dividendo por consistência (média 10a × pior ano); se ausente, usa trailing.
+    dd_recovery_mult: castiga a nota de máxDD quando o tombo é ANTIGO e nunca recuperou
+      (impairment permanente). Tombo recente não pune (está no fundo = oportunidade).
     """
-    s_beta = score_beta_contextual(beta, momentum)
-    s_dd = score_maxdd_quality(max_dd_pct)
+    s_beta = score_beta_contextual(beta, momentum, is_tatico=is_tatico)
+    s_dd = _clamp(score_maxdd_quality(max_dd_pct) * dd_recovery_mult)
     s_sharpe = score_sharpe(sharpe)
     s_cagr = score_cagr(cagr if cagr is not None else growth_5y)
     s_gro = score_growth_5y(growth_5y)
     s_tsr = score_tsr_expected(tsr_expected)
-    s_div = score_dividend_q(dividend_yield)
+    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield)
+             if dy_avg10 is not None else score_dividend_q(dividend_yield))
     s_fun = score_fundamental_health(payout_ratio, debt_to_equity, roe, roic, fcf_yield)
     breakdown = {"beta": round(s_beta), "max_drawdown": round(s_dd),
                  "sharpe": round(s_sharpe), "cagr": round(s_cagr),

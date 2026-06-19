@@ -388,13 +388,28 @@ function FactorGrid({ data, labels, raw }) {
 // Valor bruto de cada fator (mostrado junto do score no detalhe).
 function qualityRaw(a) {
   const r = {};
-  if (a.max_dd != null) r.max_drawdown = `${Math.round(a.max_dd)}%`;
+  if (a.max_dd != null) {
+    let s =
+      a.max_dd_full != null && Math.round(a.max_dd_full) !== Math.round(a.max_dd)
+        ? `${Math.round(a.max_dd)}% (hist ${Math.round(a.max_dd_full)}%)`
+        : `${Math.round(a.max_dd)}%`;
+    if (a.recovered === false && a.years_since_trough != null) {
+      s += a.years_since_trough > 3 ? ` · não voltou há ${a.years_since_trough}a ⚠` : ` · no fundo`;
+    }
+    r.max_drawdown = s;
+  }
   if (a.sharpe != null) r.sharpe = Number(a.sharpe).toFixed(2);
   if (a.cagr != null) r.cagr = `${Math.round(a.cagr)}%/ano`;
   if (a.cagr != null) r.crescimento_5a = `${Math.round(a.cagr)}%/ano`;
   if (a.tsr_expected != null) r.tsr_esperado = `${Math.round(a.tsr_expected)}%`;
-  if (a.dividend_yield) r.dividendos = `${Number(a.dividend_yield).toFixed(1)}%`;
-  if (a.beta != null) r.beta = Number(a.beta).toFixed(2);
+  if (a.dividend_yield != null) {
+    r.dividendos =
+      a.dy_avg10 != null
+        ? `atual ${Number(a.dividend_yield).toFixed(1)}% · méd10 ${Number(a.dy_avg10).toFixed(1)}%` +
+          (a.dy_worst_year != null ? ` · pior ${Number(a.dy_worst_year).toFixed(1)}%` : "")
+        : `${Number(a.dividend_yield).toFixed(1)}%`;
+  }
+  if (a.beta != null) r.beta = Number(a.beta).toFixed(2) + (a.is_tatico ? " (tático)" : "");
   return r;
 }
 function momentumRaw(a) {
@@ -448,6 +463,22 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick }) {
             <span className="text-[9px] uppercase tracking-wide text-text-muted bg-surface-3 rounded px-1.5 py-0.5 shrink-0">
               {asset.bucket}
             </span>
+            {asset.is_tatico && (
+              <span
+                title="Cíclica descolada (commodity/idiossincrática): renda e beta menos confiáveis — position trade"
+                className="text-[9px] uppercase tracking-wide text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 shrink-0"
+              >
+                tático
+              </span>
+            )}
+            {asset.hist_curto && (
+              <span
+                title={`Histórico curto (${asset.hist_years} anos) — não testado em crises antigas (2008/2015)`}
+                className="text-[9px] uppercase tracking-wide text-sky-400 bg-sky-500/10 border border-sky-500/30 rounded px-1.5 py-0.5 shrink-0"
+              >
+                não testado
+              </span>
+            )}
           </div>
         </div>
 
