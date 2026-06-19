@@ -211,6 +211,7 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
             "tsr_expected": a.get("tsr_expected"), "beta": a.get("beta"),
             "verdict": a.get("verdict"), "current_price": price,
             "notional": round(notional, 2), "is_shy": is_shy,
+            "is_seed": bool(p.get("is_seed")), "is_cycle": bool(p.get("is_cycle")),
         })
 
     # Pesos por valor de mercado; contribuição de risco (Dalio: peso × beta, normalizado).
@@ -257,10 +258,39 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
 
     correlation = _correlation_matrix([r["ticker"] for r in rows])
 
+    # ── SINAL DE VENDA / ROTAÇÃO ──────────────────────────────────────────────────
+    # Semente nunca vende. Ciclo (não-semente) que ficou ESTICADO → vender e girar pro
+    # melhor do ranking AGORA que ainda não está na carteira (opção 1, diversifica).
+    held = {r["ticker"].upper() for r in rows}
+    signals, n_sell = [], 0
+    for r in rows:
+        v = r.get("verdict")
+        if r.get("is_seed"):
+            action, reason = "MANTER", "Semente — âncora permanente, não rotaciona"
+        elif v == "ESTICADO":
+            action, reason, n_sell = "VENDER", "Esticado — realizar e girar pro ranking", n_sell + 1
+        elif v is None:
+            action, reason = "MANTER", "Fora do universo do ranking — avaliar manualmente"
+        else:
+            action, reason = "MANTER", f"{v} — segue na carteira"
+        signals.append({"ticker": r["ticker"], "verdict": v, "action": action,
+                        "reason": reason, "is_seed": r.get("is_seed")})
+    buyable = [a for a in rk.values()
+               if a.get("verdict") in ("COMPRAR FORTE", "COMPRAR")
+               and a["ticker"].upper() not in held]
+    buyable.sort(key=lambda x: -(x.get("rank") or 0))
+    rotate_into = [{
+        "ticker": a["ticker"], "name": a.get("name"), "verdict": a.get("verdict"),
+        "rank": a.get("rank"), "quality": a.get("quality"), "momentum": a.get("momentum"),
+        "current_price": a.get("current_price"), "dividend_yield": a.get("dividend_yield"),
+    } for a in buyable[:5]]
+    rotation = {"signals": signals, "rotate_into": rotate_into, "n_sell": n_sell}
+
     import datetime as _dt
     return {
         "assets": rows, "totals": totals, "buckets": buckets,
-        "correlation": correlation, "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
+        "correlation": correlation, "rotation": rotation,
+        "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
     }
 
 

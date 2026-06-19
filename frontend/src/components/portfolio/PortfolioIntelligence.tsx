@@ -11,6 +11,7 @@ type Analytics = {
   totals?: any;
   buckets?: any[];
   correlation?: any;
+  rotation?: any;
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -44,9 +45,47 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
     (a, b) => (b.risk_contribution ?? 0) - (a.risk_contribution ?? 0)
   );
   const corr = analytics.correlation || {};
+  const rotation = analytics.rotation || {};
+  const sells = (rotation.signals || []).filter((s: any) => s.action === "VENDER");
+  const rotateInto = rotation.rotate_into || [];
 
   return (
     <div className="space-y-4">
+      {/* 0. Sinal de venda / rotação */}
+      <section className="bg-surface rounded-xl border border-border p-4">
+        <h3 className="text-sm font-semibold text-text-primary mb-1">Sinal de venda / rotação</h3>
+        <p className="text-[11px] text-text-muted mb-3">
+          Semente nunca vende. Posição de ciclo que ficou <b>ESTICADO</b> → realizar e girar pro melhor do ranking que você ainda não tem.
+        </p>
+        {sells.length === 0 ? (
+          <div className="text-[12px] text-success mb-2">Nenhuma venda sugerida agora — nenhuma posição de ciclo esticada. 🟢</div>
+        ) : (
+          <div className="space-y-1.5 mb-3">
+            {sells.map((s: any) => (
+              <div key={s.ticker} className="flex items-center gap-2 text-xs">
+                <span className="px-1.5 py-0.5 rounded bg-danger/15 border border-danger/40 text-danger font-semibold text-[10px]">VENDER</span>
+                <span className="font-semibold text-text-primary">{s.ticker}</span>
+                <span className="text-text-muted">— {s.reason}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {sells.length > 0 && rotateInto.length > 0 && (
+          <div>
+            <div className="text-[11px] text-text-secondary mb-1">Girar o capital para (melhores do ranking que você não tem):</div>
+            <div className="flex flex-wrap gap-2">
+              {rotateInto.map((t: any) => (
+                <div key={t.ticker} className="text-[11px] bg-success/10 border border-success/30 rounded px-2 py-1">
+                  <span className="font-semibold text-text-primary">{t.ticker}</span>
+                  <span className="text-success ml-1">{t.verdict}</span>
+                  <span className="text-text-muted ml-1">rank {fmt(t.rank, "", 0)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* 1. Totais ponderados */}
       <section className="bg-surface rounded-xl border border-border p-4">
         <h3 className="text-sm font-semibold text-text-primary mb-3">Carteira — números reais</h3>
