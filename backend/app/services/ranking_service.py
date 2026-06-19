@@ -91,6 +91,51 @@ def _chart_api_series(ticker: str, days: int):
         return None, None
 
 
+def _chart_api_df(ticker: str, days: int, want_div: bool = False):
+    """
+    (DataFrame[index=datetime, Close], dy_trailing) via Yahoo chart API — CONFIÁVEL.
+    Substitui fetch_price_history (que cai em dados SINTÉTICOS qd yfinance falha).
+    dy_trailing = soma de dividendos dos últimos 365d / preço atual × 100 (None se não pediu).
+    Retorna (None, None) em falha.
+    """
+    try:
+        import pandas as pd
+        end = int(_time.time())
+        start = end - int(days * 86400)
+        ev = "&events=div" if want_div else ""
+        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+               f"?period1={start}&period2={end}&interval=1d{ev}")
+        req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        try:
+            r = _urlreq.urlopen(req, timeout=20, context=_CHART_CTX)
+        except Exception:
+            r = _urlreq.urlopen(req, timeout=20, context=_CHART_CTX_NOVERIFY)
+        with r:
+            d = _json.loads(r.read())
+        res = d["chart"]["result"][0]
+        ts = res["timestamp"]
+        q = res["indicators"]["quote"][0]
+        adj = (res["indicators"].get("adjclose") or [{}])[0].get("adjclose")
+        cl = adj or q.get("close") or []
+        pairs = [(t, c) for t, c in zip(ts, cl) if c is not None]
+        if len(pairs) < 60:
+            return None, None
+        idx = pd.to_datetime([t for t, _ in pairs], unit="s")
+        df = pd.DataFrame({"Close": [float(c) for _, c in pairs]}, index=idx)
+
+        dy = None
+        if want_div:
+            divs = (res.get("events") or {}).get("dividends") or {}
+            cutoff = end - 365 * 86400
+            total = sum(float(v.get("amount", 0) or 0) for k, v in divs.items() if int(k) >= cutoff)
+            price = float(pairs[-1][1])
+            dy = round(total / price * 100, 2) if (price and total > 0) else 0.0
+        return df, dy
+    except Exception as e:
+        logger.warning(f"[CHART DF] {ticker} falhou: {e}")
+        return None, None
+
+
 # ─────────────────────────── Cache em memória com TTL ───────────────────────────
 RANKING_TTL = int(os.environ.get("RANKING_TTL", "1200"))      # ~20 min
 MARKET_BAR_TTL = int(os.environ.get("MARKET_BAR_TTL", "300"))  # ~5 min
@@ -357,17 +402,20 @@ def _fetch_indices() -> Tuple[Dict[str, Optional[np.ndarray]], Dict[str, Optiona
 def _analyze(tk: str, bucket: str, name: str, cat: str,
              idxc: dict, idxdm: dict, equity_regime: str) -> Optional[dict]:
     try:
-        df = fetch_price_history(tk, period="6y")
+        # PREÇOS via chart API confiável (yfinance cai em SINTÉTICO em prod → preços errados).
+        # want_div=True traz o dividend yield dos dividendos REAIS (yfinance .info falhava → DY nulo).
+        df, dy_chart = _chart_api_df(tk, 6 * 366, want_div=True)
         if df is None or len(df) < 200:
             return None
         a = _closes(df)
         if a is None:
             return None
 
-        fund = fetch_fundamentals(tk) or {}
+        # fetch_fundamentals (.info) era o GARGALO de lentidão E falhava em prod (DY nulo,
+        # roe/payout/D-E nulos). Largado: beta vem do preço (beta_aligned), DY dos dividendos
+        # reais (chart API), e o componente "fundamentos" cai p/ neutro (já era nulo de qq forma).
+        fund = {}
         beta = beta_aligned(df, idxdm.get(INDEX_BY_CAT.get(cat)))
-        if beta is None:
-            beta = fund.get("beta")
 
         dma = _distance_ma200(a)
         disc = I.distance_from_ath(a) or 0.0
@@ -378,7 +426,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         shp = _sharpe(a)
         rsi = _rsi(a)
 
-        dy = fund.get("dividend_yield")
+        dy = dy_chart  # DY dos dividendos REAIS (chart API), não mais do yfinance .info
         cagr = g5  # CAGR de preço (proxy de retorno total)
 
         # Preço atual, variação diária e moeda — para exibição na linha do ranking.
@@ -519,7 +567,7 @@ def _recompute_ranking_inner() -> dict:
         return cat, _analyze(r["ticker"], r["bucket"], r.get("name", r["ticker"]),
                              cat, idxc, idxdm, equity_regime)
 
-    with ThreadPoolExecutor(max_workers=12) as ex:
+    with ThreadPoolExecutor(max_workers=8) as ex:
         futures = [ex.submit(_work, cat, r) for cat, r in tasks]
         for fut in as_completed(futures):
             try:
