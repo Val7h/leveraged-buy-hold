@@ -226,9 +226,12 @@ function PortfolioPageInner() {
                 value: formatCurrency((metrics as any).total_equity ?? (metrics as any).equity ?? 0, "USD", true),
               },
               {
-                label: "Alavancagem Média",
-                value: formatLeverage((metrics as any).weighted_avg_leverage ?? (metrics as any).effective_leverage ?? 1),
-                color: getLeverageColor((metrics as any).weighted_avg_leverage ?? (metrics as any).effective_leverage ?? 1),
+                label: "Alav. de risco",
+                value: analytics?.totals?.effective_leverage != null
+                  ? formatLeverage(analytics.totals.effective_leverage)
+                  : "—",
+                color: analytics?.totals?.effective_leverage != null
+                  ? getLeverageColor(analytics.totals.effective_leverage) : undefined,
               },
               {
                 label: "P&L Total",
@@ -239,6 +242,18 @@ function PortfolioPageInner() {
                 label: "P&L %",
                 value: `${((metrics as any).total_pnl_pct ?? 0) >= 0 ? "+" : ""}${((metrics as any).total_pnl_pct ?? 0).toFixed(2)}%`,
                 color: ((metrics as any).total_pnl_pct ?? 0) >= 0 ? "text-success" : "text-danger",
+              },
+              {
+                label: "CAGR (ativos)",
+                value: analytics?.totals?.cagr != null ? `${analytics.totals.cagr.toFixed(1)}%` : "—",
+              },
+              {
+                label: "DY ponderado",
+                value: analytics?.totals?.dividend_yield != null ? `${analytics.totals.dividend_yield.toFixed(2)}%` : "—",
+              },
+              {
+                label: "Beta carteira",
+                value: analytics?.totals?.beta != null ? analytics.totals.beta.toFixed(2) : "—",
               },
             ].map((m) => (
               <div key={m.label} className="card-sm">
