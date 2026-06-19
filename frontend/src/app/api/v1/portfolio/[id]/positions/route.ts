@@ -10,7 +10,9 @@ const PositionCreateSchema = z.object({
   ticker: z.string().min(1).max(20),
   shares: z.number().positive(),
   avg_price: z.number().positive(),
+  // Quantfury: leverage NÃO é escolhida por posição (é medida pela carteira). Default 1.
   leverage: z.number().positive().default(1),
+  opened_at: z.string().optional(),  // data de abertura (ISO); default = agora
 });
 
 type RouteCtx = { params: { id: string } };
@@ -128,6 +130,7 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
       dy: null,
       is_seed: e.raw.isSeed,
       is_cycle: e.raw.isCycle,
+      opened_at: e.raw.openedAt,
       created_at: e.raw.createdAt,
     };
   });
@@ -216,6 +219,7 @@ export async function POST(req: NextRequest, { params: { id } }: RouteCtx) {
     );
   }
 
+  const openedAt = parsed.opened_at ? new Date(parsed.opened_at) : undefined;
   const created = await prisma.position.create({
     data: {
       portfolioId: id,
@@ -223,6 +227,7 @@ export async function POST(req: NextRequest, { params: { id } }: RouteCtx) {
       quantity: parsed.shares,
       avgPrice: parsed.avg_price,
       leverage: parsed.leverage,
+      ...(openedAt && !isNaN(openedAt.getTime()) ? { openedAt } : {}),
     },
   });
 

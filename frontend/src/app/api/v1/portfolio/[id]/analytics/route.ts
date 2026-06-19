@@ -39,10 +39,10 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
     ticker: p.ticker,
     shares: Number(p.quantity),
     avg_price: Number(p.avgPrice),
-    leverage: Number(p.leverage),
     is_seed: p.isSeed,
     is_cycle: p.isCycle,
   }));
+  const equity = portfolio.currentEquity != null ? Number(portfolio.currentEquity) : null;
 
   if (!positions.length || !BACKEND_URL) {
     return NextResponse.json(
@@ -55,7 +55,7 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
     const res = await fetch(`${BACKEND_URL}/api/v1/portfolio/analytics`, {
       method: "POST",
       headers: bHeaders(),
-      body: JSON.stringify({ positions }),
+      body: JSON.stringify({ positions, equity }),
       cache: "no-store",
     });
     if (!res.ok) {

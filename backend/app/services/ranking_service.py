@@ -714,6 +714,10 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # ESPECULATIVO (faca/descontado arriscado) → teto 2x (reduz, não zera).
         if verdict == "ESPECULATIVO":
             leverage = min(leverage, 2.0)
+        # SHY = reserva quase sem risco (DD~3%): pode alavancar até 20x (decisão do usuário;
+        # limite de notional US$10k é tratado na carteira). NÃO entra na medida de alavancagem.
+        if tk.upper() == "SHY":
+            leverage = 20.0
         stops = S.staggered_stops(leverage)
 
         return {

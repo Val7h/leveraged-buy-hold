@@ -174,51 +174,68 @@ def _correlation_matrix(tickers: List[str]) -> Dict:
     }
 
 
-def portfolio_analytics(positions: List[dict]) -> Dict:
+SHY_NOTIONAL_LIMIT = 10000.0   # Quantfury: máx US$10k de notional em SHY
+
+
+def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -> Dict:
     """
-    Inteligência da carteira (método adotado). `positions`: [{ticker, shares, avg_price, leverage}].
-    Retorna: por-ativo (bucket, CAGR, DY, TSR, beta, peso, contribuição de risco),
-    totais da carteira (CAGR/TSR/DY ponderados, alavancagem efetiva), estrutura ALVO×REAL
-    por bucket, e correlação/descorrelação entre os ativos.
+    Inteligência da carteira (método adotado, modelo Quantfury). `positions`: [{ticker, shares,
+    avg_price}]. `equity`: equity atual da conta (denominador da alavancagem).
+    Notional da posição = shares × preço (Quantfury não tem leverage por posição — ela é MEDIDA).
+    Alavancagem efetiva = Σ notional dos ativos de RISCO (exceto SHY) ÷ equity. SHY é reserva:
+    fora da alavancagem, limitado a US$10k de notional.
     """
     if not positions:
         return {"assets": [], "totals": {}, "buckets": [], "correlation": {}}
 
     rk = _flatten_ranking()
-    rows, total_equity, total_notional = [], 0.0, 0.0
+    rows = []
+    invested = 0.0          # valor de mercado total das posições (base dos pesos)
+    risk_notional = 0.0     # exposição de risco (exclui SHY) — numerador da alavancagem
+    shy_notional = 0.0
     for p in positions:
         tk = p["ticker"].upper()
         a = rk.get(tk, {})
         price = a.get("current_price") or p.get("avg_price") or 0.0
         shares = float(p.get("shares") or 0)
-        lev = float(p.get("leverage") or 1)
-        value = shares * price
-        total_equity += value
-        total_notional += value * lev
+        notional = shares * price          # exposição (sem multiplicador por posição)
+        invested += notional
+        is_shy = tk == "SHY"
+        if is_shy:
+            shy_notional += notional
+        else:
+            risk_notional += notional
         rows.append({
             "ticker": p["ticker"], "bucket": _bucket_of(tk) or "—",
             "cagr": a.get("cagr"), "dividend_yield": a.get("dividend_yield"),
             "tsr_expected": a.get("tsr_expected"), "beta": a.get("beta"),
             "verdict": a.get("verdict"), "current_price": price,
-            "value": round(value, 2), "leverage": lev,
+            "notional": round(notional, 2), "is_shy": is_shy,
         })
 
-    # Pesos + contribuição de risco (Dalio: peso × beta, normalizado).
+    # Pesos por valor de mercado; contribuição de risco (Dalio: peso × beta, normalizado).
     for r in rows:
-        r["weight"] = round(r["value"] / total_equity * 100, 1) if total_equity else 0.0
+        r["weight"] = round(r["notional"] / invested * 100, 1) if invested else 0.0
     risk_raw = [(r["weight"] / 100) * abs(r["beta"]) if r.get("beta") else 0.0 for r in rows]
     risk_sum = sum(risk_raw) or 1.0
     for r, rr in zip(rows, risk_raw):
         r["risk_contribution"] = round(rr / risk_sum * 100, 1)
 
     def _wavg(field):
-        vals = [(r[field], r["value"]) for r in rows if r.get(field) is not None]
+        vals = [(r[field], r["notional"]) for r in rows if r.get(field) is not None]
         tot = sum(v for _, v in vals)
         return round(sum(x * v for x, v in vals) / tot, 2) if tot else None
 
+    eq = float(equity) if equity else None
     totals = {
-        "equity": round(total_equity, 2),
-        "effective_leverage": round(total_notional / total_equity, 2) if total_equity else 1.0,
+        "equity": round(eq, 2) if eq else None,
+        "invested": round(invested, 2),
+        "risk_notional": round(risk_notional, 2),
+        "shy_notional": round(shy_notional, 2),
+        "shy_over_limit": shy_notional > SHY_NOTIONAL_LIMIT,
+        "shy_limit": SHY_NOTIONAL_LIMIT,
+        # Alavancagem efetiva = exposição de risco (sem SHY) ÷ equity. Sem equity → None.
+        "effective_leverage": round(risk_notional / eq, 2) if eq else None,
         "cagr": _wavg("cagr"), "tsr_expected": _wavg("tsr_expected"),
         "dividend_yield": _wavg("dividend_yield"), "beta": _wavg("beta"),
     }

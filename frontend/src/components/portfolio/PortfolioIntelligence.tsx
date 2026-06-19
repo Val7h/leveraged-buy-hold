@@ -55,8 +55,18 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
           <Stat label="TSR esperado" value={fmt(t.tsr_expected, "%", 1)} />
           <Stat label="DY ponderado" value={fmt(t.dividend_yield, "%", 2)} />
           <Stat label="Beta carteira" value={fmt(t.beta, "", 2)} />
-          <Stat label="Alav. efetiva" value={fmt(t.effective_leverage, "x", 2)} />
+          <Stat
+            label="Alav. de risco"
+            value={t.effective_leverage != null ? fmt(t.effective_leverage, "x", 2) : "—"}
+            hint={t.effective_leverage == null ? "informe o equity" : "notional s/ SHY ÷ equity"}
+          />
         </div>
+        {(t.shy_notional ?? 0) > 0 && (
+          <div className={`mt-2 text-[11px] ${t.shy_over_limit ? "text-amber-400" : "text-text-muted"}`}>
+            Reserva SHY: <span className="font-mono">US$ {fmt(t.shy_notional, "", 0)}</span> (fora da alavancagem)
+            {t.shy_over_limit && <> ⚠ acima do limite de US$ {fmt(t.shy_limit, "", 0)} da Quantfury</>}
+          </div>
+        )}
       </section>
 
       {/* 2. Estrutura ALVO × REAL */}

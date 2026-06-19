@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 from app.core.database import get_db
@@ -373,20 +373,20 @@ class _AnalyticsPos(BaseModel):
     ticker: str
     shares: float = 0.0
     avg_price: float = 0.0
-    leverage: float = 1.0
 
 
 class _AnalyticsBody(BaseModel):
     positions: List[_AnalyticsPos] = []
+    equity: Optional[float] = None
 
 
 @router.post("/analytics")
 def post_portfolio_analytics(body: _AnalyticsBody, user: User = Depends(get_current_user)):
-    """Inteligência da carteira (método adotado): métricas por ativo, totais, estrutura
-    ALVO×REAL por bucket, contribuição de risco (Dalio) e correlação/descorrelação.
-    Recebe as posições no corpo (vivem no Prisma/Node)."""
+    """Inteligência da carteira (método adotado, modelo Quantfury): métricas por ativo, totais,
+    estrutura ALVO×REAL, contribuição de risco (Dalio), correlação. Alavancagem = notional de
+    risco (exceto SHY) ÷ equity. Recebe posições + equity no corpo (vivem no Prisma/Node)."""
     from app.services.portfolio_service import portfolio_analytics
-    return portfolio_analytics([p.dict() for p in body.positions])
+    return portfolio_analytics([p.dict() for p in body.positions], equity=body.equity)
 
 
 @router.get("/{portfolio_id}/rotation")

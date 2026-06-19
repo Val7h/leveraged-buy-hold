@@ -63,7 +63,9 @@ export const portfolioApi = {
     api.post("/api/v1/portfolio", data),
   getMetrics: (id: string) => api.get(`/api/v1/portfolio/${id}/metrics`),
   getPositions: (id: string) => api.get(`/api/v1/portfolio/${id}/positions`),
-  addPosition: (id: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) =>
+  setEquity: (id: string, currentEquity: number) =>
+    api.patch(`/api/v1/portfolio/${id}`, { current_equity: currentEquity }),
+  addPosition: (id: string, data: { ticker: string; shares: number; avg_price: number; opened_at?: string }) =>
     api.post(`/api/v1/portfolio/${id}/positions`, data),
   updatePosition: (portfolioId: string, positionId: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) =>
     api.put(`/api/v1/portfolio/${portfolioId}/positions/${positionId}`, data),

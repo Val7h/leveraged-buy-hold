@@ -88,6 +88,7 @@ model Portfolio {
   userId              String
   name                String
   initialEquity       Decimal    @db.Decimal(18, 2)
+  currentEquity       Decimal?   @db.Decimal(18, 2)   // Equity atual Quantfury (denominador da alavancagem)
   monthlyContribution Decimal    @db.Decimal(18, 2) @default(0)
   currency            String     @default("BRL")
   createdAt           DateTime   @default(now())
@@ -109,6 +110,7 @@ model Position {
   leverage    Decimal   @db.Decimal(6, 2) @default(1)
   isSeed      Boolean   @default(false)   // Semente permanente — âncora, nunca rotaciona
   isCycle     Boolean   @default(false)   // Ciclo — posição de rotação (vende quando esticar)
+  openedAt    DateTime  @default(now())   // Data de abertura da posição (editável no formulário)
   createdAt   DateTime  @default(now())
 
   portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)

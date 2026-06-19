@@ -15,7 +15,7 @@ interface PortfolioState {
   fetchMetrics: (id: string) => Promise<void>;
   fetchPositions: (id: string) => Promise<void>;
   fetchAnalytics: (id: string) => Promise<void>;
-  addPosition: (portfolioId: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) => Promise<void>;
+  addPosition: (portfolioId: string, data: { ticker: string; shares: number; avg_price: number; opened_at?: string }) => Promise<void>;
   updatePosition: (portfolioId: string, positionId: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) => Promise<void>;
   removePosition: (portfolioId: string, positionId: string) => Promise<void>;
   toggleSeed: (portfolioId: string, positionId: string) => Promise<void>;
@@ -87,6 +87,7 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
     await portfolioApi.addPosition(portfolioId, data);
     await get().fetchPositions(portfolioId);
     await get().fetchMetrics(portfolioId);
+    await get().fetchAnalytics(portfolioId);
   },
 
   updatePosition: async (portfolioId, positionId, data) => {
@@ -99,6 +100,7 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
     await portfolioApi.removePosition(portfolioId, positionId);
     await get().fetchPositions(portfolioId);
     await get().fetchMetrics(portfolioId);
+    await get().fetchAnalytics(portfolioId);
   },
 
   toggleSeed: async (portfolioId, positionId) => {

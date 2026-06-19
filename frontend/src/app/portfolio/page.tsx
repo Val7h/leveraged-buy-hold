@@ -21,7 +21,9 @@ function PortfolioPageInner() {
   const [curveLoading, setCurveLoading] = useState(false);
   const [curveError, setCurveError] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newPos, setNewPos] = useState({ ticker: "", shares: "", avg_price: "", leverage: "1" });
+  const [newPos, setNewPos] = useState({ ticker: "", shares: "", avg_price: "", opened_at: "" });
+  const [equityInput, setEquityInput] = useState("");
+  const [savingEquity, setSavingEquity] = useState(false);
   const [fetchingPrice, setFetchingPrice] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ shares: "", avg_price: "", leverage: "1" });
@@ -58,9 +60,8 @@ function PortfolioPageInner() {
   // Pre-fill from watchlist "Comprei → Portfólio" button
   useEffect(() => {
     const ticker = searchParams.get("add");
-    const leverage = searchParams.get("leverage");
     if (ticker) {
-      setNewPos((prev) => ({ ...prev, ticker: ticker.toUpperCase(), leverage: leverage || "1" }));
+      setNewPos((prev) => ({ ...prev, ticker: ticker.toUpperCase() }));
       setShowAddForm(true);
     }
   }, [searchParams]);
@@ -71,10 +72,21 @@ function PortfolioPageInner() {
       ticker: newPos.ticker.toUpperCase(),
       shares: parseFloat(newPos.shares),
       avg_price: parseFloat(newPos.avg_price),
-      leverage: parseFloat(newPos.leverage),
+      opened_at: newPos.opened_at || undefined,
     });
-    setNewPos({ ticker: "", shares: "", avg_price: "", leverage: "1" });
+    setNewPos({ ticker: "", shares: "", avg_price: "", opened_at: "" });
     setShowAddForm(false);
+  };
+
+  const handleSaveEquity = async () => {
+    if (!activePortfolioId || !equityInput) return;
+    setSavingEquity(true);
+    try {
+      await portfolioApi.setEquity(activePortfolioId, parseFloat(equityInput));
+      await fetchAnalytics(activePortfolioId);
+    } finally {
+      setSavingEquity(false);
+    }
   };
 
   const handleTickerBlur = async () => {
@@ -161,12 +173,14 @@ function PortfolioPageInner() {
                 />
               </div>
               <div>
-                <label className="label">Alavancagem</label>
-                <select className="input" value={newPos.leverage} onChange={(e) => setNewPos({ ...newPos, leverage: e.target.value })}>
-                  {["1.0", "1.25", "1.5", "1.75", "2.0", "2.5", "3.0"].map((v) => (
-                    <option key={v} value={v}>{v}x</option>
-                  ))}
-                </select>
+                <label className="label">Data de abertura</label>
+                <input
+                  className="input font-mono"
+                  type="date"
+                  value={newPos.opened_at}
+                  onChange={(e) => setNewPos({ ...newPos, opened_at: e.target.value })}
+                />
+                <p className="text-[10px] text-text-muted mt-1">Alavancagem é calculada pela carteira (Quantfury) — não se escolhe por ativo.</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -175,6 +189,32 @@ function PortfolioPageInner() {
             </div>
           </div>
         )}
+
+        {/* Equity atual (Quantfury) — denominador da alavancagem */}
+        <div className="card mb-4 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="label">Equity atual (Quantfury)</label>
+            <input
+              className="input font-mono w-44"
+              type="number"
+              min="0"
+              placeholder={analytics?.totals?.equity ? String(analytics.totals.equity) : "ex: 25000"}
+              value={equityInput}
+              onChange={(e) => setEquityInput(e.target.value)}
+            />
+          </div>
+          <button onClick={handleSaveEquity} disabled={savingEquity || !equityInput} className="btn-primary text-sm">
+            {savingEquity ? "Salvando…" : "Salvar equity"}
+          </button>
+          {analytics?.totals?.equity != null && (
+            <div className="text-xs text-text-muted ml-auto">
+              Atual: <span className="font-mono text-text-primary">{formatCurrency(analytics.totals.equity, "USD", true)}</span>
+              {analytics?.totals?.effective_leverage != null && (
+                <> · Alav. de risco: <span className="font-mono text-warning">{analytics.totals.effective_leverage}x</span></>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Metrics summary */}
         {metrics && (
