@@ -323,10 +323,20 @@ _STRESS_DEFS = [
 ]
 
 
+def _discount_factor(dist_ma200: Optional[float]) -> float:
+    """Quanto do crash histórico ainda 'cabe' dado o quão esticado/descontado o ativo está HOJE
+    vs a MM200 (estratégia do usuário: compra no fundo → menos chão pra cair). +30% (esticado)→1.0;
+    0%→0.75; -30% (oversold)→0.5. Reduz o stress p/ quem entrou descontado."""
+    if dist_ma200 is None:
+        return 1.0
+    f = 0.5 + (dist_ma200 + 30.0) / 120.0
+    return max(0.5, min(1.0, f))
+
+
 def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) -> List[dict]:
-    """STRESS TEST: replay de crashes reais na carteira ATUAL, alavancada. Para cada cenário,
-    pega o pior tombo (pico→fundo) de cada ativo na janela, pondera por notional e multiplica
-    pela alavancagem → impacto no EQUITY + se teria liquidado. Cobre o que a janela de 3a não pega."""
+    """STRESS TEST: replay de crashes reais na carteira ATUAL, alavancada. Pior tombo (início da
+    janela→fundo) de cada ativo, ponderado por notional × alavancagem → impacto no EQUITY.
+    Dá DOIS números: pior caso (entrada no topo) e AJUSTADO pelo desconto atual (entrada no fundo)."""
     if not (equity and risk_notional > 0 and rrows):
         return []
     from app.services.ranking_service import _chart_api_df, _dated_closes
@@ -342,7 +352,7 @@ def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) ->
     out = []
     for name, s, e in _STRESS_DEFS:
         sd, ed = dt.date.fromisoformat(s), dt.date.fromisoformat(e)
-        ret_w, tot_w, covered = 0.0, 0.0, 0
+        ret_w, ret_adj_w, tot_w, covered = 0.0, 0.0, 0.0, 0
         for r in rrows:
             ser = series.get(r["ticker"])
             if not ser:
@@ -350,16 +360,23 @@ def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) ->
             win = [c for d, c in ser if sd <= d <= ed]
             if len(win) < 5:
                 continue                      # ativo não existia na época
-            asset_ret = (min(win) / win[0] - 1) if win[0] else 0.0   # pico→fundo na janela
-            ret_w += asset_ret * r["notional"]; tot_w += r["notional"]; covered += 1
+            asset_ret = (min(win) / win[0] - 1) if win[0] else 0.0   # tombo na janela
+            f = _discount_factor(r.get("distance_ma200"))            # entrada descontada cai menos
+            ret_w += asset_ret * r["notional"]
+            ret_adj_w += asset_ret * f * r["notional"]
+            tot_w += r["notional"]; covered += 1
         if tot_w <= 0:
             continue
         basket = ret_w / tot_w * 100
+        basket_adj = ret_adj_w / tot_w * 100
         out.append({
             "scenario": name,
             "basket_pct": round(basket, 1),
+            "basket_pct_adj": round(basket_adj, 1),
             "equity_pct": round(max(basket * L, -100.0), 1),
+            "equity_pct_adj": round(max(basket_adj * L, -100.0), 1),
             "liquidated": basket * L <= -100.0,
+            "liquidated_adj": basket_adj * L <= -100.0,
             "coverage": f"{covered}/{len(rrows)}",
         })
     return out
@@ -403,6 +420,7 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
             "tsr_expected": a.get("tsr_expected"), "beta": a.get("beta"),
             "verdict": a.get("verdict"), "current_price": price,
             "avg_price": round(avg_price, 2) or None, "pnl_pct": pnl_pct,
+            "distance_ma200": a.get("distance_ma200"),
             "notional": round(notional, 2), "is_shy": is_shy,
             "is_seed": bool(p.get("is_seed")), "is_cycle": bool(p.get("is_cycle")),
             "last_verdict": p.get("last_verdict"), "verdict_since": p.get("verdict_since"),
@@ -589,6 +607,9 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
     # ── APORTE pelo BUCKET SUB-ALVO (item 2 — usa o ranking novo, não o screening velho) ──
     # Onde colocar dinheiro novo: bucket(s) abaixo do alvo → melhor ranqueado COMPRAR/FORTE
     # daquele bucket, não-possuído, fora do cooldown e descorrelacionado.
+    # Multiplicador dinâmico do regime (doutrina: alavanca o FLUXO NOVO conforme o mercado).
+    _MULT = {"CAPIT.EXTREMA": 5, "CAPITULACAO": 4, "NEUTRO": 3, "TOPO": 2}
+    mult_aporte = _MULT.get(equity_regime, 3)
     aporte = []
     under = sorted([b for b in buckets if b.get("drift") is not None and b["drift"] < -5],
                    key=lambda b: b["drift"])  # mais abaixo do alvo primeiro
@@ -596,24 +617,45 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         cands = [a for a in rk.values()
                  if a.get("verdict") in ("COMPRAR FORTE", "COMPRAR")
                  and a["ticker"].upper() not in held and a["ticker"].upper() not in cd
-                 and _bucket_of(a["ticker"]) == b["bucket"]]
+                 and _bucket_of(a["ticker"]) == b["bucket"]
+                 and (_candidate_max_corr(a["ticker"], (cov or {}).get("_series") or {}) or 0) < 0.8]
         cands.sort(key=lambda x: -(x.get("rank") or 0))
         for a in cands[:2]:
             aporte.append({
                 "bucket": b["bucket"], "drift": b["drift"],
                 "ticker": a["ticker"], "name": a.get("name"), "verdict": a.get("verdict"),
                 "rank": a.get("rank"), "dividend_yield": a.get("dividend_yield"),
-                "rationale": f"{b['bucket']} está {abs(b['drift']):.0f}% abaixo do alvo — reforça a estrutura",
+                "leverage_sugg": mult_aporte,
+                "rationale": f"{b['bucket']} {abs(b['drift']):.0f}% abaixo do alvo — alavanca o aporte {mult_aporte}x ({equity_regime.lower()})",
             })
+    aporte_regime = {
+        "regime": equity_regime, "multiplier": mult_aporte,
+        "deploy_shy": capitulacao,
+        "shy_available": round(shy_notional, 2),
+        "nota": ("CAPITULAÇÃO: venda o SHY e deploye o fluxo a %dx nos descontados" % mult_aporte)
+                if capitulacao else
+                ("Reinvista dividendos/aportes a %dx no bucket sub-alvo" % mult_aporte),
+    }
 
     # STRESS TEST (item 5/sênior): replay de 2008/2020/2022 na carteira atual alavancada.
     stress = _stress_scenarios([r for r in rows if not r["is_shy"]], eq, risk_notional) if eq else []
+
+    # DESALAVANCAGEM NATURAL (doutrina: dívida fixa por fluxo, equity compõe → alav. CAI sozinha).
+    deleverage = []
+    if eq and risk_notional > eq:
+        debt = risk_notional - eq               # parte alavancada (dívida fixa)
+        g = (totals.get("cagr") or 8.0) / 100.0
+        for y in (1, 3, 5):
+            ef = eq * ((1 + g) ** y)
+            deleverage.append({"years": y, "leverage": round(1 + debt / ef, 2)})
 
     import datetime as _dt
     return {
         "assets": rows, "totals": totals, "buckets": buckets,
         "correlation": correlation, "rotation": rotation,
-        "survival_stops": survival_stops, "risk": risk, "aporte": aporte, "stress": stress,
+        "survival_stops": survival_stops, "risk": risk,
+        "aporte": aporte, "aporte_regime": aporte_regime,
+        "stress": stress, "deleverage": deleverage,
         "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
     }
 

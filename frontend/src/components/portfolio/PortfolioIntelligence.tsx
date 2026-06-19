@@ -15,7 +15,9 @@ type Analytics = {
   survival_stops?: any[];
   risk?: any;
   aporte?: any[];
+  aporte_regime?: any;
   stress?: any[];
+  deleverage?: any[];
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -56,6 +58,7 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const risk = analytics.risk || {};
   const aporte = analytics.aporte || [];
   const stress = analytics.stress || [];
+  const deleverage = analytics.deleverage || [];
 
   return (
     <div className="space-y-4">
@@ -64,17 +67,19 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
         <section className="bg-surface rounded-xl border border-border p-4">
           <h3 className="text-sm font-semibold text-text-primary mb-1">Stress test — se o crash acontecesse hoje</h3>
           <p className="text-[11px] text-text-muted mb-3">
-            Replay de crises reais na sua carteira ATUAL, com a alavancagem de hoje (pico→fundo de cada ativo, ponderado).
+            Replay de crises reais na carteira ATUAL com a alavancagem de hoje. <b>Pior caso</b> = entrada no topo;
+            <b> ajustado</b> = considerando que você compra descontado (cai menos).
           </p>
           <div className="space-y-1.5">
             {stress.map((s: any) => (
               <div key={s.scenario} className="flex items-center gap-2 text-xs">
-                {s.liquidated
+                {s.liquidated_adj
                   ? <span className="px-1.5 py-0.5 rounded bg-danger/20 border border-danger/50 text-danger font-semibold text-[10px]">LIQUIDARIA</span>
                   : <span className="px-1.5 py-0.5 rounded bg-surface-2 border border-border text-text-secondary text-[10px]">sobrevive</span>}
                 <span className="font-semibold text-text-primary w-36 shrink-0">{s.scenario}</span>
                 <span className="font-mono text-text-secondary">
-                  cesta {fmt(s.basket_pct, "%", 0)} · equity <span className={s.equity_pct <= -50 ? "text-danger" : "text-amber-400"}>{fmt(s.equity_pct, "%", 0)}</span>
+                  equity: ajustado <span className={s.equity_pct_adj <= -50 ? "text-danger" : "text-amber-400"}>{fmt(s.equity_pct_adj, "%", 0)}</span>
+                  <span className="text-text-muted"> (pior caso {fmt(s.equity_pct, "%", 0)})</span>
                 </span>
                 <span className="text-[10px] text-text-muted ml-auto">cobre {s.coverage}</span>
               </div>
@@ -95,6 +100,17 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
           {risk.liquidated_in_worst && (
             <div className="mt-2 text-[11px] text-danger">
               ⚠ No pior tombo histórico da cesta ({fmt(risk.maxdd_basket, "%", 0)}) você teria sido <b>liquidado</b> nessa alavancagem ({fmt(risk.leverage, "x", 1)}). Reduza exposição ou suba o equity.
+            </div>
+          )}
+          {deleverage.length > 0 && (
+            <div className="mt-2 text-[11px] text-text-muted">
+              Desalavancagem natural (dívida fixa, equity compõe):{" "}
+              {deleverage.map((d: any, i: number) => (
+                <span key={i} className="font-mono text-text-secondary">
+                  {i > 0 ? " · " : ""}{d.years}a → {fmt(d.leverage, "x", 1)}
+                </span>
+              ))}
+              <span className="text-text-muted"> (sem fazer nada, só compondo)</span>
             </div>
           )}
         </section>
@@ -216,18 +232,28 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
             );
           })}
         </div>
-        {aporte.length > 0 && (
+        {(aporte.length > 0 || analytics.aporte_regime) && (
           <div className="mt-3 pt-3 border-t border-border/50">
-            <div className="text-[11px] text-text-secondary mb-1">💰 Onde aportar dinheiro novo (corrige o bucket abaixo do alvo, do ranking):</div>
-            <div className="flex flex-wrap gap-2">
-              {aporte.map((a: any, i: number) => (
-                <div key={i} className="text-[11px] bg-primary/10 border border-primary/30 rounded px-2 py-1" title={a.rationale}>
-                  <span className="font-semibold text-text-primary">{a.ticker}</span>
-                  <span className="text-primary ml-1">{a.verdict}</span>
-                  <span className="text-text-muted ml-1">→ {BUCKET_LABEL[a.bucket] || a.bucket}</span>
-                </div>
-              ))}
+            <div className="text-[11px] text-text-secondary mb-1">
+              💰 Aporte / reinvestimento de dividendos
+              {analytics.aporte_regime && (
+                <span className={`ml-1 font-semibold ${analytics.aporte_regime.deploy_shy ? "text-danger" : "text-primary"}`}>
+                  — {analytics.aporte_regime.nota}
+                </span>
+              )}
             </div>
+            {aporte.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {aporte.map((a: any, i: number) => (
+                  <div key={i} className="text-[11px] bg-primary/10 border border-primary/30 rounded px-2 py-1" title={a.rationale}>
+                    <span className="font-semibold text-text-primary">{a.ticker}</span>
+                    <span className="text-primary ml-1">{a.verdict}</span>
+                    <span className="text-text-muted ml-1">→ {BUCKET_LABEL[a.bucket] || a.bucket}</span>
+                    {a.leverage_sugg && <span className="text-amber-400 ml-1">{a.leverage_sugg}x</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </section>
