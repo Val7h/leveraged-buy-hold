@@ -103,6 +103,7 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
                   <span className="font-semibold text-text-primary">{t.ticker}</span>
                   <span className="text-success ml-1">{t.verdict}</span>
                   <span className="text-text-muted ml-1">rank {fmt(t.rank, "", 0)}</span>
+                  {t.max_corr_held != null && <span className="text-text-muted ml-1">· corr {fmt(t.max_corr_held, "", 2)}</span>}
                 </div>
               ))}
             </div>

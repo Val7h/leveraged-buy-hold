@@ -76,12 +76,17 @@ export async function DELETE(_request: NextRequest, { params }: RouteCtx) {
 
   const existing = await prisma.position.findFirst({
     where: { id: positionId, portfolio: { id, userId: user.id } },
-    select: { id: true },
+    select: { id: true, ticker: true },
   });
 
   if (!existing) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
+
+  // Registra a venda p/ o cooldown de recompra da rotação (30 dias).
+  try {
+    await prisma.sellEvent.create({ data: { portfolioId: id, ticker: existing.ticker } });
+  } catch { /* não bloqueia a remoção se o log falhar */ }
 
   await prisma.position.delete({ where: { id: positionId } });
 

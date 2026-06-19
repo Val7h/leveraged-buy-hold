@@ -111,12 +111,24 @@ model Position {
   isSeed      Boolean   @default(false)   // Semente permanente — âncora, nunca rotaciona
   isCycle     Boolean   @default(false)   // Ciclo — posição de rotação (vende quando esticar)
   openedAt    DateTime  @default(now())   // Data de abertura da posição (editável no formulário)
+  lastVerdict String?                     // último veredito visto (histerese da rotação)
+  verdictSince DateTime?                  // desde quando o veredito atual está ativo
   createdAt   DateTime  @default(now())
 
   portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
 
   @@index([portfolioId])
   @@map("positions")
+}
+
+model SellEvent {
+  id          String   @id @default(cuid())
+  portfolioId String
+  ticker      String
+  soldAt      DateTime @default(now())   // cooldown de recompra na rotação
+
+  @@index([portfolioId, soldAt])
+  @@map("sell_events")
 }
 
 model Watchlist {

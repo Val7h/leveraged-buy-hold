@@ -373,20 +373,27 @@ class _AnalyticsPos(BaseModel):
     ticker: str
     shares: float = 0.0
     avg_price: float = 0.0
+    is_seed: bool = False
+    is_cycle: bool = False
+    last_verdict: Optional[str] = None
+    verdict_since: Optional[str] = None
 
 
 class _AnalyticsBody(BaseModel):
     positions: List[_AnalyticsPos] = []
     equity: Optional[float] = None
+    cooldown_tickers: List[str] = []
 
 
 @router.post("/analytics")
 def post_portfolio_analytics(body: _AnalyticsBody, user: User = Depends(get_current_user)):
     """Inteligência da carteira (método adotado, modelo Quantfury): métricas por ativo, totais,
-    estrutura ALVO×REAL, contribuição de risco (Dalio), correlação. Alavancagem = notional de
-    risco (exceto SHY) ÷ equity. Recebe posições + equity no corpo (vivem no Prisma/Node)."""
+    estrutura ALVO×REAL, contribuição de risco (covariância), correlação normal/crise, e venda/
+    rotação (histerese + cooldown + regime + destino descorrelacionado). Posições + equity +
+    cooldown vêm no corpo (estado vive no Prisma/Node)."""
     from app.services.portfolio_service import portfolio_analytics
-    return portfolio_analytics([p.dict() for p in body.positions], equity=body.equity)
+    return portfolio_analytics([p.dict() for p in body.positions], equity=body.equity,
+                               cooldown_tickers=body.cooldown_tickers)
 
 
 @router.get("/{portfolio_id}/rotation")

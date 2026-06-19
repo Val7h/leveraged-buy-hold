@@ -1,5 +1,6 @@
 """Portfolio metrics calculation service."""
 import math
+import datetime as dt
 import numpy as np
 import pandas as pd
 from typing import List, Optional, Dict
@@ -275,6 +276,7 @@ def _cov_analytics(weights_by_ticker: Dict[str, float]) -> Optional[Dict]:
          for i in range(len(valid)) for j in range(i + 1, len(valid)) if corr[i, j] >= 0.8],
         key=lambda x: -x["corr"])[:5]
     return {
+        "_series": {t: series[t] for t in valid},   # interno (não vai pro frontend)
         "rc": {valid[i]: round(float(rc[i]) * 100, 1) for i in range(len(valid))},
         "vol": {valid[i]: round(float(vol[i]) * 100, 1) for i in range(len(valid))},
         "correlation": {
@@ -288,10 +290,38 @@ def _cov_analytics(weights_by_ticker: Dict[str, float]) -> Optional[Dict]:
     }
 
 
-def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -> Dict:
+def _candidate_max_corr(ticker: str, held_series: Dict[str, dict]) -> Optional[float]:
+    """Maior correlação (≈3a) de um CANDIDATO de rotação vs os ativos já em carteira.
+    Usado p/ não girar pra algo que anda colado com o que você já tem (item 5/destino)."""
+    if not held_series:
+        return None
+    from app.services.ranking_service import _chart_api_df, _dated_closes
+    try:
+        df, _ = _chart_api_df(ticker, 3 * 366, want_div=False)
+        if df is None or len(df) < 120:
+            return None
+        cs = {d.isoformat(): c for d, c in _dated_closes(df)}
+    except Exception:
+        return None
+    best = None
+    for hs in held_series.values():
+        common = sorted(set(cs) & set(hs))
+        if len(common) < 60:
+            continue
+        ra = np.diff(np.log([cs[d] for d in common]))
+        rb = np.diff(np.log([hs[d] for d in common]))
+        if ra.std() and rb.std():
+            c = float(np.corrcoef(ra, rb)[0, 1])
+            best = c if best is None else max(best, c)
+    return round(best, 2) if best is not None else None
+
+
+def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
+                        cooldown_tickers: Optional[List[str]] = None) -> Dict:
     """
     Inteligência da carteira (método adotado, modelo Quantfury). `positions`: [{ticker, shares,
-    avg_price}]. `equity`: equity atual da conta (denominador da alavancagem).
+    avg_price, is_seed, is_cycle, last_verdict, verdict_since}]. `equity`: equity atual da conta.
+    `cooldown_tickers`: tickers vendidos recentemente (não recomendar recompra).
     Notional da posição = shares × preço (Quantfury não tem leverage por posição — ela é MEDIDA).
     Alavancagem efetiva = Σ notional dos ativos de RISCO (exceto SHY) ÷ equity. SHY é reserva:
     fora da alavancagem, limitado a US$10k de notional.
@@ -326,6 +356,7 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
             "avg_price": round(avg_price, 2) or None, "pnl_pct": pnl_pct,
             "notional": round(notional, 2), "is_shy": is_shy,
             "is_seed": bool(p.get("is_seed")), "is_cycle": bool(p.get("is_cycle")),
+            "last_verdict": p.get("last_verdict"), "verdict_since": p.get("verdict_since"),
         })
 
     # Pesos por valor de mercado.
@@ -396,17 +427,33 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
     except Exception:
         equity_regime = "NEUTRO"
     capitulacao = equity_regime in ("CAPITULACAO", "CAPIT.EXTREMA")
+    HYST_WEEKS = 2          # esticado precisa PERSISTIR ≥2 semanas (anti-whipsaw)
+    today = dt.date.today()
+
+    def _esticado_semanas(r):
+        """Há quantas semanas o ativo está ESTICADO de forma contínua (via estado persistido)."""
+        if r.get("last_verdict") != "ESTICADO" or not r.get("verdict_since"):
+            return 0.0
+        try:
+            since = dt.date.fromisoformat(str(r["verdict_since"])[:10])
+            return (today - since).days / 7.0
+        except Exception:
+            return 0.0
+
     held = {r["ticker"].upper() for r in rows}
     signals, n_sell = [], 0
     for r in rows:
         v = r.get("verdict")
         pp = r.get("pnl_pct")
+        semanas = _esticado_semanas(r)
         if r.get("is_seed"):
             action, reason = "MANTER", "Semente — âncora permanente, não rotaciona"
         elif capitulacao:
             action, reason = "MANTER", "Mercado em capitulação — segurar e comprar, não girar topo"
+        elif v == "ESTICADO" and (pp is None or pp >= 0) and semanas >= HYST_WEEKS:
+            action, reason, n_sell = "VENDER", f"Esticado há {semanas:.0f} sem. e no lucro — realizar e girar", n_sell + 1
         elif v == "ESTICADO" and (pp is None or pp >= 0):
-            action, reason, n_sell = "VENDER", "Esticado e no lucro — realizar e girar pro ranking", n_sell + 1
+            action, reason = "MANTER", f"Esticado recente ({semanas:.0f} sem.) — aguardar confirmação (≥{HYST_WEEKS} sem.)"
         elif v == "ESTICADO":
             action, reason = "MANTER", "Esticado mas no prejuízo — usar o stop, não a rotação"
         elif v is None:
@@ -415,15 +462,28 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
             action, reason = "MANTER", f"{v} — segue na carteira"
         signals.append({"ticker": r["ticker"], "verdict": v, "action": action,
                         "reason": reason, "is_seed": r.get("is_seed")})
+
+    # Destino: melhor do ranking não-possuído, FORA do cooldown e que NÃO ande colado (corr<0,8)
+    # com o que você já tem (senão piora a diversificação que o painel mede).
+    cd = {t.upper() for t in (cooldown_tickers or [])}
+    held_series = (cov or {}).get("_series") or {}
     buyable = [a for a in rk.values()
                if a.get("verdict") in ("COMPRAR FORTE", "COMPRAR")
-               and a["ticker"].upper() not in held]
+               and a["ticker"].upper() not in held and a["ticker"].upper() not in cd]
     buyable.sort(key=lambda x: -(x.get("rank") or 0))
-    rotate_into = [{
-        "ticker": a["ticker"], "name": a.get("name"), "verdict": a.get("verdict"),
-        "rank": a.get("rank"), "quality": a.get("quality"), "momentum": a.get("momentum"),
-        "current_price": a.get("current_price"), "dividend_yield": a.get("dividend_yield"),
-    } for a in buyable[:5]]
+    rotate_into = []
+    for a in buyable:
+        if len(rotate_into) >= 5:
+            break
+        mc = _candidate_max_corr(a["ticker"], held_series)
+        if mc is not None and mc >= 0.8:
+            continue   # anda colado com uma posição atual → não diversifica, pula
+        rotate_into.append({
+            "ticker": a["ticker"], "name": a.get("name"), "verdict": a.get("verdict"),
+            "rank": a.get("rank"), "quality": a.get("quality"), "momentum": a.get("momentum"),
+            "current_price": a.get("current_price"), "dividend_yield": a.get("dividend_yield"),
+            "max_corr_held": mc,
+        })
     rotation = {"signals": signals, "rotate_into": rotate_into, "n_sell": n_sell}
 
     # ── STOP DE SOBREVIVÊNCIA (pilar nº1 da doutrina) ─────────────────────────────
