@@ -1,4 +1,5 @@
 """Portfolio metrics calculation service."""
+import math
 import numpy as np
 import pandas as pd
 from typing import List, Optional, Dict
@@ -9,6 +10,51 @@ from app.models.position import Position
 from app.services.market_data import get_portfolio_live_data, fetch_price_history
 from app.quantitative.indicators import historical_max_drawdown, sharpe_ratio
 from app.quantitative.leverage import historical_var, expected_shortfall, annualized_volatility
+
+
+def _basket_risk(position_data: List[dict]) -> Optional[Dict]:
+    """VaR/CVaR/Sharpe/Sortino/maxDD REAIS da CESTA ponderada (não de 1 ticker).
+    Usa séries confiáveis (chart API), alinhadas por data, ponderadas por valor."""
+    from app.services.ranking_service import _chart_api_df, _dated_closes
+    series, weights = {}, {}
+    for p in position_data:
+        tk = p["ticker"]
+        try:
+            df, _ = _chart_api_df(tk, 3 * 366, want_div=False)
+            if df is not None and len(df) >= 120:
+                series[tk] = {d.isoformat(): c for d, c in _dated_closes(df)}
+                weights[tk] = float(p.get("current_value") or 0)
+        except Exception:
+            continue
+    if not series:
+        return None
+    common = None
+    for s in series.values():
+        ds = set(s.keys())
+        common = ds if common is None else (common & ds)
+    common = sorted(common or [])
+    if len(common) < 120:
+        return None
+    tot = sum(weights.values()) or 1.0
+    port = np.zeros(len(common) - 1)
+    for tk, s in series.items():
+        prices = np.array([s[d] for d in common], dtype=float)
+        port = port + np.diff(np.log(prices)) * (weights[tk] / tot)
+    if len(port) < 60:
+        return None
+    p5 = np.percentile(port, 5)
+    cum = np.cumprod(1 + port)
+    rm = np.maximum.accumulate(cum)
+    dd = (cum - rm) / rm
+    downside = port[port < 0]
+    return {
+        "var": float(-p5 * 100),
+        "cvar": float(-port[port <= p5].mean() * 100) if (port <= p5).any() else float(-p5 * 100),
+        "sharpe": float(port.mean() / port.std() * math.sqrt(252)) if port.std() > 0 else None,
+        "sortino": float(port.mean() / downside.std() * math.sqrt(252)) if len(downside) and downside.std() > 0 else None,
+        "max_dd": float(dd.min() * 100),
+        "current_dd": float(dd[-1] * 100),
+    }
 
 
 def calculate_portfolio_metrics(portfolio: Portfolio, db: Session) -> Dict:
@@ -64,20 +110,20 @@ def calculate_portfolio_metrics(portfolio: Portfolio, db: Session) -> Dict:
     for p_data in position_data:
         p_data["weight"] = round((p_data["current_value"] / total_equity * 100) if total_equity > 0 else 0, 2)
 
-    var_95 = 0.05
-    cvar_95 = 0.07
-    if tickers:
-        try:
-            df = fetch_price_history(tickers[0], "3y")
-            if df is not None:
-                close = df["Close"].squeeze()
-                log_ret = np.log(close / close.shift(1)).dropna()
-                var_95 = abs(historical_var(log_ret))
-                cvar_95 = abs(expected_shortfall(log_ret))
-        except Exception:
-            pass
+    # Risco REAL da cesta ponderada (substitui VaR de 1 ticker + números chumbados).
+    basket = _basket_risk(position_data) or {}
+    # Beta e CAGR da carteira: média ponderada dos valores REAIS do ranking (não 0.75 fixo).
+    try:
+        rk = _flatten_ranking()
+    except Exception:
+        rk = {}
+    bw = [(rk.get(p["ticker"].upper(), {}).get("beta"), p["current_value"]) for p in position_data]
+    bw = [(b, w) for b, w in bw if b is not None]
+    portfolio_beta = round(sum(b * w for b, w in bw) / sum(w for _, w in bw), 2) if bw else 0.0
+    cw = [(rk.get(p["ticker"].upper(), {}).get("cagr"), p["current_value"]) for p in position_data]
+    cw = [(c, w) for c, w in cw if c is not None]
+    projected_cagr = round(sum(c * w for c, w in cw) / sum(w for _, w in cw), 2) if cw else 0.0
 
-    projected_cagr = 0.08
     deleverage_years = max(0, (effective_leverage - 1.0) / 0.15)
     safety_margin = max(0, (1 / effective_leverage - 0.10) * 100) if effective_leverage > 0 else 90
 
@@ -85,16 +131,16 @@ def calculate_portfolio_metrics(portfolio: Portfolio, db: Session) -> Dict:
         "equity": round(total_equity, 2),
         "total_exposure": round(total_exposure, 2),
         "effective_leverage": round(effective_leverage, 3),
-        "portfolio_beta": 0.75,
+        "portfolio_beta": portfolio_beta,
         "dividend_yield": round(weighted_dy, 2),
-        "current_drawdown": 0.0,
-        "max_drawdown": -25.0,
-        "sharpe_ratio": 1.2,
-        "sortino_ratio": 1.8,
-        "var_95": round(var_95 * 100, 2),
-        "cvar_95": round(cvar_95 * 100, 2),
+        "current_drawdown": round(basket.get("current_dd", 0.0), 1),
+        "max_drawdown": round(basket.get("max_dd", 0.0), 1),
+        "sharpe_ratio": round(basket["sharpe"], 2) if basket.get("sharpe") is not None else None,
+        "sortino_ratio": round(basket["sortino"], 2) if basket.get("sortino") is not None else None,
+        "var_95": round(basket.get("var", 0.0), 2),
+        "cvar_95": round(basket.get("cvar", 0.0), 2),
         "safety_margin": round(safety_margin, 1),
-        "projected_cagr": projected_cagr * 100,
+        "projected_cagr": projected_cagr,
         "deleverage_years": round(deleverage_years, 1),
         "position_data": position_data,
     }
@@ -205,11 +251,14 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
             shy_notional += notional
         else:
             risk_notional += notional
+        avg_price = float(p.get("avg_price") or 0)
+        pnl_pct = round((price / avg_price - 1) * 100, 1) if avg_price > 0 and price else None
         rows.append({
             "ticker": p["ticker"], "bucket": _bucket_of(tk) or "—",
             "cagr": a.get("cagr"), "dividend_yield": a.get("dividend_yield"),
             "tsr_expected": a.get("tsr_expected"), "beta": a.get("beta"),
             "verdict": a.get("verdict"), "current_price": price,
+            "avg_price": round(avg_price, 2) or None, "pnl_pct": pnl_pct,
             "notional": round(notional, 2), "is_shy": is_shy,
             "is_seed": bool(p.get("is_seed")), "is_cycle": bool(p.get("is_cycle")),
         })
@@ -286,10 +335,26 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
     } for a in buyable[:5]]
     rotation = {"signals": signals, "rotate_into": rotate_into, "n_sell": n_sell}
 
+    # ── STOP DE SOBREVIVÊNCIA (pilar nº1 da doutrina) ─────────────────────────────
+    # Caiu ≥10% do PM → vende 1/3 (escalonado: a cada -10% adicional, +1/3). Vale p/ TODAS
+    # as posições (ruína não respeita tese — inclusive semente, mas marcamos o flag).
+    survival_stops = []
+    for r in rows:
+        pp = r.get("pnl_pct")
+        if pp is None or pp > -10:
+            continue
+        tercos = min(3, int(abs(pp) // 10))   # -10%→1/3, -20%→2/3, -30%+→3/3
+        survival_stops.append({
+            "ticker": r["ticker"], "pnl_pct": pp, "thirds": tercos,
+            "acao": f"vender {tercos}/3 (stop de sobrevivência)", "is_seed": r.get("is_seed"),
+        })
+    survival_stops.sort(key=lambda x: x["pnl_pct"])  # mais perdedor primeiro
+
     import datetime as _dt
     return {
         "assets": rows, "totals": totals, "buckets": buckets,
         "correlation": correlation, "rotation": rotation,
+        "survival_stops": survival_stops,
         "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
     }
 

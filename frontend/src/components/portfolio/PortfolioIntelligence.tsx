@@ -12,6 +12,7 @@ type Analytics = {
   buckets?: any[];
   correlation?: any;
   rotation?: any;
+  survival_stops?: any[];
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -48,10 +49,33 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const rotation = analytics.rotation || {};
   const sells = (rotation.signals || []).filter((s: any) => s.action === "VENDER");
   const rotateInto = rotation.rotate_into || [];
+  const stops = analytics.survival_stops || [];
 
   return (
     <div className="space-y-4">
-      {/* 0. Sinal de venda / rotação */}
+      {/* 0a. STOP DE SOBREVIVÊNCIA — pilar nº1 (anti-ruína) */}
+      {stops.length > 0 && (
+        <section className="bg-danger/5 rounded-xl border border-danger/40 p-4">
+          <h3 className="text-sm font-semibold text-danger mb-1">⚠ Stop de sobrevivência (anti-ruína)</h3>
+          <p className="text-[11px] text-text-muted mb-3">
+            Caiu ≥10% do preço médio → vende fração (escalonado, a cada -10%). Princípio nº1: não tolerar ruína.
+          </p>
+          <div className="space-y-1.5">
+            {stops.map((s: any) => (
+              <div key={s.ticker} className="flex items-center gap-2 text-xs">
+                <span className="px-1.5 py-0.5 rounded bg-danger/20 border border-danger/50 text-danger font-semibold text-[10px]">
+                  {s.acao}
+                </span>
+                <span className="font-semibold text-text-primary">{s.ticker}</span>
+                <span className="text-danger font-mono">{fmt(s.pnl_pct, "%", 1)} do PM</span>
+                {s.is_seed && <span className="text-[9px] text-emerald-400">(semente — sua regra é não vender; atenção ao risco)</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 0b. Sinal de venda / rotação */}
       <section className="bg-surface rounded-xl border border-border p-4">
         <h3 className="text-sm font-semibold text-text-primary mb-1">Sinal de venda / rotação</h3>
         <p className="text-[11px] text-text-muted mb-3">
