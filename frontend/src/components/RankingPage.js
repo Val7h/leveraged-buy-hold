@@ -409,7 +409,10 @@ function qualityRaw(a) {
           (a.dy_worst_year != null ? ` · pior ${Number(a.dy_worst_year).toFixed(1)}%` : "")
         : `${Number(a.dividend_yield).toFixed(1)}%`;
   }
-  if (a.beta != null) r.beta = Number(a.beta).toFixed(2) + (a.is_tatico ? " (tático)" : "");
+  if (a.beta != null) {
+    const src = a.beta_source === "fmp" ? " ·FMP" : a.beta_source === "reg5a" ? " ·5a" : a.beta_source === "reg1a" ? " ·1a" : "";
+    r.beta = Number(a.beta).toFixed(2) + (a.is_tatico ? " (tático)" : "") + src;
+  }
   return r;
 }
 function momentumRaw(a) {

@@ -614,8 +614,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         beta_long, _, _ = _beta_corr_sigma(df, _idm, window=1260)             # 5a → valor estável
         # BETA: FMP publicado é primário; senão regressão de 5a (que NÃO dá negativo);
         # 1a só em último caso. A de 1a sozinha dá beta negativo p/ defensivas US (artefato).
-        beta = (fund.get("beta") if fund.get("beta") is not None
-                else beta_long if beta_long is not None else beta_reg)
+        if fund.get("beta") is not None:
+            beta, beta_source = fund.get("beta"), "fmp"
+        elif beta_long is not None:
+            beta, beta_source = beta_long, "reg5a"
+        else:
+            beta, beta_source = beta_reg, "reg1a"
 
         # TÁTICO: cíclica descolada (corr baixa + σ alta) OU bucket curado, exceto whitelist.
         # Auto-detecção limitada ao BRASIL por enquanto (whitelist é BR; americanas serão tratadas
@@ -729,6 +733,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "distance_ma200": _round_or_none(dma, 1),
             "rsi": _round_or_none(rsi, 0),
             "beta": _round_or_none(beta, 2),
+            "beta_source": beta_source,
             "cagr": _round_or_none(g5, 0),
             "sharpe": _round_or_none(shp, 2),
             "dividend_yield": _round_or_none(dy, 1),

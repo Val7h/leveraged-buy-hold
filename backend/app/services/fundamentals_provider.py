@@ -187,68 +187,67 @@ def _from_fmp(ticker: str) -> dict:
         logger.warning("[FUNDAMENTALS] FMP_API_KEY ausente — %s sem fundamentos", ticker)
         return out
 
+    # 1) ratios-ttm → fundamentos. BEST-EFFORT: se falhar, NÃO impede o beta (passo 2).
     url = (f"https://financialmodelingprep.com/api/v3/ratios-ttm/"
            f"{_urlparse.quote(ticker)}?apikey={_urlparse.quote(key)}")
     data = _http_json(url)
-    try:
-        # FMP devolve uma lista com 1 objeto
-        if isinstance(data, list):
-            row = data[0] if data else {}
-        elif isinstance(data, dict):
-            # erro do FMP costuma vir como {"Error Message": ...}
-            if "Error Message" in data or "error" in data:
-                logger.warning("[FUNDAMENTALS] FMP erro p/ %s: %s",
-                               ticker, str(data)[:200])
-                return out
+    row = {}
+    if isinstance(data, list) and data and isinstance(data[0], dict):
+        row = data[0]
+    elif isinstance(data, dict):
+        if "Error Message" in data or "error" in data:
+            logger.warning("[FUNDAMENTALS] FMP ratios erro p/ %s: %s", ticker, str(data)[:200])
+        else:
             row = data
-        else:
-            return out
-        if not isinstance(row, dict) or not row:
-            return out
-
-        def pick(*names):
-            for n in names:
-                if n in row:
-                    v = _to_float(row.get(n))
-                    if v is not None:
-                        return v
-            return None
-
-        roe = pick("returnOnEquityTTM")
-        out["roe"] = roe * 100.0 if roe is not None else None
-
-        out["payout_ratio"] = pick("payoutRatioTTM")
-
-        out["debt_to_equity"] = pick(
-            "debtEquityRatioTTM", "debtToEquityTTM", "debtToEquityRatioTTM")
-
-        # dividendYield: fração na ratios-ttm (ex 0.0054). Variações de nome incluem
-        # o típico typo 'dividendYielTTM'. Se vier campo *Percentage*, já está em %.
-        dy_pct = pick("dividendYieldPercentageTTM")
-        if dy_pct is not None:
-            out["dividend_yield"] = dy_pct
-        else:
-            dy = pick("dividendYieldTTM", "dividendYielTTM")
-            out["dividend_yield"] = dy * 100.0 if dy is not None else None
-
-        fcf = pick("freeCashFlowYieldTTM")
-        out["fcf_yield"] = fcf * 100.0 if fcf is not None else None
-    except Exception as e:
-        logger.warning(f"[FUNDAMENTALS] parse FMP {ticker}: {e}")
-        return _empty("fmp")
-
-    # BETA via /profile — a regressão local dá negativo p/ defensivas US (janela curta +
-    # S&P concentrado em tech). O beta publicado da FMP (janela longa) é confiável.
-    prof_url = (f"https://financialmodelingprep.com/api/v3/profile/"
-                f"{_urlparse.quote(ticker)}?apikey={_urlparse.quote(key)}")
-    prof = _http_json(prof_url)
     try:
-        prow = prof[0] if isinstance(prof, list) and prof else (prof if isinstance(prof, dict) else {})
-        b = _to_float((prow or {}).get("beta"))
-        if b is not None and b != 0:
-            out["beta"] = b
+        if row:
+            def pick(*names):
+                for n in names:
+                    if n in row:
+                        v = _to_float(row.get(n))
+                        if v is not None:
+                            return v
+                return None
+
+            roe = pick("returnOnEquityTTM")
+            out["roe"] = roe * 100.0 if roe is not None else None
+            out["payout_ratio"] = pick("payoutRatioTTM")
+            out["debt_to_equity"] = pick(
+                "debtEquityRatioTTM", "debtToEquityTTM", "debtToEquityRatioTTM")
+            dy_pct = pick("dividendYieldPercentageTTM")
+            if dy_pct is not None:
+                out["dividend_yield"] = dy_pct
+            else:
+                dy = pick("dividendYieldTTM", "dividendYielTTM")
+                out["dividend_yield"] = dy * 100.0 if dy is not None else None
+            fcf = pick("freeCashFlowYieldTTM")
+            out["fcf_yield"] = fcf * 100.0 if fcf is not None else None
     except Exception as e:
-        logger.warning(f"[FUNDAMENTALS] parse FMP profile {ticker}: {e}")
+        logger.warning(f"[FUNDAMENTALS] parse FMP ratios {ticker}: {e}")
+
+    # 2) /profile → BETA publicado (SEMPRE, independente do ratios acima).
+    out["beta"] = _fmp_beta(ticker, key)
+    return out
+
+
+def _fmp_beta(ticker: str, key: str):
+    """Beta publicado via FMP /profile (janela longa, confiável). Tenta v3 e, se vazio,
+    o endpoint 'stable' (chaves novas). None em qualquer falha."""
+    for url in (
+        f"https://financialmodelingprep.com/api/v3/profile/{_urlparse.quote(ticker)}?apikey={_urlparse.quote(key)}",
+        f"https://financialmodelingprep.com/stable/profile?symbol={_urlparse.quote(ticker)}&apikey={_urlparse.quote(key)}",
+    ):
+        data = _http_json(url)
+        try:
+            row = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
+            if isinstance(row, dict) and ("Error Message" in row or "error" in row):
+                continue
+            b = _to_float((row or {}).get("beta"))
+            if b is not None and b != 0:
+                return b
+        except Exception as e:
+            logger.warning(f"[FUNDAMENTALS] parse FMP profile {ticker}: {e}")
+    return None
     return out
 
 
