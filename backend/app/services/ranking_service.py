@@ -452,24 +452,86 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         return None
 
 
-def compute_ranking(force: bool = False) -> dict:
-    """Recalcula o ranking por categoria (cache ~20min). Shape no contrato da API."""
-    if not force:
-        cached = _cache_get("ranking", RANKING_TTL)
-        if cached is not None:
-            return cached
+import threading as _threading
+_bg_refreshing: set = set()
+_bg_lock = _threading.Lock()
 
+
+def _start_bg_refresh() -> None:
+    """Recalcula o ranking em segundo plano (1 por vez), sem bloquear quem pediu."""
+    with _bg_lock:
+        if "ranking" in _bg_refreshing:
+            return
+        _bg_refreshing.add("ranking")
+
+    def _run():
+        try:
+            _recompute_ranking()
+        except Exception as e:
+            logger.warning(f"[RANKING] refresh em background falhou: {e}")
+        finally:
+            with _bg_lock:
+                _bg_refreshing.discard("ranking")
+
+    _threading.Thread(target=_run, daemon=True).start()
+
+
+def compute_ranking(force: bool = False) -> dict:
+    """
+    Serve o cache na hora; recalcula em background quando vencido (stale-while-revalidate).
+    Só bloqueia no PRIMEIRO cálculo (cache frio) ou com force=True.
+    """
+    entry = _cache.get("ranking")
+    if not force and entry is not None:
+        ts, val = entry
+        if time.time() - ts < RANKING_TTL:
+            return val                 # fresco
+        _start_bg_refresh()            # vencido → devolve o velho já e atualiza por trás
+        return val
+    return _recompute_ranking()        # frio ou force → calcula síncrono
+
+
+_compute_lock = _threading.Lock()
+
+
+def _recompute_ranking() -> dict:
+    """Cálculo pesado do ranking (~116 tickers, paralelizado). Atualiza o cache.
+    Serializado: se outro thread (ex: warm-up) já calculou enquanto esperávamos o
+    lock, reaproveita o resultado fresco em vez de recalcular tudo de novo."""
+    with _compute_lock:
+        entry = _cache.get("ranking")
+        if entry is not None and (time.time() - entry[0]) < RANKING_TTL:
+            return entry[1]
+        return _recompute_ranking_inner()
+
+
+def _recompute_ranking_inner() -> dict:
     universe = get_universe()
     idxc, idxdm, equity_regime = _fetch_indices()
 
+    # PARALELIZA: ~116 tickers em sequência levam minutos (fetch_price_history +
+    # fetch_fundamentals/.info por ticker). São I/O de rede → ThreadPool corta p/ ~dezenas de seg.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    tasks = [(cat, r) for cat, rows in universe.items() for r in rows]
+    by_cat: Dict[str, list] = {cat: [] for cat in universe.keys()}
+
+    def _work(cat, r):
+        return cat, _analyze(r["ticker"], r["bucket"], r.get("name", r["ticker"]),
+                             cat, idxc, idxdm, equity_regime)
+
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        futures = [ex.submit(_work, cat, r) for cat, r in tasks]
+        for fut in as_completed(futures):
+            try:
+                cat, res = fut.result()
+                if res:
+                    by_cat[cat].append(res)
+            except Exception as e:
+                logger.warning(f"[RANKING] análise paralela falhou: {e}")
+
     categories: Dict[str, dict] = {}
-    for cat, rows in universe.items():
-        assets = []
-        for r in rows:
-            res = _analyze(r["ticker"], r["bucket"], r.get("name", r["ticker"]),
-                           cat, idxc, idxdm, equity_regime)
-            if res:
-                assets.append(res)
+    for cat in universe.keys():
+        assets = by_cat.get(cat, [])
         assets.sort(key=lambda x: (_verdict_order(x["verdict"]), -x["rank"]))
         reg = assets[0]["regime"] if assets else regime(idxc.get(INDEX_BY_CAT.get(cat)))
         for a in assets:
