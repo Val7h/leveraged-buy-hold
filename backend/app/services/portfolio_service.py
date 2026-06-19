@@ -110,6 +110,211 @@ def _empty_metrics() -> Dict:
     }
 
 
+# Estrutura-alvo (método adotado — síntese Dalio/Swensen/Core-Satellite × ESTRATÉGIA MASTER).
+# Âncoras = CORE estável · Geradores = renda · Aceleradores = satélites de crescimento.
+PORTFOLIO_TARGETS = {"ANCORA": 55.0, "GERADOR": 30.0, "ACELERADOR": 15.0}
+
+
+def _flatten_ranking() -> Dict[str, dict]:
+    """ticker(upper) -> asset do ranking (cacheado)."""
+    from app.services.ranking_service import compute_ranking
+    out: Dict[str, dict] = {}
+    ranking = compute_ranking() or {}
+    for cat, data in (ranking.get("categories") or {}).items():
+        for a in (data.get("assets") or []):
+            out[a["ticker"].upper()] = {**a, "category": cat}
+    return out
+
+
+def _bucket_of(ticker: str) -> Optional[str]:
+    """Bucket curado do ticker (ANCORA/GERADOR/ACELERADOR/TATICO/RESERVA) via universo."""
+    from app.services.ranking_service import get_universe
+    tu = ticker.upper()
+    for cat, rows in (get_universe() or {}).items():
+        for r in rows:
+            if r["ticker"].upper() == tu:
+                return r.get("bucket")
+    return None
+
+
+def _correlation_matrix(tickers: List[str]) -> Dict:
+    """Matriz de correlação dos retornos diários (≈3a) entre os ativos da carteira +
+    correlação média (proxy de diversificação). Descorrelação = sua regra de ouro."""
+    from app.services.ranking_service import _chart_api_df, _dated_closes
+    series = {}
+    for tk in tickers:
+        try:
+            df, _ = _chart_api_df(tk, 3 * 366, want_div=False)
+            if df is not None and len(df) >= 120:
+                series[tk] = {d.isoformat(): c for d, c in _dated_closes(df)}
+        except Exception:
+            continue
+    valid = list(series.keys())
+    matrix, pairs = {}, []
+    for i, a in enumerate(valid):
+        matrix[a] = {}
+        for b in valid:
+            common = sorted(set(series[a]) & set(series[b]))
+            if len(common) < 60:
+                matrix[a][b] = None
+                continue
+            ra = np.diff(np.log([series[a][d] for d in common]))
+            rb = np.diff(np.log([series[b][d] for d in common]))
+            c = float(np.corrcoef(ra, rb)[0, 1]) if ra.std() and rb.std() else None
+            matrix[a][b] = round(c, 2) if c is not None else None
+            if c is not None and b != a and valid.index(b) > i:
+                pairs.append((a, b, c))
+    avg_corr = round(float(np.mean([p[2] for p in pairs])), 2) if pairs else None
+    redundant = sorted([p for p in pairs if p[2] >= 0.8], key=lambda x: -x[2])[:5]
+    return {
+        "tickers": valid,
+        "matrix": matrix,
+        "avg_correlation": avg_corr,
+        "redundant_pairs": [{"a": a, "b": b, "corr": round(c, 2)} for a, b, c in redundant],
+    }
+
+
+def portfolio_analytics(positions: List[dict]) -> Dict:
+    """
+    Inteligência da carteira (método adotado). `positions`: [{ticker, shares, avg_price, leverage}].
+    Retorna: por-ativo (bucket, CAGR, DY, TSR, beta, peso, contribuição de risco),
+    totais da carteira (CAGR/TSR/DY ponderados, alavancagem efetiva), estrutura ALVO×REAL
+    por bucket, e correlação/descorrelação entre os ativos.
+    """
+    if not positions:
+        return {"assets": [], "totals": {}, "buckets": [], "correlation": {}}
+
+    rk = _flatten_ranking()
+    rows, total_equity, total_notional = [], 0.0, 0.0
+    for p in positions:
+        tk = p["ticker"].upper()
+        a = rk.get(tk, {})
+        price = a.get("current_price") or p.get("avg_price") or 0.0
+        shares = float(p.get("shares") or 0)
+        lev = float(p.get("leverage") or 1)
+        value = shares * price
+        total_equity += value
+        total_notional += value * lev
+        rows.append({
+            "ticker": p["ticker"], "bucket": _bucket_of(tk) or "—",
+            "cagr": a.get("cagr"), "dividend_yield": a.get("dividend_yield"),
+            "tsr_expected": a.get("tsr_expected"), "beta": a.get("beta"),
+            "verdict": a.get("verdict"), "current_price": price,
+            "value": round(value, 2), "leverage": lev,
+        })
+
+    # Pesos + contribuição de risco (Dalio: peso × beta, normalizado).
+    for r in rows:
+        r["weight"] = round(r["value"] / total_equity * 100, 1) if total_equity else 0.0
+    risk_raw = [(r["weight"] / 100) * abs(r["beta"]) if r.get("beta") else 0.0 for r in rows]
+    risk_sum = sum(risk_raw) or 1.0
+    for r, rr in zip(rows, risk_raw):
+        r["risk_contribution"] = round(rr / risk_sum * 100, 1)
+
+    def _wavg(field):
+        vals = [(r[field], r["value"]) for r in rows if r.get(field) is not None]
+        tot = sum(v for _, v in vals)
+        return round(sum(x * v for x, v in vals) / tot, 2) if tot else None
+
+    totals = {
+        "equity": round(total_equity, 2),
+        "effective_leverage": round(total_notional / total_equity, 2) if total_equity else 1.0,
+        "cagr": _wavg("cagr"), "tsr_expected": _wavg("tsr_expected"),
+        "dividend_yield": _wavg("dividend_yield"), "beta": _wavg("beta"),
+    }
+
+    # Estrutura ALVO × REAL por bucket.
+    real_by_bucket: Dict[str, float] = {}
+    for r in rows:
+        real_by_bucket[r["bucket"]] = real_by_bucket.get(r["bucket"], 0.0) + r["weight"]
+    buckets = []
+    for bk, target in PORTFOLIO_TARGETS.items():
+        real = round(real_by_bucket.get(bk, 0.0), 1)
+        drift = round(real - target, 1)
+        buckets.append({"bucket": bk, "target": target, "real": real, "drift": drift,
+                        "status": ("ok" if abs(drift) <= 5 else ("acima" if drift > 0 else "abaixo"))})
+    for bk, real in real_by_bucket.items():       # buckets fora do alvo (TATICO/RESERVA/—)
+        if bk not in PORTFOLIO_TARGETS:
+            buckets.append({"bucket": bk, "target": None, "real": round(real, 1),
+                            "drift": None, "status": "extra"})
+
+    correlation = _correlation_matrix([r["ticker"] for r in rows])
+
+    import datetime as _dt
+    return {
+        "assets": rows, "totals": totals, "buckets": buckets,
+        "correlation": correlation, "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def rotation_signals(portfolio_id: int, db: Session) -> Dict:
+    """
+    Sinal de VENDA / rotação (estratégia do usuário): SEMENTE nunca vende (âncora
+    permanente). Posição de CICLO que ficou ESTICADO no ranking → VENDER e girar o
+    capital pro melhor do ranking AGORA que ainda não está na carteira (opção 1).
+    Reaproveita o motor de ranking novo (compute_ranking, com cache stale-while-revalidate).
+    """
+    from app.services.ranking_service import compute_ranking
+
+    positions = db.query(Position).filter(
+        Position.portfolio_id == portfolio_id,
+        Position.is_active == True,
+    ).all()
+
+    ranking = compute_ranking() or {}
+    by_ticker: Dict[str, dict] = {}
+    all_assets: List[dict] = []
+    for cat, data in (ranking.get("categories") or {}).items():
+        for a in (data.get("assets") or []):
+            item = {**a, "category": cat}
+            by_ticker[a["ticker"].upper()] = item
+            all_assets.append(item)
+
+    held = {p.ticker.upper() for p in positions}
+    signals: List[dict] = []
+    n_sell = 0
+    for pos in positions:
+        asset = by_ticker.get(pos.ticker.upper())
+        verdict = asset.get("verdict") if asset else None
+        base = {
+            "position_id": pos.id, "ticker": pos.ticker,
+            "company_name": pos.company_name, "is_seed": pos.is_seed,
+            "is_cycle": pos.is_cycle, "verdict": verdict,
+            "rank": (asset or {}).get("rank"), "momentum": (asset or {}).get("momentum"),
+        }
+        if pos.is_seed:
+            base.update(action="MANTER", reason="Semente — âncora permanente, não rotaciona")
+        elif verdict == "ESTICADO":
+            base.update(action="VENDER", reason="Esticado — realizar e girar pro ranking")
+            n_sell += 1
+        elif verdict is None:
+            base.update(action="MANTER", reason="Fora do universo do ranking — avaliar manualmente")
+        else:
+            base.update(action="MANTER", reason=f"{verdict} — segue na carteira")
+        signals.append(base)
+
+    # Destino da rotação (opção 1): melhor do ranking AGORA que NÃO está na carteira.
+    buyable = [a for a in all_assets
+               if a.get("verdict") in ("COMPRAR FORTE", "COMPRAR")
+               and a["ticker"].upper() not in held]
+    buyable.sort(key=lambda x: -(x.get("rank") or 0))
+    rotate_into = [{
+        "ticker": a["ticker"], "name": a.get("name"), "category": a.get("category"),
+        "verdict": a.get("verdict"), "rank": a.get("rank"), "quality": a.get("quality"),
+        "momentum": a.get("momentum"), "leverage": a.get("leverage"),
+        "current_price": a.get("current_price"), "currency": a.get("currency"),
+        "dividend_yield": a.get("dividend_yield"),
+    } for a in buyable[:5]]
+
+    import datetime as _dt
+    return {
+        "signals": signals,
+        "rotate_into": rotate_into,
+        "n_sell": n_sell,
+        "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
+    }
+
+
 def suggest_contributions(
     portfolio_id: int,
     available_capital: float,

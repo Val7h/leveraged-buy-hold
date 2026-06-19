@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from typing import List
 from datetime import datetime
 
@@ -367,6 +368,40 @@ def get_equity_curve(
 
 
 # ── Suggestions ───────────────────────────────────────────────────────────────
+
+class _AnalyticsPos(BaseModel):
+    ticker: str
+    shares: float = 0.0
+    avg_price: float = 0.0
+    leverage: float = 1.0
+
+
+class _AnalyticsBody(BaseModel):
+    positions: List[_AnalyticsPos] = []
+
+
+@router.post("/analytics")
+def post_portfolio_analytics(body: _AnalyticsBody, user: User = Depends(get_current_user)):
+    """Inteligência da carteira (método adotado): métricas por ativo, totais, estrutura
+    ALVO×REAL por bucket, contribuição de risco (Dalio) e correlação/descorrelação.
+    Recebe as posições no corpo (vivem no Prisma/Node)."""
+    from app.services.portfolio_service import portfolio_analytics
+    return portfolio_analytics([p.dict() for p in body.positions])
+
+
+@router.get("/{portfolio_id}/rotation")
+def get_rotation(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Sinal de venda/rotação: ciclo ESTICADO → vender e girar; semente nunca vende."""
+    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id, Portfolio.user_id == user.id).first()
+    if not portfolio:
+        raise HTTPException(404, "Carteira não encontrada")
+    from app.services.portfolio_service import rotation_signals
+    return rotation_signals(portfolio_id, db)
+
 
 @router.get("/{portfolio_id}/suggestions", response_model=List[ContributionSuggestion])
 def get_suggestions(
