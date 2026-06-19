@@ -380,6 +380,11 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
 
         dy = fund.get("dividend_yield")
         cagr = g5  # CAGR de preço (proxy de retorno total)
+
+        # Preço atual, variação diária e moeda — para exibição na linha do ranking.
+        current_price = float(a[-1]) if len(a) else None
+        day_change_pct = ((a[-1] / a[-2] - 1) * 100) if len(a) >= 2 and a[-2] else None
+        currency = "BRL" if tk.upper().endswith(".SA") else "USD"
         tsr = (dy or 0.0) + (g5 or 0.0)  # TSR esperado proxy = dividend yield + crescimento
 
         reg = regime(idxc.get(INDEX_BY_CAT.get(cat)))
@@ -415,6 +420,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "ticker": tk,
             "name": name,
             "bucket": bucket,
+            "current_price": _round_or_none(current_price, 2),
+            "day_change_pct": _round_or_none(day_change_pct, 2),
+            "currency": currency,
             "verdict": verdict,
             "quality": round(quality),
             "momentum": round(momentum),

@@ -13,7 +13,7 @@
  * Estética: tema "neon fintech" do app (tokens em tailwind.config / globals.css).
  */
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Loader2,
   AlertCircle,
@@ -104,6 +104,105 @@ function scoreColor(score) {
   if (score >= 70) return "bg-success";
   if (score >= 45) return "bg-warning";
   return "bg-danger";
+}
+
+// Preço formatado conforme a moeda do ativo.
+function fmtPrice(v, currency) {
+  if (v === null || v === undefined || Number.isNaN(v)) return "—";
+  const n = Number(v);
+  const sym = currency === "BRL" ? "R$" : "$";
+  const dec = n >= 1000 ? 0 : 2;
+  return `${sym} ${n.toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: dec })}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Logo do ticker (fontes grátis + fallback de letra)                  */
+/* ------------------------------------------------------------------ */
+
+// Símbolo "limpo" (sem .SA / -USD) p/ montar URLs e a inicial do fallback.
+function baseSymbol(ticker) {
+  return String(ticker || "")
+    .toUpperCase()
+    .replace(/\.SA$/, "")
+    .replace(/-USD$/, "")
+    .replace(/[=^].*$/, "");
+}
+
+// Lista ordenada de URLs de logo a tentar (cai p/ a próxima no onError).
+function logoSources(ticker) {
+  const t = String(ticker || "").toUpperCase();
+  const base = baseSymbol(t);
+  const out = [];
+  if (t.endsWith("-USD")) {
+    // Cripto: cryptocurrency-icons CDN (grátis, por símbolo em minúsculo).
+    out.push(`https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/${base.toLowerCase()}.svg`);
+  } else {
+    // Ações US/Europa/BR: FMP image endpoint (grátis, app já usa FMP).
+    // Para .SA o FMP pode não ter — cai no fallback de letra via onError.
+    out.push(`https://financialmodelingprep.com/image-stock/${t}.png`);
+    if (t.endsWith(".SA")) {
+      // tentativa adicional sem sufixo, alguns provedores indexam pelo código puro
+      out.push(`https://financialmodelingprep.com/image-stock/${base}.png`);
+    }
+  }
+  return out;
+}
+
+// Cor determinística (do tema) p/ o avatar de letra, derivada do ticker.
+const AVATAR_COLORS = ["#00E5FF", "#00FF88", "#C084FC", "#FFB020", "#FF4D4D", "#38BDF8"];
+function avatarColor(ticker) {
+  const s = String(ticker || "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function TickerLogo({ ticker, size = 26 }) {
+  const sources = useMemo(() => logoSources(ticker), [ticker]);
+  const [idx, setIdx] = useState(0);
+  const failed = idx >= sources.length;
+  const letter = baseSymbol(ticker).charAt(0) || "?";
+  const color = avatarColor(ticker);
+
+  // reseta quando o ticker muda
+  const lastTicker = useRef(ticker);
+  if (lastTicker.current !== ticker) {
+    lastTicker.current = ticker;
+    if (idx !== 0) setIdx(0);
+  }
+
+  const dim = { width: size, height: size };
+
+  if (failed) {
+    return (
+      <span
+        className="shrink-0 rounded-full flex items-center justify-center font-bold"
+        style={{
+          ...dim,
+          fontSize: size * 0.42,
+          color,
+          background: `${color}1f`,
+          border: `1px solid ${color}55`,
+        }}
+        aria-hidden
+      >
+        {letter}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={sources[idx]}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      onError={() => setIdx((i) => i + 1)}
+      className="shrink-0 rounded-full object-contain bg-white/90 border border-border/60"
+      style={dim}
+    />
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -200,10 +299,27 @@ function BestBuyCard({ asset, top }) {
           {asset.verdict}
         </span>
       </div>
-      <div className="flex items-baseline gap-2">
+      <div className="flex items-center gap-2">
+        <TickerLogo ticker={asset.ticker} size={24} />
         <span className="text-lg font-bold text-text-primary tracking-tight">{asset.ticker}</span>
         <span className="text-[11px] text-text-muted truncate">{asset.name}</span>
       </div>
+      {asset.current_price !== null && asset.current_price !== undefined && (
+        <div className="flex items-baseline gap-2 mt-1">
+          <span className="text-sm font-mono font-semibold text-text-primary">
+            {fmtPrice(asset.current_price, asset.currency)}
+          </span>
+          {asset.day_change_pct !== null && asset.day_change_pct !== undefined && (
+            <span
+              className={`text-[11px] font-mono ${
+                asset.day_change_pct > 0 ? "text-success" : asset.day_change_pct < 0 ? "text-danger" : "text-text-muted"
+              }`}
+            >
+              {fmtPct(asset.day_change_pct, 2)}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-3 mt-2 text-[11px] font-mono">
         <span className="text-text-secondary">
           Q <span className="text-success font-semibold">{Math.round(asset.quality)}</span>
@@ -278,29 +394,65 @@ function RankingRow({ asset, expanded, onToggle, onRemove }) {
       >
         <div className="col-span-5 sm:col-span-3 min-w-0">
           <div className="flex items-center gap-2">
+            <TickerLogo ticker={asset.ticker} size={26} />
             <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
             <span className="font-bold text-text-primary text-sm truncate">{asset.ticker}</span>
-            <span className="text-[9px] uppercase tracking-wide text-text-muted bg-surface-3 rounded px-1.5 py-0.5 hidden sm:inline">
+            {asset.dividend_yield > 0 && (
+              <span className="hidden sm:inline-flex items-center text-[9px] font-semibold text-success bg-success/10 border border-success/30 rounded px-1.5 py-0.5 whitespace-nowrap">
+                DY {fmtPct(asset.dividend_yield).replace("+", "")}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5 pl-9">
+            <span className="text-xs text-text-muted truncate">{asset.name}</span>
+            <span className="text-[9px] uppercase tracking-wide text-text-muted bg-surface-3 rounded px-1.5 py-0.5 shrink-0">
               {asset.bucket}
             </span>
           </div>
-          <div className="text-xs text-text-muted truncate mt-0.5 pl-4">{asset.name}</div>
         </div>
 
-        <div className="col-span-4 sm:col-span-2">
-          <span className={`inline-block px-2 py-1 rounded-md text-[11px] font-semibold border whitespace-nowrap ${verdictCls}`}>
+        <div className="col-span-4 sm:col-span-2 flex flex-col gap-1">
+          <span className={`inline-block self-start px-2 py-1 rounded-md text-[11px] font-semibold border whitespace-nowrap ${verdictCls}`}>
             {asset.verdict}
           </span>
+          {asset.dividend_yield > 0 && (
+            <span className="sm:hidden inline-flex self-start items-center text-[9px] font-semibold text-success bg-success/10 border border-success/30 rounded px-1.5 py-0.5">
+              DY {fmtPct(asset.dividend_yield).replace("+", "")}
+            </span>
+          )}
         </div>
 
-        <div className="col-span-2 hidden sm:block">
+        <div className="col-span-2 hidden sm:flex flex-col justify-center">
+          <div className="text-sm font-mono font-semibold text-text-primary leading-none">
+            {fmtPrice(asset.current_price, asset.currency)}
+          </div>
+          {asset.day_change_pct !== null && asset.day_change_pct !== undefined && (
+            <div
+              className={`mt-1 text-[11px] font-mono flex items-center gap-0.5 ${
+                Math.abs(asset.day_change_pct) < 0.005
+                  ? "text-text-muted"
+                  : asset.day_change_pct > 0
+                  ? "text-success"
+                  : "text-danger"
+              }`}
+            >
+              {Math.abs(asset.day_change_pct) < 0.005 ? (
+                <Minus size={9} />
+              ) : asset.day_change_pct > 0 ? (
+                <TrendingUp size={9} />
+              ) : (
+                <TrendingDown size={9} />
+              )}
+              {fmtPct(asset.day_change_pct, 2)}
+            </div>
+          )}
+        </div>
+
+        <div className="col-span-2 hidden lg:block">
           <ScoreBar value={asset.quality} label="Qualidade" compact />
         </div>
-        <div className="col-span-2 hidden sm:block">
-          <ScoreBar value={asset.momentum} label="Momento" compact />
-        </div>
 
-        <div className="col-span-3 sm:col-span-3 flex items-center justify-end gap-2 sm:gap-3">
+        <div className="col-span-3 sm:col-span-3 lg:col-span-1 flex items-center justify-end gap-2 sm:gap-3">
           <div className="text-right">
             <div className="text-[9px] uppercase tracking-wide text-text-muted leading-none">rank</div>
             <div className="text-base font-mono font-bold text-primary leading-tight">{fmtNum(asset.rank, 1)}</div>
@@ -313,7 +465,28 @@ function RankingRow({ asset, expanded, onToggle, onRemove }) {
 
       {expanded && (
         <div className="px-3 sm:px-4 pb-4 pt-1 space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:hidden">
+          {/* Preço / variação no mobile (escondidos no header < sm) */}
+          <div className="flex items-center gap-4 sm:hidden">
+            <div className="text-base font-mono font-semibold text-text-primary">
+              {fmtPrice(asset.current_price, asset.currency)}
+            </div>
+            {asset.day_change_pct !== null && asset.day_change_pct !== undefined && (
+              <div
+                className={`text-xs font-mono flex items-center gap-0.5 ${
+                  Math.abs(asset.day_change_pct) < 0.005
+                    ? "text-text-muted"
+                    : asset.day_change_pct > 0
+                    ? "text-success"
+                    : "text-danger"
+                }`}
+              >
+                {asset.day_change_pct > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                {fmtPct(asset.day_change_pct, 2)}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:hidden">
             <ScoreBar value={asset.quality} label="Qualidade" />
             <ScoreBar value={asset.momentum} label="Momento" />
           </div>
