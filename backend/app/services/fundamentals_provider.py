@@ -201,8 +201,10 @@ def _from_finnhub(ticker: str) -> dict:
                         return v
             return None
 
-        out["roe"] = pick("roeTTM", "roeAnnual")                       # já em %
-        out["payout_ratio"] = pick("payoutRatioTTM", "payoutRatioAnnual")
+        out["roe"] = pick("roeTTM", "roeAnnual")                       # já em % (igual brapi/FMP)
+        # payout: Finnhub manda em % (ex 80); o score espera FRAÇÃO (igual FMP, ex 0.8) → ÷100
+        _pay = pick("payoutRatioTTM", "payoutRatioAnnual")
+        out["payout_ratio"] = (_pay / 100.0) if _pay is not None else None
         out["debt_to_equity"] = pick(
             "totalDebt/totalEquityQuarterly", "totalDebt/totalEquityAnnual",
             "longTermDebt/equityQuarterly", "longTermDebt/equityAnnual")
