@@ -84,7 +84,9 @@ def _chart_api_series(ticker: str, days: int):
         if len(pairs) < 2:
             return None, None
         closes = np.array([c for _, c in pairs], dtype=float)
-        dm = {dt.date.fromtimestamp(t).isoformat(): float(c) for t, c in pairs}
+        # UTC para casar com as datas das ações (_chart_api_df usa pd.to_datetime unit=s = UTC).
+        # Sem isso, beta_aligned compara dias trocados → beta errado (US/Europa negativos).
+        dm = {dt.datetime.utcfromtimestamp(t).date().isoformat(): float(c) for t, c in pairs}
         return closes, dm
     except Exception as e:
         logger.warning(f"[CHART API] {ticker} falhou: {e}")
