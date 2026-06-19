@@ -226,8 +226,11 @@ def _from_fmp(ticker: str) -> dict:
     except Exception as e:
         logger.warning(f"[FUNDAMENTALS] parse FMP ratios {ticker}: {e}")
 
-    # 2) /profile → BETA publicado (SEMPRE, independente do ratios acima).
-    out["beta"], out["beta_note"] = _fmp_beta(ticker, key)
+    # 2) BETA via /profile: DESLIGADO por padrão. Dobrava as chamadas à FMP (ratios+profile)
+    # e, no plano grátis (~250/dia), estourava a cota — quebrando até os fundamentos.
+    # Só liga se FMP_FETCH_BETA=1 (quem tiver plano pago). Senão o beta vem da regressão de 5a.
+    if os.environ.get("FMP_FETCH_BETA", "").strip() == "1":
+        out["beta"], out["beta_note"] = _fmp_beta(ticker, key)
     return out
 
 
