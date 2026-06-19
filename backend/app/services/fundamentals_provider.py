@@ -63,6 +63,7 @@ def _empty(source=None) -> dict:
         "dividend_yield": None,
         "fcf_yield": None,
         "beta": None,
+        "beta_note": None,
         "source": source,
     }
 
@@ -226,28 +227,36 @@ def _from_fmp(ticker: str) -> dict:
         logger.warning(f"[FUNDAMENTALS] parse FMP ratios {ticker}: {e}")
 
     # 2) /profile → BETA publicado (SEMPRE, independente do ratios acima).
-    out["beta"] = _fmp_beta(ticker, key)
+    out["beta"], out["beta_note"] = _fmp_beta(ticker, key)
     return out
 
 
 def _fmp_beta(ticker: str, key: str):
-    """Beta publicado via FMP /profile (janela longa, confiável). Tenta v3 e, se vazio,
-    o endpoint 'stable' (chaves novas). None em qualquer falha."""
-    for url in (
-        f"https://financialmodelingprep.com/api/v3/profile/{_urlparse.quote(ticker)}?apikey={_urlparse.quote(key)}",
-        f"https://financialmodelingprep.com/stable/profile?symbol={_urlparse.quote(ticker)}&apikey={_urlparse.quote(key)}",
+    """Beta publicado via FMP /profile. Tenta v3 e, se vazio, o 'stable' (chaves novas).
+    Retorna (beta|None, note) — note diagnostica o que houve: ok / http_* / err_* /
+    nobeta_* / parse_*. Surge no beta_source p/ depurar em produção sem ver a chave."""
+    last = "no_resp"
+    for tag, url in (
+        ("v3", f"https://financialmodelingprep.com/api/v3/profile/{_urlparse.quote(ticker)}?apikey={_urlparse.quote(key)}"),
+        ("st", f"https://financialmodelingprep.com/stable/profile?symbol={_urlparse.quote(ticker)}&apikey={_urlparse.quote(key)}"),
     ):
         data = _http_json(url)
+        if data is None:
+            last = f"http_{tag}"
+            continue
         try:
             row = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
             if isinstance(row, dict) and ("Error Message" in row or "error" in row):
+                last = f"err_{tag}"
                 continue
             b = _to_float((row or {}).get("beta"))
             if b is not None and b != 0:
-                return b
+                return b, "ok"
+            last = f"nobeta_{tag}"
         except Exception as e:
             logger.warning(f"[FUNDAMENTALS] parse FMP profile {ticker}: {e}")
-    return None
+            last = f"parse_{tag}"
+    return None, last
     return out
 
 

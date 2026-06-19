@@ -616,10 +616,13 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # 1a só em último caso. A de 1a sozinha dá beta negativo p/ defensivas US (artefato).
         if fund.get("beta") is not None:
             beta, beta_source = fund.get("beta"), "fmp"
-        elif beta_long is not None:
-            beta, beta_source = beta_long, "reg5a"
         else:
-            beta, beta_source = beta_reg, "reg1a"
+            _note = fund.get("beta_note")
+            _suf = f":{_note}" if _note else ""           # diagnóstico do porquê a FMP falhou
+            if beta_long is not None:
+                beta, beta_source = beta_long, "reg5a" + _suf
+            else:
+                beta, beta_source = beta_reg, "reg1a" + _suf
 
         # TÁTICO: cíclica descolada (corr baixa + σ alta) OU bucket curado, exceto whitelist.
         # Auto-detecção limitada ao BRASIL por enquanto (whitelist é BR; americanas serão tratadas
