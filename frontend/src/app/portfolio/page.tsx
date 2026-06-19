@@ -3,6 +3,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import SectorBreakdownWidget from "@/components/portfolio/SectorBreakdownWidget";
+import PortfolioIntelligence from "@/components/portfolio/PortfolioIntelligence";
 import { usePortfolioStore } from "@/store/portfolioStore";
 import { portfolioApi, assetsApi } from "@/lib/api";
 import { formatCurrency, formatPercent, formatLeverage, getLeverageColor, getPnlColor } from "@/lib/utils";
@@ -13,7 +14,7 @@ import type { ContributionSuggestion } from "@/types";
 
 function PortfolioPageInner() {
   const searchParams = useSearchParams();
-  const { activePortfolioId, portfolios, metrics, positions, fetchPortfolios, fetchMetrics, fetchPositions, addPosition, updatePosition, removePosition, toggleSeed, toggleCycle } = usePortfolioStore();
+  const { activePortfolioId, portfolios, metrics, positions, analytics, fetchPortfolios, fetchMetrics, fetchPositions, fetchAnalytics, addPosition, updatePosition, removePosition, toggleSeed, toggleCycle } = usePortfolioStore();
   const [suggestions, setSuggestions] = useState<ContributionSuggestion[]>([]);
   const [capital, setCapital] = useState(1000);
   const [equityCurve, setEquityCurve] = useState<any>(null);
@@ -33,6 +34,7 @@ function PortfolioPageInner() {
     if (activePortfolioId) {
       fetchMetrics(activePortfolioId);
       fetchPositions(activePortfolioId);
+      fetchAnalytics(activePortfolioId);
       // Load equity curve
       setCurveLoading(true);
       setCurveError(false);
@@ -229,6 +231,13 @@ function PortfolioPageInner() {
         {/* Sector Breakdown */}
         {positions.length > 0 && (
           <SectorBreakdownWidget positions={positions} />
+        )}
+
+        {/* Inteligência da carteira: estrutura alvo×real, risco, correlação */}
+        {positions.length > 0 && analytics && (
+          <div className="mb-6">
+            <PortfolioIntelligence analytics={analytics} />
+          </div>
         )}
 
         {/* Positions table */}

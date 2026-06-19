@@ -123,12 +123,11 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
       pnl_pct: e.pnlPct,
       pnlPct: e.pnlPct,
       weight,
-      // Schema gaps — stubbed null/false until enrichment/migration lands.
       company_name: null,
       sector: null,
       dy: null,
-      is_seed: false,
-      is_cycle: false,
+      is_seed: e.raw.isSeed,
+      is_cycle: e.raw.isCycle,
       created_at: e.raw.createdAt,
     };
   });

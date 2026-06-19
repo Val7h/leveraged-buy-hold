@@ -7,12 +7,14 @@ interface PortfolioState {
   activePortfolioId: string | null;
   metrics: PortfolioMetrics | null;
   positions: Position[];
+  analytics: any | null;
   isLoading: boolean;
   error: string | null;
   fetchPortfolios: () => Promise<void>;
   setActivePortfolio: (id: string) => void;
   fetchMetrics: (id: string) => Promise<void>;
   fetchPositions: (id: string) => Promise<void>;
+  fetchAnalytics: (id: string) => Promise<void>;
   addPosition: (portfolioId: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) => Promise<void>;
   updatePosition: (portfolioId: string, positionId: string, data: { ticker: string; shares: number; avg_price: number; leverage: number }) => Promise<void>;
   removePosition: (portfolioId: string, positionId: string) => Promise<void>;
@@ -25,6 +27,7 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
   activePortfolioId: null,
   metrics: null,
   positions: [],
+  analytics: null,
   isLoading: false,
   error: null,
 
@@ -44,7 +47,16 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
   },
 
   setActivePortfolio: (id) => {
-    set({ activePortfolioId: id, metrics: null, positions: [] });
+    set({ activePortfolioId: id, metrics: null, positions: [], analytics: null });
+  },
+
+  fetchAnalytics: async (id) => {
+    try {
+      const res = await portfolioApi.getAnalytics(id);
+      set({ analytics: res.data });
+    } catch {
+      set({ analytics: null });
+    }
   },
 
   fetchMetrics: async (id) => {

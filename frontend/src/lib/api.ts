@@ -73,6 +73,8 @@ export const portfolioApi = {
     api.patch(`/api/v1/portfolio/${portfolioId}/positions/${positionId}/seed`),
   toggleCycle: (portfolioId: string, positionId: string) =>
     api.patch(`/api/v1/portfolio/${portfolioId}/positions/${positionId}/cycle`),
+  getAnalytics: (id: string) => api.get(`/api/v1/portfolio/${id}/analytics`),
+  getRotation: (id: string) => api.get(`/api/v1/portfolio/${id}/rotation`),
   getSuggestions: (id: string, capital: number) =>
     api.get(`/api/v1/portfolio/${id}/suggestions`, { params: { available_capital: capital } }),
   getHistory: (id: string) =>

@@ -1,0 +1,154 @@
+"use client";
+
+/**
+ * Inteligência da carteira (método adotado: Dalio/Swensen/Core-Satellite × ESTRATÉGIA MASTER).
+ * 4 painéis: totais ponderados · estrutura ALVO×REAL · contribuição de risco · correlação.
+ * Recebe o objeto `analytics` de GET /api/v1/portfolio/[id]/analytics.
+ */
+
+type Analytics = {
+  assets?: any[];
+  totals?: any;
+  buckets?: any[];
+  correlation?: any;
+};
+
+const BUCKET_LABEL: Record<string, string> = {
+  ANCORA: "Âncoras (core)",
+  GERADOR: "Geradores (renda)",
+  ACELERADOR: "Aceleradores (satélite)",
+  TATICO: "Táticos",
+  RESERVA: "Reserva",
+};
+
+function fmt(v: any, suffix = "", dec = 1) {
+  if (v === null || v === undefined || Number.isNaN(Number(v))) return "—";
+  return `${Number(v).toFixed(dec)}${suffix}`;
+}
+
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="bg-surface-2 rounded-lg px-3 py-2 border border-border/50">
+      <div className="text-[10px] uppercase tracking-wider text-text-muted">{label}</div>
+      <div className="text-base font-bold text-text-primary leading-tight">{value}</div>
+      {hint && <div className="text-[10px] text-text-secondary">{hint}</div>}
+    </div>
+  );
+}
+
+export default function PortfolioIntelligence({ analytics }: { analytics: Analytics | null }) {
+  if (!analytics || !analytics.assets || analytics.assets.length === 0) return null;
+  const t = analytics.totals || {};
+  const buckets = analytics.buckets || [];
+  const assets = [...(analytics.assets || [])].sort(
+    (a, b) => (b.risk_contribution ?? 0) - (a.risk_contribution ?? 0)
+  );
+  const corr = analytics.correlation || {};
+
+  return (
+    <div className="space-y-4">
+      {/* 1. Totais ponderados */}
+      <section className="bg-surface rounded-xl border border-border p-4">
+        <h3 className="text-sm font-semibold text-text-primary mb-3">Carteira — números reais</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <Stat label="CAGR (ativos)" value={fmt(t.cagr, "%/ano", 1)} />
+          <Stat label="TSR esperado" value={fmt(t.tsr_expected, "%", 1)} />
+          <Stat label="DY ponderado" value={fmt(t.dividend_yield, "%", 2)} />
+          <Stat label="Beta carteira" value={fmt(t.beta, "", 2)} />
+          <Stat label="Alav. efetiva" value={fmt(t.effective_leverage, "x", 2)} />
+        </div>
+      </section>
+
+      {/* 2. Estrutura ALVO × REAL */}
+      <section className="bg-surface rounded-xl border border-border p-4">
+        <h3 className="text-sm font-semibold text-text-primary mb-1">Estrutura — alvo × real</h3>
+        <p className="text-[11px] text-text-muted mb-3">
+          Âncoras 55% · Geradores 30% · Aceleradores 15% (banda ±5%). Desvio &gt; 5% sugere rebalanceamento.
+        </p>
+        <div className="space-y-2">
+          {buckets.map((b: any) => {
+            const real = b.real ?? 0;
+            const target = b.target;
+            const statusCls =
+              b.status === "ok" ? "text-success"
+              : b.status === "extra" ? "text-text-muted"
+              : "text-amber-400";
+            return (
+              <div key={b.bucket} className="flex items-center gap-3">
+                <div className="w-40 shrink-0 text-xs text-text-secondary truncate">
+                  {BUCKET_LABEL[b.bucket] || b.bucket}
+                </div>
+                <div className="flex-1 h-3 bg-surface-2 rounded relative overflow-hidden">
+                  <div className="absolute inset-y-0 left-0 bg-primary/60" style={{ width: `${Math.min(real, 100)}%` }} />
+                  {target != null && (
+                    <div className="absolute inset-y-0 w-0.5 bg-text-primary/70" style={{ left: `${Math.min(target, 100)}%` }} title={`alvo ${target}%`} />
+                  )}
+                </div>
+                <div className="w-28 shrink-0 text-right text-xs">
+                  <span className="font-mono text-text-primary">{fmt(real, "%", 0)}</span>
+                  {target != null && <span className="text-text-muted"> / {fmt(target, "%", 0)}</span>}
+                  {b.drift != null && (
+                    <span className={`ml-1 ${statusCls}`}>({b.drift > 0 ? "+" : ""}{fmt(b.drift, "", 0)})</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 3. Contribuição de risco (Dalio) */}
+      <section className="bg-surface rounded-xl border border-border p-4">
+        <h3 className="text-sm font-semibold text-text-primary mb-1">Contribuição de risco (peso × beta)</h3>
+        <p className="text-[11px] text-text-muted mb-3">
+          Quanto cada ativo pesa no RISCO da carteira — não só em $. Ativo volátil pode dominar o risco mesmo com peso menor.
+        </p>
+        <div className="space-y-1.5">
+          {assets.map((a: any) => (
+            <div key={a.ticker} className="flex items-center gap-3 text-xs">
+              <div className="w-24 shrink-0 font-semibold text-text-primary truncate">
+                {a.ticker}
+                {a.is_seed && <span className="ml-1 text-[9px] text-emerald-400">semente</span>}
+              </div>
+              <div className="flex-1 h-2.5 bg-surface-2 rounded overflow-hidden">
+                <div className="h-full bg-amber-500/70" style={{ width: `${Math.min(a.risk_contribution ?? 0, 100)}%` }} />
+              </div>
+              <div className="w-32 shrink-0 text-right font-mono text-text-secondary">
+                risco {fmt(a.risk_contribution, "%", 0)} · peso {fmt(a.weight, "%", 0)} · β {fmt(a.beta, "", 2)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 4. Correlação / descorrelação */}
+      <section className="bg-surface rounded-xl border border-border p-4">
+        <h3 className="text-sm font-semibold text-text-primary mb-1">Diversificação — correlação</h3>
+        <p className="text-[11px] text-text-muted mb-3">
+          Correlação média dos ativos (≈3 anos). Quanto MENOR, melhor a diversificação — sua regra: baixa correlação na crise.
+        </p>
+        <div className="flex items-center gap-4 mb-3">
+          <Stat
+            label="Correlação média"
+            value={fmt(corr.avg_correlation, "", 2)}
+            hint={corr.avg_correlation == null ? "" : corr.avg_correlation < 0.4 ? "diversificada" : corr.avg_correlation < 0.7 ? "moderada" : "concentrada"}
+          />
+        </div>
+        {corr.redundant_pairs && corr.redundant_pairs.length > 0 ? (
+          <div>
+            <div className="text-[11px] text-amber-400 mb-1">⚠ Pares redundantes (corr ≥ 0,8 — andam juntos):</div>
+            <div className="flex flex-wrap gap-1.5">
+              {corr.redundant_pairs.map((p: any, i: number) => (
+                <span key={i} className="text-[10px] font-mono bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 text-amber-300">
+                  {p.a} ↔ {p.b}: {fmt(p.corr, "", 2)}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-[11px] text-success">Sem pares altamente correlacionados — boa descorrelação.</div>
+        )}
+      </section>
+    </div>
+  );
+}

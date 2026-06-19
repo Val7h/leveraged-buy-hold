@@ -5,9 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// NOTE: schema (positions) does not have isSeed/is_seed column.
-// Sprint 4 stub: ownership-check + return position with is_seed=false.
-// TODO: add `isSeed Boolean @default(false)` to Position model + migration to make this a real toggle.
+// Toggle real da SEMENTE (isSeed). Semente e ciclo são mutuamente exclusivos.
 export async function PATCH(
   _req: NextRequest,
   { params }: { params: { id: string; positionId: string } }
@@ -27,14 +25,20 @@ export async function PATCH(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  const nextSeed = !position.isSeed;
+  const updated = await prisma.position.update({
+    where: { id: positionId },
+    data: { isSeed: nextSeed, isCycle: nextSeed ? false : position.isCycle },
+  });
+
   return NextResponse.json({
-    id: position.id,
-    portfolioId: position.portfolioId,
-    ticker: position.ticker,
-    shares: position.quantity.toString(),
-    avg_price: position.avgPrice.toString(),
-    leverage: position.leverage.toString(),
-    is_seed: false,
-    is_cycle: false,
+    id: updated.id,
+    portfolioId: updated.portfolioId,
+    ticker: updated.ticker,
+    shares: updated.quantity.toString(),
+    avg_price: updated.avgPrice.toString(),
+    leverage: updated.leverage.toString(),
+    is_seed: updated.isSeed,
+    is_cycle: updated.isCycle,
   });
 }
