@@ -488,6 +488,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # Crypto NÃO segue o 4x/5x do regime — teto 3x (defensivo não convive c/ 5x em BTC).
         if cat == "CRYPTO":
             leverage = min(leverage, 3.0)
+        # ESPECULATIVO (faca/descontado arriscado) → teto 2x (reduz, não zera).
+        if verdict == "ESPECULATIVO":
+            leverage = min(leverage, 2.0)
         stops = S.staggered_stops(leverage)
 
         return {
@@ -610,9 +613,12 @@ def _recompute_ranking_inner() -> dict:
         reg = assets[0]["regime"] if assets else regime(idxc.get(INDEX_BY_CAT.get(cat)))
         for a in assets:
             a.pop("regime", None)  # regime fica no nível da categoria
+        mult_display = MULT.get(reg, 3)
+        if cat == "CRYPTO":
+            mult_display = min(mult_display, 3)  # crypto trava 3x → cabeçalho coerente c/ as linhas
         categories[cat] = {
             "regime": reg,
-            "multiplier": MULT.get(reg, 3),
+            "multiplier": mult_display,
             "assets": assets,
         }
 

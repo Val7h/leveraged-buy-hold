@@ -448,8 +448,9 @@ function RankingRow({ asset, expanded, onToggle, onRemove }) {
           )}
         </div>
 
-        <div className="col-span-2 hidden lg:block">
+        <div className="col-span-2 hidden sm:flex flex-col gap-1.5 justify-center">
           <ScoreBar value={asset.quality} label="Qualidade" compact />
+          <ScoreBar value={asset.momentum} label="Momento" compact />
         </div>
 
         <div className="col-span-3 sm:col-span-3 lg:col-span-1 flex items-center justify-end gap-2 sm:gap-3">
@@ -499,7 +500,11 @@ function RankingRow({ asset, expanded, onToggle, onRemove }) {
               <Stat label="Dist. MM200" value={fmtPct(asset.distance_ma200)} />
               <Stat label="Beta" value={fmtNum(asset.beta)} />
               <Stat label="CAGR" value={fmtPct(asset.cagr, 0)} />
-              <Stat label="Sharpe" value={fmtNum(asset.sharpe)} />
+              <Stat
+                label={asset.sharpe < 0 ? "Sharpe ⚠" : "Sharpe"}
+                value={fmtNum(asset.sharpe)}
+                accent={asset.sharpe < 0 ? "text-warning" : undefined}
+              />
               <Stat label="Div. yield" value={fmtPct(asset.dividend_yield)} />
             </div>
           </div>
