@@ -615,7 +615,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # BETA: FMP publicado é primário; senão regressão de 5a (que NÃO dá negativo);
         # 1a só em último caso. A de 1a sozinha dá beta negativo p/ defensivas US (artefato).
         if fund.get("beta") is not None:
-            beta, beta_source = fund.get("beta"), "fmp"
+            beta, beta_source = fund.get("beta"), (fund.get("source") or "fmp")
         else:
             _note = fund.get("beta_note")
             _suf = f":{_note}" if _note else ""           # diagnóstico do porquê a FMP falhou

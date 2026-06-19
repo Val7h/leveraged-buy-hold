@@ -168,6 +168,56 @@ def _from_brapi(ticker: str) -> dict:
     return out
 
 
+# ─────────────────────────────────── Finnhub (US/mundo, GRÁTIS) ─────────────────
+def _from_finnhub(ticker: str) -> dict:
+    """
+    Fundamentos via Finnhub (GRÁTIS, 60 req/min) — 1 chamada traz tudo, inclusive BETA.
+    Endpoint: https://finnhub.io/api/v1/stock/metric?symbol={T}&metric=all&token={KEY}
+
+    Campos em 'metric' (Finnhub já entrega em %, NÃO multiplicar):
+        beta            = beta
+        roe             = roeTTM | roeAnnual            (já em %)
+        payout_ratio    = payoutRatioTTM | payoutRatioAnnual
+        debt_to_equity  = "totalDebt/totalEquityQuarterly" | ...Annual | "longTermDebt/equityAnnual"
+        dividend_yield  = currentDividendYieldTTM | dividendYieldIndicatedAnnual  (já em %)
+    """
+    out = _empty("finnhub")
+    key = os.environ.get("FINNHUB_API_KEY", "").strip() or os.environ.get("FINNHUB_TOKEN", "").strip()
+    if not key:
+        return out
+    url = (f"https://finnhub.io/api/v1/stock/metric?symbol={_urlparse.quote(ticker)}"
+           f"&metric=all&token={_urlparse.quote(key)}")
+    data = _http_json(url)
+    try:
+        m = (data or {}).get("metric") or {}
+        if not isinstance(m, dict) or not m:
+            return out
+
+        def pick(*names):
+            for n in names:
+                if n in m:
+                    v = _to_float(m.get(n))
+                    if v is not None:
+                        return v
+            return None
+
+        out["roe"] = pick("roeTTM", "roeAnnual")                       # já em %
+        out["payout_ratio"] = pick("payoutRatioTTM", "payoutRatioAnnual")
+        out["debt_to_equity"] = pick(
+            "totalDebt/totalEquityQuarterly", "totalDebt/totalEquityAnnual",
+            "longTermDebt/equityQuarterly", "longTermDebt/equityAnnual")
+        out["dividend_yield"] = pick(
+            "currentDividendYieldTTM", "dividendYieldIndicatedAnnual", "dividendYield5Y")
+        b = pick("beta")
+        if b is not None and b != 0:
+            out["beta"] = b
+            out["beta_note"] = "ok"
+    except Exception as e:
+        logger.warning(f"[FUNDAMENTALS] parse Finnhub {ticker}: {e}")
+        return _empty("finnhub")
+    return out
+
+
 # ─────────────────────────────────────── FMP (resto do mundo) ───────────────────
 def _from_fmp(ticker: str) -> dict:
     """
@@ -299,7 +349,14 @@ def get_fundamentals(ticker: str) -> dict:
         elif key.endswith(".SA"):
             result = _from_brapi(key)
         else:
-            result = _from_fmp(key)
+            # US/mundo: Finnhub PRIMEIRO (grátis, traz beta junto); FMP como fallback.
+            result = _from_finnhub(key)
+            if result.get("roe") is None and result.get("beta") is None:
+                fmp = _from_fmp(key)
+                # mescla: usa o que o Finnhub não trouxe
+                if any(fmp.get(k) is not None for k in ("roe", "payout_ratio", "debt_to_equity",
+                                                        "dividend_yield", "fcf_yield", "beta")):
+                    result = fmp
 
         _CACHE[key] = (now + _CACHE_TTL, dict(result))
         return result
