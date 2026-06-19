@@ -316,6 +316,55 @@ def _candidate_max_corr(ticker: str, held_series: Dict[str, dict]) -> Optional[f
     return round(best, 2) if best is not None else None
 
 
+_STRESS_DEFS = [
+    ("Crise 2008 (GFC)", "2007-10-01", "2009-03-31"),
+    ("COVID 2020", "2020-02-01", "2020-04-30"),
+    ("Bear 2022 (juros)", "2022-01-01", "2022-10-31"),
+]
+
+
+def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) -> List[dict]:
+    """STRESS TEST: replay de crashes reais na carteira ATUAL, alavancada. Para cada cenário,
+    pega o pior tombo (pico→fundo) de cada ativo na janela, pondera por notional e multiplica
+    pela alavancagem → impacto no EQUITY + se teria liquidado. Cobre o que a janela de 3a não pega."""
+    if not (equity and risk_notional > 0 and rrows):
+        return []
+    from app.services.ranking_service import _chart_api_df, _dated_closes
+    L = risk_notional / equity
+    series = {}
+    for r in rrows:
+        try:
+            df, _ = _chart_api_df(r["ticker"], 25 * 366, want_div=False)
+            if df is not None:
+                series[r["ticker"]] = list(_dated_closes(df))
+        except Exception:
+            continue
+    out = []
+    for name, s, e in _STRESS_DEFS:
+        sd, ed = dt.date.fromisoformat(s), dt.date.fromisoformat(e)
+        ret_w, tot_w, covered = 0.0, 0.0, 0
+        for r in rrows:
+            ser = series.get(r["ticker"])
+            if not ser:
+                continue
+            win = [c for d, c in ser if sd <= d <= ed]
+            if len(win) < 5:
+                continue                      # ativo não existia na época
+            asset_ret = (min(win) / win[0] - 1) if win[0] else 0.0   # pico→fundo na janela
+            ret_w += asset_ret * r["notional"]; tot_w += r["notional"]; covered += 1
+        if tot_w <= 0:
+            continue
+        basket = ret_w / tot_w * 100
+        out.append({
+            "scenario": name,
+            "basket_pct": round(basket, 1),
+            "equity_pct": round(max(basket * L, -100.0), 1),
+            "liquidated": basket * L <= -100.0,
+            "coverage": f"{covered}/{len(rrows)}",
+        })
+    return out
+
+
 def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                         cooldown_tickers: Optional[List[str]] = None) -> Dict:
     """
@@ -557,11 +606,14 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                 "rationale": f"{b['bucket']} está {abs(b['drift']):.0f}% abaixo do alvo — reforça a estrutura",
             })
 
+    # STRESS TEST (item 5/sênior): replay de 2008/2020/2022 na carteira atual alavancada.
+    stress = _stress_scenarios([r for r in rows if not r["is_shy"]], eq, risk_notional) if eq else []
+
     import datetime as _dt
     return {
         "assets": rows, "totals": totals, "buckets": buckets,
         "correlation": correlation, "rotation": rotation,
-        "survival_stops": survival_stops, "risk": risk, "aporte": aporte,
+        "survival_stops": survival_stops, "risk": risk, "aporte": aporte, "stress": stress,
         "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
     }
 

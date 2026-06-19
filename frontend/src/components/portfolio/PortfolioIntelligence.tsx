@@ -15,6 +15,7 @@ type Analytics = {
   survival_stops?: any[];
   risk?: any;
   aporte?: any[];
+  stress?: any[];
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -54,9 +55,33 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const stops = analytics.survival_stops || [];
   const risk = analytics.risk || {};
   const aporte = analytics.aporte || [];
+  const stress = analytics.stress || [];
 
   return (
     <div className="space-y-4">
+      {/* 0y. Stress test — replay de crashes na carteira atual */}
+      {stress.length > 0 && (
+        <section className="bg-surface rounded-xl border border-border p-4">
+          <h3 className="text-sm font-semibold text-text-primary mb-1">Stress test — se o crash acontecesse hoje</h3>
+          <p className="text-[11px] text-text-muted mb-3">
+            Replay de crises reais na sua carteira ATUAL, com a alavancagem de hoje (pico→fundo de cada ativo, ponderado).
+          </p>
+          <div className="space-y-1.5">
+            {stress.map((s: any) => (
+              <div key={s.scenario} className="flex items-center gap-2 text-xs">
+                {s.liquidated
+                  ? <span className="px-1.5 py-0.5 rounded bg-danger/20 border border-danger/50 text-danger font-semibold text-[10px]">LIQUIDARIA</span>
+                  : <span className="px-1.5 py-0.5 rounded bg-surface-2 border border-border text-text-secondary text-[10px]">sobrevive</span>}
+                <span className="font-semibold text-text-primary w-36 shrink-0">{s.scenario}</span>
+                <span className="font-mono text-text-secondary">
+                  cesta {fmt(s.basket_pct, "%", 0)} · equity <span className={s.equity_pct <= -50 ? "text-danger" : "text-amber-400"}>{fmt(s.equity_pct, "%", 0)}</span>
+                </span>
+                <span className="text-[10px] text-text-muted ml-auto">cobre {s.coverage}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {/* 0z. Risco alavancado + distância até liquidação (sobrevivência) */}
       {risk.liquidation_distance_pct != null && (
         <section className={`rounded-xl border p-4 ${risk.liquidated_in_worst ? "bg-danger/5 border-danger/40" : "bg-surface border-border"}`}>
