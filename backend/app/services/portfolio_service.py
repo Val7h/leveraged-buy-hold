@@ -223,6 +223,71 @@ def _correlation_matrix(tickers: List[str]) -> Dict:
 SHY_NOTIONAL_LIMIT = 10000.0   # Quantfury: máx US$10k de notional em SHY
 
 
+def _cov_analytics(weights_by_ticker: Dict[str, float]) -> Optional[Dict]:
+    """Risco REAL via COVARIÂNCIA (item 3) + correlação normal E EM CRISE (item 4).
+    weights_by_ticker: {ticker: peso}. Reaproveita séries confiáveis (chart API).
+    - contribuição de risco = decomposição de Euler RC_i = w_i·(Σw)_i / (wᵀΣw) — considera
+      vol de cada ativo E correlação entre eles (não só beta); hedge (corr neg) REDUZ risco.
+    - correlação em crise: pares restritos aos 10% piores dias da própria carteira."""
+    from app.services.ranking_service import _chart_api_df, _dated_closes
+    tickers = list(weights_by_ticker.keys())
+    series = {}
+    for tk in tickers:
+        try:
+            df, _ = _chart_api_df(tk, 3 * 366, want_div=False)
+            if df is not None and len(df) >= 120:
+                series[tk] = {d.isoformat(): c for d, c in _dated_closes(df)}
+        except Exception:
+            continue
+    valid = [t for t in tickers if t in series]
+    if len(valid) < 2:
+        return None
+    common = sorted(set.intersection(*[set(series[t]) for t in valid]))
+    if len(common) < 120:
+        return None
+    R = np.column_stack([np.diff(np.log([series[t][d] for d in common])) for t in valid])  # T×N
+    w = np.array([max(0.0, weights_by_ticker[t]) for t in valid], float)
+    w = w / w.sum() if w.sum() > 0 else np.ones(len(valid)) / len(valid)
+    cov = np.cov(R, rowvar=False)
+    if np.ndim(cov) < 2:
+        return None
+    vol = np.sqrt(np.clip(np.diag(cov), 0, None)) * math.sqrt(252)
+    port_var = float(w @ cov @ w)
+    rc = (w * (cov @ w) / port_var) if port_var > 0 else w   # frações (somam ~1; hedge pode dar <0)
+    corr = np.corrcoef(R, rowvar=False)
+    rp = R @ w
+    thr = np.percentile(rp, 10)
+    mask = rp <= thr
+    corr_crisis = np.corrcoef(R[mask], rowvar=False) if mask.sum() >= 20 else None
+
+    def _wavg_pairs(cmat):
+        if cmat is None or np.ndim(cmat) < 2:
+            return None
+        num = den = 0.0
+        for i in range(len(valid)):
+            for j in range(i + 1, len(valid)):
+                ww = w[i] * w[j]
+                num += ww * cmat[i, j]; den += ww
+        return round(num / den, 2) if den else None
+
+    redundant = sorted(
+        [{"a": valid[i], "b": valid[j], "corr": round(float(corr[i, j]), 2)}
+         for i in range(len(valid)) for j in range(i + 1, len(valid)) if corr[i, j] >= 0.8],
+        key=lambda x: -x["corr"])[:5]
+    return {
+        "rc": {valid[i]: round(float(rc[i]) * 100, 1) for i in range(len(valid))},
+        "vol": {valid[i]: round(float(vol[i]) * 100, 1) for i in range(len(valid))},
+        "correlation": {
+            "tickers": valid,
+            "matrix": {valid[i]: {valid[j]: round(float(corr[i, j]), 2) for j in range(len(valid))}
+                       for i in range(len(valid))},
+            "avg_correlation": _wavg_pairs(corr),
+            "avg_correlation_crisis": _wavg_pairs(corr_crisis),
+            "redundant_pairs": redundant,
+        },
+    }
+
+
 def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -> Dict:
     """
     Inteligência da carteira (método adotado, modelo Quantfury). `positions`: [{ticker, shares,
@@ -263,13 +328,25 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
             "is_seed": bool(p.get("is_seed")), "is_cycle": bool(p.get("is_cycle")),
         })
 
-    # Pesos por valor de mercado; contribuição de risco (Dalio: peso × beta, normalizado).
+    # Pesos por valor de mercado.
     for r in rows:
         r["weight"] = round(r["notional"] / invested * 100, 1) if invested else 0.0
-    risk_raw = [(r["weight"] / 100) * abs(r["beta"]) if r.get("beta") else 0.0 for r in rows]
-    risk_sum = sum(risk_raw) or 1.0
-    for r, rr in zip(rows, risk_raw):
-        r["risk_contribution"] = round(rr / risk_sum * 100, 1)
+
+    # CONTRIBUIÇÃO DE RISCO REAL via covariância (item 3) + correlação normal/crise (item 4).
+    cov = _cov_analytics({r["ticker"]: r["notional"] for r in rows})
+    if cov:
+        for r in rows:
+            r["risk_contribution"] = cov["rc"].get(r["ticker"])
+            r["vol"] = cov["vol"].get(r["ticker"])
+        risk_method = "covariância (Euler)"
+    else:
+        # Fallback (1 ativo / sem série): peso × beta normalizado.
+        risk_raw = [(r["weight"] / 100) * abs(r["beta"]) if r.get("beta") else 0.0 for r in rows]
+        risk_sum = sum(risk_raw) or 1.0
+        for r, rr in zip(rows, risk_raw):
+            r["risk_contribution"] = round(rr / risk_sum * 100, 1)
+            r["vol"] = None
+        risk_method = "peso × beta (fallback)"
 
     def _wavg(field):
         vals = [(r[field], r["notional"]) for r in rows if r.get(field) is not None]
@@ -288,6 +365,7 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
         "effective_leverage": round(risk_notional / eq, 2) if eq else None,
         "cagr": _wavg("cagr"), "tsr_expected": _wavg("tsr_expected"),
         "dividend_yield": _wavg("dividend_yield"), "beta": _wavg("beta"),
+        "risk_method": risk_method,
     }
 
     # Estrutura ALVO × REAL por bucket.
@@ -305,19 +383,32 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None) -
             buckets.append({"bucket": bk, "target": None, "real": round(real, 1),
                             "drift": None, "status": "extra"})
 
-    correlation = _correlation_matrix([r["ticker"] for r in rows])
+    correlation = cov["correlation"] if cov else _correlation_matrix([r["ticker"] for r in rows])
 
-    # ── SINAL DE VENDA / ROTAÇÃO ──────────────────────────────────────────────────
-    # Semente nunca vende. Ciclo (não-semente) que ficou ESTICADO → vender e girar pro
-    # melhor do ranking AGORA que ainda não está na carteira (opção 1, diversifica).
+    # ── SINAL DE VENDA / ROTAÇÃO (item 5: regime + trava de whipsaw) ──────────────
+    # Semente nunca vende. Ciclo ESTICADO → vender e girar — MAS só se estiver no lucro
+    # (esticado no prejuízo é caso do stop, não da rotação) e fora de capitulação (na
+    # capitulação a doutrina manda COMPRAR/deployar SHY, não girar topo).
+    try:
+        from app.services.ranking_service import compute_ranking as _cr
+        _cats = (_cr() or {}).get("categories", {})
+        equity_regime = (_cats.get("US") or _cats.get("ETF") or {}).get("regime") or "NEUTRO"
+    except Exception:
+        equity_regime = "NEUTRO"
+    capitulacao = equity_regime in ("CAPITULACAO", "CAPIT.EXTREMA")
     held = {r["ticker"].upper() for r in rows}
     signals, n_sell = [], 0
     for r in rows:
         v = r.get("verdict")
+        pp = r.get("pnl_pct")
         if r.get("is_seed"):
             action, reason = "MANTER", "Semente — âncora permanente, não rotaciona"
+        elif capitulacao:
+            action, reason = "MANTER", "Mercado em capitulação — segurar e comprar, não girar topo"
+        elif v == "ESTICADO" and (pp is None or pp >= 0):
+            action, reason, n_sell = "VENDER", "Esticado e no lucro — realizar e girar pro ranking", n_sell + 1
         elif v == "ESTICADO":
-            action, reason, n_sell = "VENDER", "Esticado — realizar e girar pro ranking", n_sell + 1
+            action, reason = "MANTER", "Esticado mas no prejuízo — usar o stop, não a rotação"
         elif v is None:
             action, reason = "MANTER", "Fora do universo do ranking — avaliar manualmente"
         else:

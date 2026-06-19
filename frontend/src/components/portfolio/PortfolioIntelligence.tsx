@@ -172,9 +172,9 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
 
       {/* 3. Contribuição de risco (Dalio) */}
       <section className="bg-surface rounded-xl border border-border p-4">
-        <h3 className="text-sm font-semibold text-text-primary mb-1">Contribuição de risco (peso × beta)</h3>
+        <h3 className="text-sm font-semibold text-text-primary mb-1">Contribuição de risco</h3>
         <p className="text-[11px] text-text-muted mb-3">
-          Quanto cada ativo pesa no RISCO da carteira — não só em $. Ativo volátil pode dominar o risco mesmo com peso menor.
+          Quanto cada ativo pesa no RISCO da carteira — não só em $. Método: <b>{t.risk_method || "—"}</b> (considera volatilidade e correlação entre os ativos; hedge reduz risco).
         </p>
         <div className="space-y-1.5">
           {assets.map((a: any) => (
@@ -184,10 +184,11 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
                 {a.is_seed && <span className="ml-1 text-[9px] text-emerald-400">semente</span>}
               </div>
               <div className="flex-1 h-2.5 bg-surface-2 rounded overflow-hidden">
-                <div className="h-full bg-amber-500/70" style={{ width: `${Math.min(a.risk_contribution ?? 0, 100)}%` }} />
+                <div className="h-full bg-amber-500/70" style={{ width: `${Math.min(Math.max(a.risk_contribution ?? 0, 0), 100)}%` }} />
               </div>
-              <div className="w-32 shrink-0 text-right font-mono text-text-secondary">
-                risco {fmt(a.risk_contribution, "%", 0)} · peso {fmt(a.weight, "%", 0)} · β {fmt(a.beta, "", 2)}
+              <div className="w-40 shrink-0 text-right font-mono text-text-secondary">
+                risco {fmt(a.risk_contribution, "%", 0)} · peso {fmt(a.weight, "%", 0)}
+                {a.vol != null && <> · vol {fmt(a.vol, "%", 0)}</>}
               </div>
             </div>
           ))}
@@ -200,13 +201,26 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
         <p className="text-[11px] text-text-muted mb-3">
           Correlação média dos ativos (≈3 anos). Quanto MENOR, melhor a diversificação — sua regra: baixa correlação na crise.
         </p>
-        <div className="flex items-center gap-4 mb-3">
+        <div className="flex items-center gap-2 mb-3">
           <Stat
-            label="Correlação média"
+            label="Correlação normal"
             value={fmt(corr.avg_correlation, "", 2)}
             hint={corr.avg_correlation == null ? "" : corr.avg_correlation < 0.4 ? "diversificada" : corr.avg_correlation < 0.7 ? "moderada" : "concentrada"}
           />
+          {corr.avg_correlation_crisis != null && (
+            <Stat
+              label="Correlação NA CRISE"
+              value={fmt(corr.avg_correlation_crisis, "", 2)}
+              hint={corr.avg_correlation_crisis >= 0.7 ? "⚠ tudo cai junto no crash" : "segura na queda"}
+            />
+          )}
         </div>
+        {corr.avg_correlation_crisis != null && corr.avg_correlation != null &&
+         corr.avg_correlation_crisis - corr.avg_correlation >= 0.2 && (
+          <div className="text-[11px] text-amber-400 mb-2">
+            ⚠ A correlação SOBE na crise ({fmt(corr.avg_correlation, "", 2)} → {fmt(corr.avg_correlation_crisis, "", 2)}) — diversificação engana nos dias normais e some no crash (sua regra de ouro).
+          </div>
+        )}
         {corr.redundant_pairs && corr.redundant_pairs.length > 0 ? (
           <div>
             <div className="text-[11px] text-amber-400 mb-1">⚠ Pares redundantes (corr ≥ 0,8 — andam juntos):</div>
