@@ -37,6 +37,11 @@ from app.quantitative import scoring_v2 as S
 from app.quantitative import accumulation as A
 from app.quantitative import indicators_v2 as I
 from app.services.market_data import fetch_price_history, fetch_fundamentals
+try:
+    from app.services.fundamentals_provider import get_fundamentals
+except Exception:  # módulo ausente/erro → fundamentos ficam neutros, não derruba o ranking
+    def get_fundamentals(_tk):
+        return {}
 
 logger = logging.getLogger(__name__)
 
@@ -119,11 +124,25 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False):
         q = res["indicators"]["quote"][0]
         adj = (res["indicators"].get("adjclose") or [{}])[0].get("adjclose")
         cl = adj or q.get("close") or []
-        pairs = [(t, c) for t, c in zip(ts, cl) if c is not None]
-        if len(pairs) < 60:
+        hi = q.get("high") or []
+        lo = q.get("low") or []
+        rows = []
+        for i, t in enumerate(ts):
+            c = cl[i] if i < len(cl) else None
+            if c is None:
+                continue
+            # Máx/mín reais; barra quebrada (H/L ausente ou ≤0, ex: semana corrente) → usa o close
+            h = hi[i] if (i < len(hi) and hi[i] and hi[i] > 0) else c
+            l = lo[i] if (i < len(lo) and lo[i] and lo[i] > 0) else c
+            rows.append((t, float(c), float(h), float(l)))
+        if len(rows) < 60:
             return None, None
-        idx = pd.to_datetime([t for t, _ in pairs], unit="s")
-        df = pd.DataFrame({"Close": [float(c) for _, c in pairs]}, index=idx)
+        idx = pd.to_datetime([r[0] for r in rows], unit="s")
+        df = pd.DataFrame(
+            {"Close": [r[1] for r in rows], "High": [r[2] for r in rows], "Low": [r[3] for r in rows]},
+            index=idx,
+        )
+        pairs = [(r[0], r[1]) for r in rows]  # mantido p/ o cálculo de dividendos abaixo
 
         dy = None
         if want_div:
@@ -274,20 +293,57 @@ def _weekly_closes_from_df(df) -> List[float]:
     return [wk[k] for k in sorted(wk)]
 
 
+def _weekly_ohlc(df):
+    """Agrega diário→semanal (high=máx, low=mín, close=último por semana ISO).
+    INCLUI a semana corrente (parcial/ao vivo) — captura quedas/altas intra-semana
+    (ex.: capitulação no meio da semana) que o gráfico da Quantfury também mostra.
+    GUARD do candle quebrado: quando o Yahoo devolve high/low ≤0 p/ a semana em
+    formação, usa o close no lugar — evita o stochastic disparar p/ valor falso."""
+    H = df["High"].astype(float).values if "High" in df else df["Close"].astype(float).values
+    L = df["Low"].astype(float).values if "Low" in df else df["Close"].astype(float).values
+    C = df["Close"].astype(float).values
+    wk = {}  # (y,w) -> [high, low, close]
+    for ts, h, l, c in zip(df.index, H, L, C):
+        d = ts.date() if hasattr(ts, "date") else dt.date.fromisoformat(str(ts)[:10])
+        iso = d.isocalendar()
+        key = (iso[0], iso[1])
+        c = float(c)
+        h = float(h) if h and h > 0 else c   # guard: high quebrado → usa close
+        l = float(l) if l and l > 0 else c   # guard: low quebrado → usa close
+        if key not in wk:
+            wk[key] = [h, l, c]
+        else:
+            wk[key][0] = max(wk[key][0], h)
+            wk[key][1] = min(wk[key][1], l)
+            wk[key][2] = c  # último close da semana (a corrente = preço mais recente)
+    keys = sorted(wk)  # mantém a semana corrente (ao vivo)
+    return (np.array([wk[k][0] for k in keys]),
+            np.array([wk[k][1] for k in keys]),
+            np.array([wk[k][2] for k in keys]))
+
+
+def weekly_stoch_kd(df, n: int = 14):
+    """Stochastic semanal estilo Quantfury "14 1 3", com MÁX/MÍN reais.
+    Retorna (%K, %D): %K = stochastic rápido bruto (último); %D = SMA3 do %K (linha lenta)."""
+    try:
+        H, L, C = _weekly_ohlc(df)
+        if len(C) < n + 1:
+            return (None, None)
+        fast = []
+        for i in range(n - 1, len(C)):
+            hh = H[i - n + 1:i + 1].max()
+            ll = L[i - n + 1:i + 1].min()
+            fast.append((C[i] - ll) / (hh - ll) * 100 if hh > ll else 50.0)
+        k = float(fast[-1])
+        d = float(np.mean(fast[-3:])) if len(fast) >= 3 else k
+        return (k, d)
+    except Exception:
+        return (None, None)
+
+
 def slow_stoch_weekly(df, n: int = 14) -> Optional[float]:
-    """Stochastic LENTO semanal (slow %K = SMA3 do %K) — porte de run_ranking."""
-    wc = _weekly_closes_from_df(df)
-    if len(wc) < n + 3:
-        return None
-    wc = np.array(wc, dtype=float)
-    fast = []
-    for i in range(n - 1, len(wc)):
-        win = wc[i - n + 1:i + 1]
-        lo, hi = win.min(), win.max()
-        fast.append((wc[i] - lo) / (hi - lo) * 100 if hi > lo else 50.0)
-    if len(fast) >= 3:
-        return float(np.mean(fast[-3:]))
-    return float(fast[-1]) if fast else None
+    """Linha LENTA (%D) do stochastic semanal — é a que pontua no score de momento."""
+    return weekly_stoch_kd(df, n)[1]
 
 
 def _datemap(df) -> Dict[str, float]:
@@ -358,6 +414,20 @@ def _distance_ma200(a: np.ndarray) -> Optional[float]:
     return float((a[-1] / np.mean(a[-200:]) - 1) * 100)
 
 
+def _distance_ma200_weekly(df, current_price=None) -> Optional[float]:
+    """Distância % da MM200 SEMANAL (média de 200 semanas ≈ 4 anos) — coerente com o
+    gráfico semanal que o usuário acompanha. Usa o preço atual (live) sobre a média longa."""
+    try:
+        _, _, C = _weekly_ohlc(df)
+        if len(C) < 60:
+            return None
+        ma = float(np.mean(C[-200:])) if len(C) >= 200 else float(np.mean(C))
+        p = float(current_price) if current_price else float(C[-1])
+        return (p / ma - 1) * 100 if ma else None
+    except Exception:
+        return None
+
+
 # ─────────────────────────── Regime (porte de run_ranking) ───────────────────────────
 MULT = {"CAPIT.EXTREMA": 5, "CAPITULACAO": 4, "NEUTRO": 3, "TOPO": 2}
 
@@ -425,23 +495,27 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         if a is None:
             return None
 
-        # fetch_fundamentals (.info) era o GARGALO de lentidão E falhava em prod (DY nulo,
-        # roe/payout/D-E nulos). Largado: beta vem do preço (beta_aligned), DY dos dividendos
-        # reais (chart API), e o componente "fundamentos" cai p/ neutro (já era nulo de qq forma).
-        fund = {}
+        # Fundamentos REAIS (FMP p/ US/Europa, brapi p/ BR; crypto/índices → None).
+        fund = get_fundamentals(tk) or {}
         beta = beta_aligned(df, idxdm.get(INDEX_BY_CAT.get(cat)))
 
-        dma = _distance_ma200(a)
-        disc = I.distance_from_ath(a) or 0.0
-        rev = I.reversal_confirmation(a)
-        sstoch = slow_stoch_weekly(df)
+        # Série SEMANAL de fechamentos (inclui a semana corrente) — usada em
+        # desconto, reversão e RSI p/ ficar coerente com o gráfico semanal.
+        wclose = np.array(_weekly_closes_from_df(df), dtype=float)
+        use_wk = len(wclose) >= 20
+
+        dma = _distance_ma200_weekly(df, current_price=a[-1])  # MM200 SEMANAL (bate c/ o gráfico)
+        disc = I.distance_from_ath(wclose if use_wk else a) or 0.0
+        rev = I.reversal_confirmation(wclose if use_wk else a)
+        stoch_k, stoch_d = weekly_stoch_kd(df)                 # %K e %D semanais (máx/mín reais)
+        sstoch = stoch_d                                       # linha lenta pontua no score
         g5 = _growth5y(a)
         dd = _max_dd(a)
         shp = _sharpe(a)
-        rsi = _rsi(a)
+        rsi = _rsi(wclose if use_wk else a)                   # RSI SEMANAL
 
-        dy = dy_chart  # DY dos dividendos REAIS (chart API), não mais do yfinance .info
-        cagr = g5  # CAGR de preço (proxy de retorno total)
+        dy = dy_chart if dy_chart else fund.get("dividend_yield")  # dividendos reais; fallback fund
+        cagr = g5  # CAGR de preço (retorno total, ~6 anos)
 
         # Preço atual, variação diária e moeda — para exibição na linha do ranking.
         current_price = float(a[-1]) if len(a) else None
@@ -452,15 +526,17 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         reg = regime(idxc.get(INDEX_BY_CAT.get(cat)))
         mult = MULT.get(reg, 3)
 
+        # MOMENTO primeiro: o beta da Qualidade é AMPLIFICADOR e depende do momento.
+        momentum, mb = S.compute_momentum(
+            slow_stoch_weekly=sstoch, discount_from_top=disc,
+            reversal_confirmation=rev, distance_ma200=dma,
+        )
         quality, qb = S.compute_quality_blend(
             beta=beta, max_dd_pct=dd, dividend_yield=dy, growth_5y=g5,
             roe=fund.get("roe"), debt_to_equity=fund.get("debt_to_equity"),
             payout_ratio=fund.get("payout_ratio"), roic=fund.get("roic"),
             fcf_yield=fund.get("fcf_yield"), sharpe=shp, cagr=cagr, tsr_expected=tsr,
-        )
-        momentum, mb = S.compute_momentum(
-            slow_stoch_weekly=sstoch, discount_from_top=disc,
-            reversal_confirmation=rev, distance_ma200=dma,
+            momentum=momentum,
         )
 
         if bucket == "RESERVA":
@@ -507,6 +583,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "quality_breakdown": qb,
             "momentum_breakdown": mb,
             "slow_stoch_weekly": _round_or_none(sstoch, 0),
+            "stoch_k": _round_or_none(stoch_k, 1),
+            "stoch_d": _round_or_none(stoch_d, 1),
             "discount_from_top": _round_or_none(disc, 1),
             "distance_ma200": _round_or_none(dma, 1),
             "rsi": _round_or_none(rsi, 0),

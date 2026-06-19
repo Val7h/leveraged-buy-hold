@@ -368,7 +368,7 @@ function Stat({ label, value, accent }) {
   );
 }
 
-function FactorGrid({ data, labels }) {
+function FactorGrid({ data, labels, raw }) {
   const entries = Object.entries(data || {});
   if (entries.length === 0) return null;
   return (
@@ -376,10 +376,35 @@ function FactorGrid({ data, labels }) {
       {entries.map(([k, v]) => (
         <div key={k} className="bg-surface-2 rounded-lg px-2.5 py-2 border border-border/50">
           <ScoreBar value={v} label={labels?.[k] || k} compact />
+          {raw && raw[k] != null && (
+            <div className="text-[10px] font-mono text-text-secondary mt-1 leading-none">{raw[k]}</div>
+          )}
         </div>
       ))}
     </div>
   );
+}
+
+// Valor bruto de cada fator (mostrado junto do score no detalhe).
+function qualityRaw(a) {
+  const r = {};
+  if (a.max_dd != null) r.max_drawdown = `${Math.round(a.max_dd)}%`;
+  if (a.sharpe != null) r.sharpe = Number(a.sharpe).toFixed(2);
+  if (a.cagr != null) r.cagr = `${Math.round(a.cagr)}%/ano`;
+  if (a.cagr != null) r.crescimento_5a = `${Math.round(a.cagr)}%/ano`;
+  if (a.tsr_expected != null) r.tsr_esperado = `${Math.round(a.tsr_expected)}%`;
+  if (a.dividend_yield) r.dividendos = `${Number(a.dividend_yield).toFixed(1)}%`;
+  if (a.beta != null) r.beta = Number(a.beta).toFixed(2);
+  return r;
+}
+function momentumRaw(a) {
+  const r = {};
+  if (a.stoch_k != null && a.stoch_d != null) r.stoch_lento_semanal = `%K ${a.stoch_k} · %D ${a.stoch_d}`;
+  else if (a.slow_stoch_weekly != null) r.stoch_lento_semanal = `${Math.round(a.slow_stoch_weekly)}`;
+  if (a.discount_from_top != null) r.desconto_x_reversao = `-${Math.round(a.discount_from_top)}% topo`;
+  if (a.distance_ma200 != null)
+    r.distancia_ma200 = `${a.distance_ma200 > 0 ? "+" : ""}${Math.round(a.distance_ma200)}% MM200`;
+  return r;
 }
 
 /* ------------------------------------------------------------------ */
@@ -528,14 +553,14 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick }) {
             <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">
               Qualidade — <span className="text-success font-semibold">{Math.round(asset.quality)}</span> / 100
             </div>
-            <FactorGrid data={asset.quality_breakdown} labels={QUALITY_LABELS} />
+            <FactorGrid data={asset.quality_breakdown} labels={QUALITY_LABELS} raw={qualityRaw(asset)} />
           </div>
 
           <div>
             <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">
               Momento — <span className="text-primary font-semibold">{Math.round(asset.momentum)}</span> / 100
             </div>
-            <FactorGrid data={asset.momentum_breakdown} labels={MOMENTUM_LABELS} />
+            <FactorGrid data={asset.momentum_breakdown} labels={MOMENTUM_LABELS} raw={momentumRaw(asset)} />
           </div>
 
           <div>

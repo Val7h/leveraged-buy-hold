@@ -554,6 +554,29 @@ def score_beta_low(beta: Optional[float]) -> float:
     return _floor(100 - (beta - 0.5) / 1.3 * 80)
 
 
+def score_beta_contextual(beta: Optional[float], momentum: Optional[float] = None) -> float:
+    """
+    Beta AMPLIFICADOR (decisão do usuário): a nota do beta depende do momento.
+      - Beta BAIXO (≤0.9): defensivo, bom sempre.
+      - Beta ALTO (≥1.2): depende do momento — oversold/boa entrada (momento alto) AMPLIFICA
+        (beta alto em ativo de qualidade no fundo = recupera mais forte, ex MSFT); sobrecomprado
+        (momento baixo) PENALIZA (cai mais forte na virada).
+    """
+    if beta is None:
+        return 55.0
+    if beta <= 0.9:
+        return _floor(100 - (beta / 0.9) * 25)          # 0→100, 0.9→75 (defensivo)
+    if beta < 1.2:
+        return 62.0                                      # neutro
+    amp = _clamp((beta - 1.2) / 1.3, 0.0, 1.0)           # 0..1 conforme quão alto
+    m = momentum if momentum is not None else 50.0
+    if m >= 60:                                          # oversold / boa entrada → amplifica
+        return _floor(62 + amp * 38)                     # até 100
+    if m <= 40:                                          # sobrecomprado → penaliza
+        return _floor(45 - amp * 30)                     # até 15
+    return _floor(55 - amp * 8)                          # neutro
+
+
 def score_maxdd_quality(max_dd_pct: Optional[float]) -> float:
     if max_dd_pct is None:
         return 55.0
@@ -628,15 +651,13 @@ def score_slow_stoch_weekly(slow_k: Optional[float]) -> float:
 def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
                           growth_5y=None, roe=None, debt_to_equity=None,
                           payout_ratio=None, roic=None, fcf_yield=None,
-                          sharpe=None, cagr=None, tsr_expected=None):
+                          sharpe=None, cagr=None, tsr_expected=None,
+                          momentum=None):
     """
-    Qualidade (0-100) — 8 fatores, todos PESOS (nada exclui):
-      Risco:   beta baixo 12% · máx queda histórica 15%
-      Retorno: Sharpe 15% · CAGR 12% · crescimento 5a 11% · TSR esperado 13%
-      Renda:   dividendos 12%
-      Saúde:   fundamentos 10%
+    Qualidade (0-100) — pesos (nada exclui). Beta é CONTEXTUAL (amplificador):
+    oversold + beta alto = bônus; sobrecomprado + beta alto = penalidade (depende do momento).
     """
-    s_beta = score_beta_low(beta)
+    s_beta = score_beta_contextual(beta, momentum)
     s_dd = score_maxdd_quality(max_dd_pct)
     s_sharpe = score_sharpe(sharpe)
     s_cagr = score_cagr(cagr if cagr is not None else growth_5y)
