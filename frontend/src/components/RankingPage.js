@@ -28,6 +28,11 @@ import {
   Trophy,
   X,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+// Lazy: o gráfico (recharts, pesado) só carrega quando o usuário clica num logo.
+const AssetChartModal = dynamic(() => import("@/components/assets/AssetChartModal"), {
+  ssr: false,
+});
 
 /* ------------------------------------------------------------------ */
 /* Constantes                                                          */
@@ -381,7 +386,7 @@ function FactorGrid({ data, labels }) {
 /* Linha do ranking                                                    */
 /* ------------------------------------------------------------------ */
 
-function RankingRow({ asset, expanded, onToggle, onRemove }) {
+function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick }) {
   const verdictCls = VERDICT_STYLE[asset.verdict] || "text-text-secondary bg-surface-2 border-border";
   const dotCls = VERDICT_DOT[asset.verdict] || "bg-text-muted";
   const stops = asset.staggered_stops || {};
@@ -394,7 +399,17 @@ function RankingRow({ asset, expanded, onToggle, onRemove }) {
       >
         <div className="col-span-5 sm:col-span-3 min-w-0">
           <div className="flex items-center gap-2">
-            <TickerLogo ticker={asset.ticker} size={26} />
+            <span
+              role="button"
+              title="Ver gráfico"
+              onClick={(e) => {
+                e.stopPropagation();
+                onLogoClick && onLogoClick(asset.ticker);
+              }}
+              className="cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-primary/40 rounded-full transition-all"
+            >
+              <TickerLogo ticker={asset.ticker} size={26} />
+            </span>
             <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
             <span className="font-bold text-text-primary text-sm truncate">{asset.ticker}</span>
             {asset.dividend_yield > 0 && (
@@ -626,6 +641,7 @@ export default function RankingPage() {
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState("");
   const [expanded, setExpanded] = useState(null);
+  const [chartTicker, setChartTicker] = useState(null); // gráfico (modal) ao clicar no logo
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
@@ -832,11 +848,16 @@ export default function RankingPage() {
                 expanded={expanded === a.ticker}
                 onToggle={toggle}
                 onRemove={handleRemove}
+                onLogoClick={setChartTicker}
               />
             ))}
           </div>
         )}
       </div>
+
+      {chartTicker && (
+        <AssetChartModal ticker={chartTicker} onClose={() => setChartTicker(null)} />
+      )}
     </div>
   );
 }
