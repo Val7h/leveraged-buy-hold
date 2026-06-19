@@ -394,16 +394,18 @@ def beta_aligned(asset_df, idx_dmap: Optional[Dict[str, float]]) -> Optional[flo
     return float(np.cov(ra, ri)[0, 1] / np.var(ri))
 
 
-def _beta_corr_sigma(asset_df, idx_dmap: Optional[Dict[str, float]]):
+def _beta_corr_sigma(asset_df, idx_dmap: Optional[Dict[str, float]], window: int = 252):
     """(beta, correlação, σ_ação/σ_índice) alinhados POR DATA. corr baixa + σ alta =
-    assinatura de cíclica descolada (ex: PETR4 corr 0.26) — usado p/ detectar TÁTICO."""
+    assinatura de cíclica descolada (ex: PETR4 corr 0.26) — usado p/ detectar TÁTICO.
+    window: janela de pregões. 252 (1a) p/ tático (descolamento recente); janela longa
+    (1260=5a) p/ o VALOR do beta — a de 1a dá NEGATIVO em defensiva US (artefato)."""
     if not idx_dmap:
         return (None, None, None)
     pairs = [(c, idx_dmap[d.isoformat()]) for d, c in _dated_closes(asset_df)
              if d.isoformat() in idx_dmap]
     if len(pairs) < 60:
         return (None, None, None)
-    pairs = pairs[-252:]
+    pairs = pairs[-window:]
     a = np.array([p[0] for p in pairs]); ix = np.array([p[1] for p in pairs])
     ra = np.diff(np.log(a)); ri = np.diff(np.log(ix))
     if np.var(ri) == 0 or ra.std() == 0 or ri.std() == 0:
@@ -607,10 +609,13 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
 
         # Fundamentos REAIS (FMP p/ US/Europa, brapi p/ BR; crypto/índices → None).
         fund = get_fundamentals(tk) or {}
-        beta_reg, corr, sigma_ratio = _beta_corr_sigma(df, idxdm.get(INDEX_BY_CAT.get(cat)))
-        # BETA: FMP publicado é primário (regressão de 1a dá NEGATIVO p/ defensivas US —
-        # janela curta + S&P concentrado em tech). Regressão só como fallback (BR/sem FMP).
-        beta = fund.get("beta") if fund.get("beta") is not None else beta_reg
+        _idm = idxdm.get(INDEX_BY_CAT.get(cat))
+        beta_reg, corr, sigma_ratio = _beta_corr_sigma(df, _idm)              # 1a → tático
+        beta_long, _, _ = _beta_corr_sigma(df, _idm, window=1260)             # 5a → valor estável
+        # BETA: FMP publicado é primário; senão regressão de 5a (que NÃO dá negativo);
+        # 1a só em último caso. A de 1a sozinha dá beta negativo p/ defensivas US (artefato).
+        beta = (fund.get("beta") if fund.get("beta") is not None
+                else beta_long if beta_long is not None else beta_reg)
 
         # TÁTICO: cíclica descolada (corr baixa + σ alta) OU bucket curado, exceto whitelist.
         # Auto-detecção limitada ao BRASIL por enquanto (whitelist é BR; americanas serão tratadas
