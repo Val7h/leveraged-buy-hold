@@ -399,19 +399,23 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         "risk_method": risk_method,
     }
 
-    # Estrutura ALVO × REAL por bucket.
+    # Estrutura ALVO × REAL por bucket — em % de CAPITAL e em % de RISCO (item 4 da revisão).
     real_by_bucket: Dict[str, float] = {}
+    risk_by_bucket: Dict[str, float] = {}
     for r in rows:
         real_by_bucket[r["bucket"]] = real_by_bucket.get(r["bucket"], 0.0) + r["weight"]
+        risk_by_bucket[r["bucket"]] = risk_by_bucket.get(r["bucket"], 0.0) + (r.get("risk_contribution") or 0.0)
     buckets = []
     for bk, target in PORTFOLIO_TARGETS.items():
         real = round(real_by_bucket.get(bk, 0.0), 1)
         drift = round(real - target, 1)
         buckets.append({"bucket": bk, "target": target, "real": real, "drift": drift,
+                        "risk_pct": round(risk_by_bucket.get(bk, 0.0), 1),
                         "status": ("ok" if abs(drift) <= 5 else ("acima" if drift > 0 else "abaixo"))})
     for bk, real in real_by_bucket.items():       # buckets fora do alvo (TATICO/RESERVA/—)
         if bk not in PORTFOLIO_TARGETS:
             buckets.append({"bucket": bk, "target": None, "real": round(real, 1),
+                            "risk_pct": round(risk_by_bucket.get(bk, 0.0), 1),
                             "drift": None, "status": "extra"})
 
     correlation = cov["correlation"] if cov else _correlation_matrix([r["ticker"] for r in rows])
@@ -501,11 +505,63 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         })
     survival_stops.sort(key=lambda x: x["pnl_pct"])  # mais perdedor primeiro
 
+    # ── RISCO DE SOBREVIVÊNCIA ALAVANCADO + DISTÂNCIA ATÉ A LIQUIDAÇÃO (item 1) ───
+    # VaR/maxDD da CESTA DE RISCO (sem SHY, ponderada por notional) e o que isso vira
+    # no EQUITY ao multiplicar pela alavancagem. Distância de liquidação = queda da
+    # cesta que zera o equity (≈ 1/alavancagem).
+    risk = {}
+    series = (cov or {}).get("_series") or {}
+    rrows = [r for r in rows if not r["is_shy"] and r["ticker"] in series]
+    if eq and risk_notional > 0 and rrows:
+        try:
+            commonr = sorted(set.intersection(*[set(series[r["ticker"]]) for r in rrows]))
+            if len(commonr) >= 120:
+                wv = np.array([r["notional"] for r in rrows], float)
+                wv = wv / wv.sum()
+                portr = np.zeros(len(commonr) - 1)
+                for r, wi in zip(rrows, wv):
+                    portr = portr + np.diff(np.log([series[r["ticker"]][d] for d in commonr])) * wi
+                var_d = float(-np.percentile(portr, 5))
+                cumr = np.cumprod(1 + portr); rmr = np.maximum.accumulate(cumr)
+                maxdd_b = float(((cumr - rmr) / rmr).min() * 100)
+                L = risk_notional / eq
+                liq = round(100.0 / L, 1) if L > 0 else None
+                risk = {
+                    "leverage": round(L, 2),
+                    "var95_equity_daily": round(var_d * 100 * L, 2),       # VaR diário em % do EQUITY
+                    "maxdd_basket": round(maxdd_b, 1),                      # pior tombo da cesta (3a)
+                    "maxdd_equity": round(max(maxdd_b * L, -100.0), 1),     # como isso bate no equity
+                    "liquidation_distance_pct": liq,                       # queda da cesta que zera o equity
+                    "liquidated_in_worst": (abs(maxdd_b) >= liq) if liq else None,
+                }
+        except Exception:
+            pass
+
+    # ── APORTE pelo BUCKET SUB-ALVO (item 2 — usa o ranking novo, não o screening velho) ──
+    # Onde colocar dinheiro novo: bucket(s) abaixo do alvo → melhor ranqueado COMPRAR/FORTE
+    # daquele bucket, não-possuído, fora do cooldown e descorrelacionado.
+    aporte = []
+    under = sorted([b for b in buckets if b.get("drift") is not None and b["drift"] < -5],
+                   key=lambda b: b["drift"])  # mais abaixo do alvo primeiro
+    for b in under:
+        cands = [a for a in rk.values()
+                 if a.get("verdict") in ("COMPRAR FORTE", "COMPRAR")
+                 and a["ticker"].upper() not in held and a["ticker"].upper() not in cd
+                 and _bucket_of(a["ticker"]) == b["bucket"]]
+        cands.sort(key=lambda x: -(x.get("rank") or 0))
+        for a in cands[:2]:
+            aporte.append({
+                "bucket": b["bucket"], "drift": b["drift"],
+                "ticker": a["ticker"], "name": a.get("name"), "verdict": a.get("verdict"),
+                "rank": a.get("rank"), "dividend_yield": a.get("dividend_yield"),
+                "rationale": f"{b['bucket']} está {abs(b['drift']):.0f}% abaixo do alvo — reforça a estrutura",
+            })
+
     import datetime as _dt
     return {
         "assets": rows, "totals": totals, "buckets": buckets,
         "correlation": correlation, "rotation": rotation,
-        "survival_stops": survival_stops,
+        "survival_stops": survival_stops, "risk": risk, "aporte": aporte,
         "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
     }
 

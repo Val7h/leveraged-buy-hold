@@ -13,6 +13,8 @@ type Analytics = {
   correlation?: any;
   rotation?: any;
   survival_stops?: any[];
+  risk?: any;
+  aporte?: any[];
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -50,9 +52,28 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const sells = (rotation.signals || []).filter((s: any) => s.action === "VENDER");
   const rotateInto = rotation.rotate_into || [];
   const stops = analytics.survival_stops || [];
+  const risk = analytics.risk || {};
+  const aporte = analytics.aporte || [];
 
   return (
     <div className="space-y-4">
+      {/* 0z. Risco alavancado + distância até liquidação (sobrevivência) */}
+      {risk.liquidation_distance_pct != null && (
+        <section className={`rounded-xl border p-4 ${risk.liquidated_in_worst ? "bg-danger/5 border-danger/40" : "bg-surface border-border"}`}>
+          <h3 className="text-sm font-semibold text-text-primary mb-3">Risco alavancado & liquidação</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <Stat label="Alavancagem" value={fmt(risk.leverage, "x", 2)} />
+            <Stat label="VaR 95% (dia, equity)" value={fmt(risk.var95_equity_daily, "%", 1)} hint="perda diária provável" />
+            <Stat label="Liquida a" value={`-${fmt(risk.liquidation_distance_pct, "%", 0)}`} hint="queda da cesta que zera o equity" />
+            <Stat label="Pior tombo (cesta)" value={fmt(risk.maxdd_basket, "%", 0)} hint={`no equity ≈ ${fmt(risk.maxdd_equity, "%", 0)}`} />
+          </div>
+          {risk.liquidated_in_worst && (
+            <div className="mt-2 text-[11px] text-danger">
+              ⚠ No pior tombo histórico da cesta ({fmt(risk.maxdd_basket, "%", 0)}) você teria sido <b>liquidado</b> nessa alavancagem ({fmt(risk.leverage, "x", 1)}). Reduza exposição ou suba o equity.
+            </div>
+          )}
+        </section>
+      )}
       {/* 0a. STOP DE SOBREVIVÊNCIA — pilar nº1 (anti-ruína) */}
       {stops.length > 0 && (
         <section className="bg-danger/5 rounded-xl border border-danger/40 p-4">
@@ -158,17 +179,32 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
                     <div className="absolute inset-y-0 w-0.5 bg-text-primary/70" style={{ left: `${Math.min(target, 100)}%` }} title={`alvo ${target}%`} />
                   )}
                 </div>
-                <div className="w-28 shrink-0 text-right text-xs">
+                <div className="w-44 shrink-0 text-right text-xs">
                   <span className="font-mono text-text-primary">{fmt(real, "%", 0)}</span>
                   {target != null && <span className="text-text-muted"> / {fmt(target, "%", 0)}</span>}
                   {b.drift != null && (
                     <span className={`ml-1 ${statusCls}`}>({b.drift > 0 ? "+" : ""}{fmt(b.drift, "", 0)})</span>
                   )}
+                  {b.risk_pct != null && <span className="text-amber-400/80 ml-1">· risco {fmt(b.risk_pct, "%", 0)}</span>}
                 </div>
               </div>
             );
           })}
         </div>
+        {aporte.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border/50">
+            <div className="text-[11px] text-text-secondary mb-1">💰 Onde aportar dinheiro novo (corrige o bucket abaixo do alvo, do ranking):</div>
+            <div className="flex flex-wrap gap-2">
+              {aporte.map((a: any, i: number) => (
+                <div key={i} className="text-[11px] bg-primary/10 border border-primary/30 rounded px-2 py-1" title={a.rationale}>
+                  <span className="font-semibold text-text-primary">{a.ticker}</span>
+                  <span className="text-primary ml-1">{a.verdict}</span>
+                  <span className="text-text-muted ml-1">→ {BUCKET_LABEL[a.bucket] || a.bucket}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* 3. Contribuição de risco (Dalio) */}
