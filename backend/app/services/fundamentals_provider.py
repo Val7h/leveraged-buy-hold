@@ -42,7 +42,9 @@ try:
 except Exception:
     _CTX = _ssl.create_default_context()
 
-# Fallback p/ ambientes sem CA bundle (dado público via GET, sem credenciais).
+# Fallback SEM verificação de cert — gateado por ALLOW_INSECURE_SSL (default "1" preserva
+# comportamento; setar "0" em prod p/ endurecer após confirmar que os fundamentos carregam).
+_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "1").strip() == "1"
 _CTX_NOVERIFY = _ssl.create_default_context()
 _CTX_NOVERIFY.check_hostname = False
 _CTX_NOVERIFY.verify_mode = _ssl.CERT_NONE
@@ -89,7 +91,8 @@ def _http_json(url: str):
         try:
             r = _urlreq.urlopen(req, timeout=_TIMEOUT, context=_CTX)
         except Exception:
-            # CA bundle indisponível / erro de cert → tenta sem verificação (dado público)
+            if not _ALLOW_INSECURE:
+                raise
             r = _urlreq.urlopen(req, timeout=_TIMEOUT, context=_CTX_NOVERIFY)
         with r:
             return _json.loads(r.read())

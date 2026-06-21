@@ -59,10 +59,41 @@ try:
     _CHART_CTX = _ssl.create_default_context(cafile=_certifi.where())
 except Exception:
     _CHART_CTX = _ssl.create_default_context()
-# Fallback p/ ambientes sem CA bundle (dado público via GET, sem credenciais).
+# Fallback SEM verificação de cert (MITM-risk). Gateado por env: ALLOW_INSECURE_SSL=0 desliga
+# (recomendado em prod após confirmar que os preços carregam verificados). Default "1" preserva
+# o comportamento atual (zero risco de quebrar a coleta).
+_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "1").strip() == "1"
 _CHART_CTX_NOVERIFY = _ssl.create_default_context()
 _CHART_CTX_NOVERIFY.check_hostname = False
 _CHART_CTX_NOVERIFY.verify_mode = _ssl.CERT_NONE
+
+# Redundância de HOST: se query1 cair/rate-limit, tenta query2 (mesma API Yahoo, outro host).
+_CHART_HOSTS = ("query1.finance.yahoo.com", "query2.finance.yahoo.com")
+
+
+def _yahoo_chart_json(ticker: str, query: str):
+    """GET no Yahoo chart com REDUNDÂNCIA de host (query1→query2), SSL verificado.
+    Só cai p/ sem-verificação se ALLOW_INSECURE_SSL=1. Retorna dict JSON ou None."""
+    last = None
+    for host in _CHART_HOSTS:
+        try:
+            req = _urlreq.Request(f"https://{host}/v8/finance/chart/{ticker}?{query}",
+                                  headers={"User-Agent": "Mozilla/5.0"})
+            with _urlreq.urlopen(req, timeout=20, context=_CHART_CTX) as r:
+                return _json.loads(r.read())
+        except Exception as e:
+            last = e
+    if _ALLOW_INSECURE:
+        try:
+            req = _urlreq.Request(f"https://{_CHART_HOSTS[0]}/v8/finance/chart/{ticker}?{query}",
+                                  headers={"User-Agent": "Mozilla/5.0"})
+            with _urlreq.urlopen(req, timeout=20, context=_CHART_CTX_NOVERIFY) as r:
+                return _json.loads(r.read())
+        except Exception as e:
+            last = e
+    if last:
+        logger.warning(f"[CHART API] {ticker} todas as fontes falharam: {last}")
+    return None
 
 
 def _chart_api_series(ticker: str, days: int):
@@ -70,16 +101,9 @@ def _chart_api_series(ticker: str, days: int):
     try:
         end = int(_time.time())
         start = end - int(days * 86400)
-        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-               f"?period1={start}&period2={end}&interval=1d")
-        req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        try:
-            r = _urlreq.urlopen(req, timeout=20, context=_CHART_CTX)
-        except Exception:
-            # CA bundle indisponível / erro de cert → tenta sem verificação (dado público)
-            r = _urlreq.urlopen(req, timeout=20, context=_CHART_CTX_NOVERIFY)
-        with r:
-            d = _json.loads(r.read())
+        d = _yahoo_chart_json(ticker, f"period1={start}&period2={end}&interval=1d")
+        if d is None:
+            return None, None
         res = d["chart"]["result"][0]
         ts = res["timestamp"]
         q = res["indicators"]["quote"][0]
@@ -111,15 +135,9 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: b
         end = int(_time.time())
         start = end - int(days * 86400)
         ev = "&events=div" if want_div else ""
-        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-               f"?period1={start}&period2={end}&interval=1d{ev}")
-        req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        try:
-            r = _urlreq.urlopen(req, timeout=20, context=_CHART_CTX)
-        except Exception:
-            r = _urlreq.urlopen(req, timeout=20, context=_CHART_CTX_NOVERIFY)
-        with r:
-            d = _json.loads(r.read())
+        d = _yahoo_chart_json(ticker, f"period1={start}&period2={end}&interval=1d{ev}")
+        if d is None:
+            return (None, None, None) if want_annual else (None, None)
         res = d["chart"]["result"][0]
         ts = res["timestamp"]
         q = res["indicators"]["quote"][0]
