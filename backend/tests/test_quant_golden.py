@@ -1,0 +1,94 @@
+"""
+Golden tests da LÓGICA QUANT (motor de decisão de capital) — gap nº1 de governança da revisão.
+Funções PURAS, sem rede: dado um input fixo, o score/leverage/veredito é o esperado.
+Protegem contra mudanças silenciosas no scoring quando mexemos no motor.
+Rodar: `pytest tests/test_quant_golden.py` a partir de backend/.
+"""
+import datetime as dt
+import numpy as np
+
+from app.quantitative import scoring_v2 as S
+from app.services import ranking_service as R
+from app.services import portfolio_service as P
+
+
+# ─────────────────────────── veredito de aporte ───────────────────────────
+def test_aporte_verdict_thresholds():
+    assert S.aporte_verdict(75, 65) == "COMPRAR FORTE"     # momento alto + qualidade boa
+    assert S.aporte_verdict(75, 40) == "ESPECULATIVO"      # descontado mas qualidade fraca = faca
+    assert S.aporte_verdict(60, 55) == "COMPRAR"
+    assert S.aporte_verdict(45, 80) == "JUSTO"             # boa empresa, hora mediana
+    assert S.aporte_verdict(20, 80) == "ESTICADO"          # sem desconto agora (NÃO exclui)
+
+
+# ─────────────────────── beta contextual (amplificador) ───────────────────
+def test_beta_contextual_amplifier():
+    assert S.score_beta_contextual(0.3) > 90                       # baixo = defensivo bom
+    assert S.score_beta_contextual(0.3, is_tatico=True) == 62.0    # tático mata o bônus falso
+    oversold = S.score_beta_contextual(1.8, momentum=75)           # beta alto no fundo = bônus
+    overbought = S.score_beta_contextual(1.8, momentum=30)         # beta alto esticado = penalidade
+    assert oversold > overbought
+
+
+# ───────────────────── dividendo por consistência ─────────────────────────
+def test_dividend_consistency_scoring():
+    cut = S.score_dividend_sustainable(avg10=16.0, worst_year=0.0)   # PETR4: cortou a 0% na crise
+    solid = S.score_dividend_sustainable(avg10=8.0, worst_year=7.0)  # TAEE11: nunca cortou
+    assert solid > cut
+    # growth guard: yield baixo (não é renda) não leva castigo de corte
+    growth = S.score_dividend_sustainable(avg10=0.3, worst_year=0.0)
+    assert growth == S.score_dividend_q(0.3)
+
+
+def test_dividend_consistency_helper_worst_year():
+    y = dt.date.today().year
+    annual = {y - 1: 8.0, y - 2: 0.0, y - 3: 7.0, y - 4: 9.0, y - 5: 6.0}
+    avg, worst = R._dividend_consistency(annual)
+    assert worst == 0.0                                    # pega o ano que cortou
+    assert avg is not None and avg > 0
+
+
+# ───────────── stop escalonado fica SEMPRE antes da liquidação ─────────────
+def test_staggered_stops_before_liquidation():
+    for lev in (2.0, 3.0, 4.0, 5.0):
+        s = S.staggered_stops(lev)
+        assert s["stop_1_pct"] < s["liquidation_pct"]      # 1º stop dispara ANTES de liquidar
+        assert s["stop_2_pct"] < s["liquidation_pct"]      # 2º idem
+        assert s["stop_1_pct"] < s["stop_2_pct"]           # escalonado
+    # mais alavancado → liquida com menos queda
+    assert S.staggered_stops(5.0)["liquidation_pct"] < S.staggered_stops(2.0)["liquidation_pct"]
+
+
+# ─────────────────────────── regime de mercado ────────────────────────────
+def test_regime_capitulacao_e_topo():
+    # série que sobe e despenca ~-50% do topo → capitulação extrema
+    crash = np.concatenate([np.linspace(100, 200, 400), np.linspace(200, 100, 60)])
+    assert R.regime(crash) in ("CAPITULACAO", "CAPIT.EXTREMA")
+    # alta saudável → NÃO é capitulação
+    assert R.regime(np.linspace(100, 200, 450)) not in ("CAPITULACAO", "CAPIT.EXTREMA")
+    # série curta demais → NEUTRO (sem dados p/ decidir)
+    assert R.regime(np.array([100.0, 101.0])) == "NEUTRO"
+
+
+# ─────────── discount factor conservador (anti value-trap, piso 0.85) ──────
+def test_discount_factor_conservative_floor():
+    assert P._discount_factor(-30) == 0.85                 # oversold: alívio MÁXIMO é só 15%
+    assert P._discount_factor(30) == 1.0                   # esticado: tombo cheio
+    assert P._discount_factor(None) == 1.0                 # sem dado = conservador (sem alívio)
+    assert 0.85 <= P._discount_factor(-10) <= 1.0
+
+
+# ─────────────────── quality blend: faixa e composição ─────────────────────
+def test_quality_blend_range_and_keys():
+    q, bd = S.compute_quality_blend(beta=0.6, max_dd_pct=-20, dividend_yield=4,
+                                    growth_5y=10, sharpe=1.0, cagr=10,
+                                    tsr_expected=12, momentum=60)
+    assert 0 <= q <= 100
+    assert {"beta", "max_drawdown", "dividendos", "fundamentos"}.issubset(bd.keys())
+
+
+def test_momentum_blend_range():
+    m, bd = S.compute_momentum(slow_stoch_weekly=15, discount_from_top=-10,
+                               reversal_confirmation=1, distance_ma200=-5)
+    assert 0 <= m <= 100
+    assert "stoch_lento_semanal" in bd
