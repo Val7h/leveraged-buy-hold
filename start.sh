@@ -16,7 +16,15 @@ UVICORN_PID=$!
 node server.js &
 NODE_PID=$!
 
-echo "[start.sh] uvicorn(pid=$UVICORN_PID) + next(pid=$NODE_PID) no ar"
+# 4) CRON in-process dos alertas (deploy único): aciona /api/v1/alerts/sweep periodicamente.
+#    Subshell que NUNCA sai (não dispara o wait -n) e engole erros → não derruba o container.
+( sleep 90
+  while true; do
+    node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/v1/alerts/sweep',{method:'POST',headers:{'X-Internal-Token':process.env.BACKEND_INTERNAL_TOKEN||''}}).then(r=>r.text()).then(t=>console.log('[alert-sweep]',t)).catch(e=>console.log('[alert-sweep] skip',e.message))" 2>/dev/null || true
+    sleep "${ALERT_SWEEP_SECONDS:-600}"
+  done ) &
+
+echo "[start.sh] uvicorn(pid=$UVICORN_PID) + next(pid=$NODE_PID) + alert-sweep no ar"
 
 # Espera o primeiro processo terminar; encerra o outro e propaga o exit code.
 wait -n

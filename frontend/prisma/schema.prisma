@@ -164,6 +164,7 @@ model Alert {
   threshold Decimal  @db.Decimal(18, 4)
   active    Boolean  @default(true)
   message   String?
+  notifiedAt DateTime?              // última vez que disparou e notificou (anti-spam; re-arma ao limpar)
   createdAt DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
