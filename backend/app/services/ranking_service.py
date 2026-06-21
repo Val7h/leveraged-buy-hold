@@ -718,10 +718,24 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # é irrelevante (basta pôr os 10k). Não força leverage aqui; fica fora da medida na carteira.
         stops = S.staggered_stops(leverage)
 
+        # SELO DE CONFIANÇA DOS DADOS (revisão: dado faltando não pode parecer "mediano" 50).
+        _no_fund_cat = (cat == "CRYPTO") or tk.startswith("^") or "=" in tk
+        _has_fund = any(fund.get(k) is not None for k in ("roe", "payout_ratio", "debt_to_equity"))
+        _beta_pub = beta_source in ("finnhub", "fmp")   # beta publicado (não regressão)
+        if _no_fund_cat:
+            confidence = "ALTA"                          # crypto/índice: preço/momentum bastam
+        elif _has_fund and _beta_pub:
+            confidence = "ALTA"
+        elif _has_fund or _beta_pub:
+            confidence = "MEDIA"
+        else:
+            confidence = "BAIXA"                         # sem fundamentos + beta de regressão = "50 falso"
+
         return {
             "ticker": tk,
             "name": name,
             "bucket": bucket,
+            "confidence": confidence,
             "current_price": _round_or_none(current_price, 2),
             "day_change_pct": _round_or_none(day_change_pct, 2),
             "currency": currency,

@@ -482,6 +482,19 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick }) {
                 não testado
               </span>
             )}
+            {(asset.confidence === "BAIXA" || asset.confidence === "MEDIA") && (
+              <span
+                title={asset.confidence === "BAIXA"
+                  ? "Confiança BAIXA — sem fundamentos e beta de regressão. Trate o score com cautela (não é 'mediano', é 'sem dados')."
+                  : "Confiança MÉDIA — dados parciais (fundamentos OU beta publicado)."}
+                className={`text-[9px] uppercase tracking-wide rounded px-1.5 py-0.5 shrink-0 border ${
+                  asset.confidence === "BAIXA"
+                    ? "text-red-400 bg-red-500/10 border-red-500/30"
+                    : "text-amber-400 bg-amber-500/10 border-amber-500/30"}`}
+              >
+                conf {asset.confidence === "BAIXA" ? "baixa" : "média"}
+              </span>
+            )}
           </div>
         </div>
 
