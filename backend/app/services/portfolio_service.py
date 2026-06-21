@@ -500,8 +500,20 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
     try:
         from app.services.ranking_service import compute_ranking as _cr
         _cats = (_cr() or {}).get("categories", {})
-        equity_regime = (_cats.get("US") or _cats.get("ETF") or {}).get("regime") or "NEUTRO"
+        regime_by_cat = {c: ((d or {}).get("regime") or "NEUTRO") for c, d in _cats.items()}
+        # Regime da CARTEIRA = regime do mercado de MAIOR EXPOSIÇÃO (corrige o bug de fixar US:
+        # carteira BR em capitulação do IBOV não pode ser tratada como TOPO/NEUTRO do S&P).
+        exp_by_cat: Dict[str, float] = {}
+        for r in rows:
+            cat = rk.get(r["ticker"].upper(), {}).get("category")
+            if cat:
+                exp_by_cat[cat] = exp_by_cat.get(cat, 0.0) + r["notional"]
+        if exp_by_cat:
+            equity_regime = regime_by_cat.get(max(exp_by_cat, key=exp_by_cat.get), "NEUTRO")
+        else:
+            equity_regime = regime_by_cat.get("US") or "NEUTRO"
     except Exception:
+        regime_by_cat = {}
         equity_regime = "NEUTRO"
     capitulacao = equity_regime in ("CAPITULACAO", "CAPIT.EXTREMA")
     HYST_WEEKS = 2          # esticado precisa PERSISTIR ≥2 semanas (anti-whipsaw)
@@ -629,12 +641,14 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                  and (_candidate_max_corr(a["ticker"], (cov or {}).get("_series") or {}) or 0) < 0.8]
         cands.sort(key=lambda x: -(x.get("rank") or 0))
         for a in cands[:2]:
+            reg_a = regime_by_cat.get(a.get("category"), equity_regime)   # regime do MERCADO do candidato
+            mult_a = _MULT.get(reg_a, mult_aporte)
             aporte.append({
                 "bucket": b["bucket"], "drift": b["drift"],
                 "ticker": a["ticker"], "name": a.get("name"), "verdict": a.get("verdict"),
                 "rank": a.get("rank"), "dividend_yield": a.get("dividend_yield"),
-                "leverage_sugg": mult_aporte,
-                "rationale": f"{b['bucket']} {abs(b['drift']):.0f}% abaixo do alvo — alavanca o aporte {mult_aporte}x ({equity_regime.lower()})",
+                "leverage_sugg": mult_a,
+                "rationale": f"{b['bucket']} {abs(b['drift']):.0f}% abaixo do alvo — alavanca o aporte {mult_a}x ({reg_a.lower()})",
             })
     aporte_regime = {
         "regime": equity_regime, "multiplier": mult_aporte,
