@@ -122,6 +122,68 @@ def _chart_api_series(ticker: str, days: int):
         return None, None
 
 
+# ─────────────────────────── 2ª FONTE real (cross-provider): Stooq ──────────────
+# Redundância de PROVEDOR (não só de host): se a Yahoo cair inteira, busca o histórico
+# de preço no Stooq. CONSERVADOR no mapeamento de ticker — "dado ausente > dado errado":
+# só mapeia ações/ETFs US (sufixo .us bem definido); BR(.SA)/cripto/índice → None (não
+# arrisca casar no ativo errado). Stooq não dá dividendos → fallback só de preço.
+def _stooq_symbol(ticker: str) -> Optional[str]:
+    t = ticker.upper().strip()
+    if not t or t.endswith(".SA"):        # B3 — Stooq não cobre confiavelmente
+        return None
+    if t.startswith("^") or "=" in t or "-" in t and t.endswith("USD"):  # índice/forex/cripto
+        return None
+    if t.endswith("USDT") or t.endswith("USD"):
+        return None
+    if not all(ch.isalnum() or ch == "." for ch in t):  # só tickers "limpos"
+        return None
+    return t.lower().replace(".", "-") + ".us"   # AAPL→aapl.us, BRK.B→brk-b.us
+
+
+def _stooq_df(ticker: str, days: int):
+    """(DataFrame[Close,High,Low], None) via Stooq CSV. (None, None) se não mapeia/sem dados.
+    Só preço (Stooq não traz dividendos). SSL verificado. NUNCA fabrica dado."""
+    sym = _stooq_symbol(ticker)
+    if not sym:
+        return None, None
+    try:
+        import pandas as pd
+        end = dt.date.today()
+        start = end - dt.timedelta(days=int(days))
+        url = (f"https://stooq.com/q/d/l/?s={sym}&i=d"
+               f"&d1={start.strftime('%Y%m%d')}&d2={end.strftime('%Y%m%d')}")
+        req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with _urlreq.urlopen(req, timeout=20, context=_CHART_CTX) as r:
+            raw = r.read().decode("utf-8", "ignore")
+        lines = [ln for ln in raw.strip().splitlines() if ln]
+        # Stooq sem dados retorna "No data"/só cabeçalho → trata como ausente
+        if len(lines) < 61 or not lines[0].lower().startswith("date"):
+            return None, None
+        rows = []
+        for ln in lines[1:]:
+            p = ln.split(",")
+            if len(p) < 5:
+                continue
+            try:
+                c, h, l = float(p[4]), float(p[2]), float(p[3])
+            except ValueError:
+                continue
+            if c > 0:
+                rows.append((p[0], c, h if h > 0 else c, l if l > 0 else c))
+        if len(rows) < 60:
+            return None, None
+        idx = pd.to_datetime([r[0] for r in rows])
+        df = pd.DataFrame(
+            {"Close": [r[1] for r in rows], "High": [r[2] for r in rows], "Low": [r[3] for r in rows]},
+            index=idx,
+        )
+        logger.info(f"[STOOQ fallback] {ticker} via {sym}: {len(rows)} barras (Yahoo indisponível)")
+        return df, None
+    except Exception as e:
+        logger.warning(f"[STOOQ] {ticker} ({sym}) falhou: {e}")
+        return None, None
+
+
 def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: bool = False):
     """
     (DataFrame[index=datetime, Close], dy_trailing[, annual_dy]) via Yahoo chart API.
@@ -137,6 +199,11 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: b
         ev = "&events=div" if want_div else ""
         d = _yahoo_chart_json(ticker, f"period1={start}&period2={end}&interval=1d{ev}")
         if d is None:
+            # Yahoo inteira caiu → 2ª FONTE real (Stooq). Só preço (sem dividendos);
+            # mapeia só US, senão retorna ausente (nunca dado errado).
+            sdf, _ = _stooq_df(ticker, days)
+            if sdf is not None:
+                return (sdf, None, {}) if want_annual else (sdf, None)
             return (None, None, None) if want_annual else (None, None)
         res = d["chart"]["result"][0]
         ts = res["timestamp"]

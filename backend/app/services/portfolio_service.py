@@ -338,9 +338,12 @@ def _discount_factor(dist_ma200: Optional[float]) -> float:
 
 
 def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) -> List[dict]:
-    """STRESS TEST: replay de crashes reais na carteira ATUAL, alavancada. Pior tombo (início da
-    janela→fundo) de cada ativo, ponderado por notional × alavancagem → impacto no EQUITY.
-    Dá DOIS números: pior caso (entrada no topo) e AJUSTADO pelo desconto atual (entrada no fundo)."""
+    """STRESS TEST: replay de crashes reais na carteira ATUAL, alavancada.
+    Reconstrói a SÉRIE PONDERADA da CESTA dentro da janela e tira o tombo DELA — NÃO soma o
+    fundo individual de cada ativo (fundos não são simultâneos → somar superestima a perda).
+    Liquidação é PATH-DEPENDENT: dispara se o equity TOCA a margem de manutenção (-85%) em
+    QUALQUER ponto do caminho, não só no fim (a liquidação é irreversível).
+    Dá dois números: pior caso (entrada no início da janela) e ajustado pelo desconto atual."""
     if not (equity and risk_notional > 0 and rrows):
         return []
     from app.services.ranking_service import _chart_api_df, _dated_closes
@@ -356,34 +359,52 @@ def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) ->
     out = []
     for name, s, e, allow_disc in _STRESS_DEFS:
         sd, ed = dt.date.fromisoformat(s), dt.date.fromisoformat(e)
-        ret_w, ret_adj_w, tot_w, covered = 0.0, 0.0, 0.0, 0
+        # Ativos cobertos na janela (≥5 pregões), peso = notional / Σnotional cobertos.
+        # covered: (notional, start_px, {date:close}, [datas ordenadas], discount_factor)
+        covered = []
         for r in rrows:
             ser = series.get(r["ticker"])
             if not ser:
                 continue
-            win = [c for d, c in ser if sd <= d <= ed]
+            win = sorted((d, c) for d, c in ser if sd <= d <= ed and c and c > 0)
             if len(win) < 5:
-                continue                      # ativo não existia na época
-            asset_ret = (min(win) / win[0] - 1) if win[0] else 0.0   # tombo na janela
+                continue                      # ativo não existia/sem dados na época
             f = _discount_factor(r.get("distance_ma200")) if allow_disc else 1.0
-            ret_w += asset_ret * r["notional"]
-            ret_adj_w += asset_ret * f * r["notional"]
-            tot_w += r["notional"]; covered += 1
+            covered.append((r["notional"], win[0][1], dict(win), [d for d, _ in win], f))
+        tot_w = sum(n for n, *_ in covered)
         if tot_w <= 0:
             continue
-        basket = ret_w / tot_w * 100
-        basket_adj = ret_adj_w / tot_w * 100
-        eq_pct = max(basket * L, -100.0)
-        eq_pct_adj = max(basket_adj * L, -100.0)
+        # Eixo de datas = união dos pregões dos cobertos; forward-fill por ativo (ponteiro O(n)).
+        all_dates = sorted({d for _, _, _, dates, _ in covered for d in dates})
+        ptrs = [0] * len(covered)
+        last_px = [c[1] for c in covered]            # começa no start_px (ratio 1.0)
+        path, path_adj = [], []                       # valor da cesta (1.0 = início) por data
+        for d in all_dates:
+            val = val_adj = 0.0
+            for i, (n, start_px, wmap, dates, f) in enumerate(covered):
+                while ptrs[i] < len(dates) and dates[ptrs[i]] <= d:
+                    last_px[i] = wmap[dates[ptrs[i]]]
+                    ptrs[i] += 1
+                ratio = (last_px[i] / start_px) if start_px else 1.0
+                w = n / tot_w
+                val += w * ratio
+                val_adj += w * (1.0 + f * (ratio - 1.0))   # desconto escala só a QUEDA
+            path.append(val); path_adj.append(val_adj)
+        basket = (min(path) - 1.0) * 100              # tombo da CESTA (início→pior ponto)
+        basket_adj = (min(path_adj) - 1.0) * 100
+        eq_path = [(v - 1.0) * L * 100 for v in path]          # equity ao longo do caminho
+        eq_path_adj = [(v - 1.0) * L * 100 for v in path_adj]
+        eq_min, eq_min_adj = min(eq_path), min(eq_path_adj)    # pior ponto (path-dependent)
         out.append({
             "scenario": name,
             "basket_pct": round(basket, 1),
             "basket_pct_adj": round(basket_adj, 1),
-            "equity_pct": round(eq_pct, 1),
-            "equity_pct_adj": round(eq_pct_adj, 1),
-            "liquidated": eq_pct <= -_MARGIN_LIQ_PCT,        # margem de manutenção (-85%), não -100%
-            "liquidated_adj": eq_pct_adj <= -_MARGIN_LIQ_PCT,
-            "coverage": f"{covered}/{len(rrows)}",
+            "equity_pct": round(max(eq_min, -100.0), 1),
+            "equity_pct_adj": round(max(eq_min_adj, -100.0), 1),
+            # liquidação intra-janela: equity TOCOU a margem (-85%) em algum ponto do caminho
+            "liquidated": eq_min <= -_MARGIN_LIQ_PCT,
+            "liquidated_adj": eq_min_adj <= -_MARGIN_LIQ_PCT,
+            "coverage": f"{len(covered)}/{len(rrows)}",
         })
     return out
 
