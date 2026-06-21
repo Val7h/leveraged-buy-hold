@@ -1,19 +1,25 @@
 """
-Scoring V2 — Modelo Mestre de Ranking de Alavancagem (FASE 1: ações).
-Implementa o design ratificado em MODELO_RANKING_ALAVANCAGEM.md.
+Scoring V2 — funções puras de pontuação (recebem números já calculados).
 
-Diferenças-chave vs v1:
-  - QUALIDADE é PORTÃO (elimina < 70), não peso. 70-84 → máx 3x; ≥85 → libera 4x.
-  - RANKING entre elegíveis = 100% Oportunidade (qualidade já filtrou).
-  - Quality = Sharpe 30% + MaxDD&Recuperação 25% + Fundamento 20% + Consistência 15%.
-    (Beta, Volatilidade e Dividend Yield REMOVIDOS do quality.)
-  - Opportunity 2-eixos: MM200 35% + Stochastic 30% + DescontoTopo×Reversão 25% + RSI 10%.
-  - BETA = amplificador externo (não penaliza qualidade).
-  - SIZING por assimetria Risco:Retorno, com trava (perda×lev ≤ 40% da posição).
+⚠️ ESTE MÓDULO CONTÉM DOIS MODELOS. Não confundir (dívida de governança resolvida
+na Fase 2 — antes os dois rodavam no app vivo e se contradiziam):
 
-Este módulo é PURO (recebe números já calculados). Mantém o v1 100% intacto.
-Indicadores novos (recuperação, consistência, distância do topo, reversão) ficam em
-indicators_v2.py. Ativado por flag — nunca substitui o v1 automaticamente.
+  1) MODELO VIVO (ratificado, em uso) — "Ranking de Aporte" / blend "nada exclui".
+     Funções: compute_quality_blend · compute_momentum · aporte_verdict · staggered_stops
+       (+ helpers: score_beta_contextual, score_dividend_sustainable, score_*).
+     Filosofia: NADA exclui um ativo — Qualidade e Momento são PESOS, não portões.
+     Consumido por: app/services/ranking_service.py (aba Ranking, caminho de produção).
+
+  2) MODELO LEGADO (quality-gate) — backtest-only, NÃO roda no app vivo.
+     Funções: compute_quality_score_v2 · quality_gate · compute_opportunity_score_v2 ·
+       beta_amplifier · classify_profile · regime_from_multiplier · leverage_recommendation ·
+       leverage_from_asymmetry · entry_confirmed · leverage_from_opportunity · score_beta_low.
+     Filosofia: QUALIDADE é PORTÃO (elimina < 70) — contradiz o "nada exclui" do modelo vivo.
+     Consumido por: SÓ os estudos de backtest (backtest/engine.py, engine2.py). Foi REMOVIDO
+     do caminho vivo (market_data.py) na Fase 2 — era saída órfã que o frontend nunca lia.
+     NÃO reintroduzir no app sem revisar a doutrina. Mantido aqui apenas para os backtests.
+
+Indicadores (recuperação, consistência, distância do topo, reversão) ficam em indicators_v2.py.
 """
 from typing import Dict, Optional, Tuple
 import numpy as np
@@ -143,6 +149,13 @@ def score_consistency(annual_return_std_pct: Optional[float]) -> float:
         return 0.0
     return _clamp(100 - ((std - 10) / 50) * 100)
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MODELO LEGADO (quality-gate) — BACKTEST-ONLY. Daqui até leverage_from_asymmetry
+# NÃO roda no app vivo (ver docstring do módulo). Usado só por backtest/engine*.py.
+# Os helpers acima (score_sharpe, score_fundamental_health) são COMPARTILHADOS com o
+# blend vivo — não são legado. A partir daqui, é portão (elimina < 70) = legado.
+# ══════════════════════════════════════════════════════════════════════════════
 
 def compute_quality_score_v2(
     sharpe: Optional[float] = None,
@@ -533,6 +546,9 @@ def leverage_from_asymmetry(
     }
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# FIM DO MODELO LEGADO ↑ · INÍCIO DO MODELO VIVO ↓ (ratificado, em produção)
+# ══════════════════════════════════════════════════════════════════════════════
 # ─────────────────────────── RANKING DE APORTE (Qualidade + Momento) ───────────────────────────
 # Filosofia do investidor: NADA exclui um ativo. Qualidade e Momento são PESOS,
 # não portões. Uma ótima empresa (WEGE, ITUB) sempre mostra Qualidade alta;

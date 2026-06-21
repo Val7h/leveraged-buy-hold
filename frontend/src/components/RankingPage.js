@@ -27,6 +27,8 @@ import {
   Minus,
   Trophy,
   X,
+  ShoppingCart,
+  CheckCircle2,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 // Lazy: o gráfico (recharts, pesado) só carrega quando o usuário clica num logo.
@@ -429,7 +431,7 @@ function momentumRaw(a) {
 /* Linha do ranking                                                    */
 /* ------------------------------------------------------------------ */
 
-function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick }) {
+function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy }) {
   const verdictCls = VERDICT_STYLE[asset.verdict] || "text-text-secondary bg-surface-2 border-border";
   const dotCls = VERDICT_DOT[asset.verdict] || "bg-text-muted";
   const stops = asset.staggered_stops || {};
@@ -622,7 +624,13 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick }) {
             </div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
+            <button
+              onClick={() => onBuy(asset)}
+              className="btn-primary flex items-center gap-2 text-sm"
+            >
+              <ShoppingCart size={14} /> Comprei — adicionar à carteira
+            </button>
             <button
               onClick={() => onRemove(asset)}
               className="flex items-center gap-1.5 text-xs text-text-muted hover:text-danger transition-colors"
@@ -701,6 +709,177 @@ function AddAssetForm({ defaultCategory, onSubmit, onClose, submitting, error })
 }
 
 /* ------------------------------------------------------------------ */
+/* Modal "Comprei → adicionar à carteira"                              */
+/* ------------------------------------------------------------------ */
+
+function todayISO() {
+  // YYYY-MM-DD no fuso local (sem puxar UTC e voltar um dia).
+  const d = new Date();
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 10);
+}
+
+function BuyToPortfolioModal({ asset, portfolios, onClose, onDone }) {
+  const hasPortfolios = portfolios && portfolios.length > 0;
+  const [portfolioId, setPortfolioId] = useState(hasPortfolios ? portfolios[0].id : "");
+  const [shares, setShares] = useState("");
+  const [avgPrice, setAvgPrice] = useState(
+    asset.current_price != null ? String(asset.current_price) : ""
+  );
+  const [openedAt, setOpenedAt] = useState(todayISO());
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(null); // {merged: bool}
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    const nShares = Number(shares);
+    const nPrice = Number(avgPrice);
+    if (!portfolioId) return setError("Selecione uma carteira.");
+    if (!(nShares > 0)) return setError("Quantidade deve ser maior que zero.");
+    if (!(nPrice > 0)) return setError("Preço médio deve ser maior que zero.");
+
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/v1/portfolio/${portfolioId}/positions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          ticker: asset.ticker,
+          shares: nShares,
+          avg_price: nPrice,
+          // Quantfury: alavancagem é MEDIDA pela carteira, não escolhida por posição.
+          leverage: 1,
+          opened_at: openedAt || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDone({ merged: !!data?.merged });
+      onDone?.();
+    } catch (e) {
+      setError("Não foi possível adicionar. Verifique os dados e tente de novo.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="card w-full max-w-md space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-text-primary flex items-center gap-2">
+            <ShoppingCart size={15} className="text-primary" />
+            Comprei {asset.ticker}
+          </span>
+          <button onClick={onClose} className="p-1 text-text-muted hover:text-text-primary">
+            <X size={16} />
+          </button>
+        </div>
+
+        {done ? (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <CheckCircle2 size={36} className="text-success" />
+            <div className="text-sm text-text-primary">
+              {done.merged
+                ? `Posição de ${asset.ticker} consolidada na carteira (preço médio recalculado).`
+                : `${asset.ticker} adicionado à carteira.`}
+            </div>
+            <button onClick={onClose} className="btn-ghost text-sm mt-1">Fechar</button>
+          </div>
+        ) : !hasPortfolios ? (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <AlertCircle size={28} className="text-warning" />
+            <div className="text-sm text-text-secondary">
+              Você ainda não tem carteira. Crie uma na aba <span className="text-text-primary font-medium">Portfólio</span> antes de registrar a compra.
+            </div>
+            <button onClick={onClose} className="btn-ghost text-sm mt-1">Entendi</button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            {portfolios.length > 1 && (
+              <div>
+                <label className="label">Carteira</label>
+                <select
+                  className="input"
+                  value={portfolioId}
+                  onChange={(e) => setPortfolioId(e.target.value)}
+                >
+                  {portfolios.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="label">Quantidade</label>
+                <input
+                  className="input"
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="100"
+                  value={shares}
+                  onChange={(e) => setShares(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="label">Preço médio {asset.currency === "BRL" ? "(R$)" : "($)"}</label>
+                <input
+                  className="input"
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={avgPrice}
+                  onChange={(e) => setAvgPrice(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="label">Data da compra</label>
+              <input
+                className="input"
+                type="date"
+                value={openedAt}
+                max={todayISO()}
+                onChange={(e) => setOpenedAt(e.target.value)}
+              />
+            </div>
+            <p className="text-[11px] text-text-muted">
+              A alavancagem não é por posição — é medida pela carteira (Quantfury). Se já houver
+              {" "}{asset.ticker} na carteira, as posições são consolidadas (preço médio recalculado).
+            </p>
+            {error && (
+              <div className="flex items-center gap-2 text-xs text-danger">
+                <AlertCircle size={12} /> {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="btn-primary w-full flex items-center justify-center gap-2 text-sm"
+            >
+              {submitting ? <Loader2 size={14} className="animate-spin" /> : <ShoppingCart size={14} />}
+              {submitting ? "Adicionando…" : "Adicionar à carteira"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Componente principal                                                */
 /* ------------------------------------------------------------------ */
 
@@ -717,6 +896,8 @@ export default function RankingPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
+  const [portfolios, setPortfolios] = useState([]); // carteiras do usuário (destino do "Comprei")
+  const [buyAsset, setBuyAsset] = useState(null);    // ativo escolhido para registrar compra
 
   const fetchRanking = useCallback(async () => {
     setRankLoading(true);
@@ -747,10 +928,22 @@ export default function RankingPage() {
     }
   }, []);
 
+  const fetchPortfolios = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/portfolio", { credentials: "include" });
+      if (!res.ok) return; // 401/erro → sem carteira; modal trata o caso vazio
+      const data = await res.json();
+      if (Array.isArray(data)) setPortfolios(data);
+    } catch {
+      /* silencioso — "Comprei" mostra orientação se não houver carteira */
+    }
+  }, []);
+
   useEffect(() => {
     fetchRanking();
     fetchMarket();
-  }, [fetchRanking, fetchMarket]);
+    fetchPortfolios();
+  }, [fetchRanking, fetchMarket, fetchPortfolios]);
 
   const handleAdd = async (payload) => {
     setAdding(true);
@@ -921,6 +1114,7 @@ export default function RankingPage() {
                 onToggle={toggle}
                 onRemove={handleRemove}
                 onLogoClick={setChartTicker}
+                onBuy={setBuyAsset}
               />
             ))}
           </div>
@@ -929,6 +1123,15 @@ export default function RankingPage() {
 
       {chartTicker && (
         <AssetChartModal ticker={chartTicker} onClose={() => setChartTicker(null)} />
+      )}
+
+      {buyAsset && (
+        <BuyToPortfolioModal
+          asset={buyAsset}
+          portfolios={portfolios}
+          onClose={() => setBuyAsset(null)}
+          onDone={fetchPortfolios}
+        />
       )}
     </div>
   );
