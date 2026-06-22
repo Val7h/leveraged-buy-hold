@@ -57,10 +57,12 @@ from app.api.v1 import assets, backtest, simulator, analytics
 # Ranking de aporte (stateless-safe): rotas já trazem o prefixo /api completo
 from app.api.v1 import ranking
 # TODO(sprint-2): FastAPI vira stateless. Routers DB-dependentes desativados.
-# from app.api.v1 import auth, portfolio, alerts, watchlist, logos, moderation, moderation_admin_dashboard, billing
+# auth.py, billing.py e news.py foram REMOVIDOS (código morto: billing era Stripe USD que
+# contradiz o /pricing Asaas/BRL; auth tinha rota dev insegura; news divergia do BFF). Se
+# sprint-2 reativar, reescrever para a realidade stateless/Prisma — não recuperar como estava.
+# from app.api.v1 import portfolio, alerts, watchlist, logos, moderation, moderation_admin_dashboard
 # from app.api.v1 import user_consent
 # from app.api.v1 import notifications
-# from app.api.v1 import news
 # from app.api.v1 import settings as settings_router
 # from app.api.v1 import preferences
 
@@ -216,17 +218,15 @@ def _warmup_ranking_cache():
 
     threading.Thread(target=_run, daemon=True).start()
 # TODO(sprint-2): FastAPI vira stateless. Routers DB-dependentes desativados.
-# app.include_router(auth.router, prefix="/api/v1")
+# (auth/billing/news removidos — ver nota nos imports acima.)
 # app.include_router(portfolio.router, prefix="/api/v1")
 # app.include_router(alerts.router, prefix="/api/v1")
 # app.include_router(watchlist.router, prefix="/api/v1")
 # app.include_router(logos.router, prefix="/api/v1")
 # app.include_router(moderation.router, prefix="/api/v1")
 # app.include_router(moderation_admin_dashboard.router, prefix="/api/v1")
-# app.include_router(billing.router, prefix="/api/v1")
 # app.include_router(user_consent.router, prefix="/api/v1")
 # app.include_router(notifications.router, prefix="/api/v1")
-# app.include_router(news.router, prefix="/api/v1")
 # app.include_router(settings_router.router)
 # app.include_router(preferences.router, prefix="/api")
 

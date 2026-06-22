@@ -15,6 +15,11 @@ import logging
 import requests_cache
 import os as _os
 _CACHE_DIR = _os.environ.get("YFINANCE_CACHE_DIR", "/tmp")
+# Preço SINTÉTICO (GBM) só é aceitável em backtests/estudos OFFLINE. Em caminho VIVO,
+# servir preço inventado como se fosse real pode disparar stop / recomendar alavancagem
+# sobre ficção. Default "0" = NUNCA fabrica no app vivo (retorna None; os consumidores
+# já degradam p/ "sem dados" → 404 / estado default / "nenhum dado"). Ligue só p/ backtest.
+_ALLOW_SYNTH = _os.environ.get("ALLOW_SYNTHETIC_PRICES", "0") == "1"
 _session = requests_cache.CachedSession(
     cache_name=f"{_CACHE_DIR}/yfinance_cache",
     expire_after=3600,         # 1 hora de cache
@@ -264,7 +269,7 @@ def fetch_price_history(
                 n_synthetic = 1260 - len(real_df)
                 years_map = {"1y": 1, "2y": 2, "3y": 3, "5y": 5, "10y": 10}
                 n_synth_days = int(years_map.get(period, 5) * 252) - len(real_df)
-                if n_synth_days > 0:
+                if _ALLOW_SYNTH and n_synth_days > 0:
                     synth = _synthetic_price_history(ticker, period)
                     # Mantém apenas os n_synth_days mais antigos do sintético
                     synth = synth.iloc[:n_synth_days]
@@ -274,8 +279,11 @@ def fetch_price_history(
                     real_df = pd.concat([synth, real_df])
                     logger.info(f"[BITGET+SYNTH] {ticker} — {len(real_df)} dias totais ({len(real_df) - n_synth_days} reais + {n_synth_days} sintéticos)")
             return real_df
-        # fallback sintético para tokenizadas
-        logger.warning(f"[BITGET] {ticker} — sem dados reais, usando sintético")
+        # SEM dados reais do Bitget. Sintético só offline; no app vivo → None (sem dados).
+        if not _ALLOW_SYNTH:
+            logger.warning(f"[BITGET] {ticker} — sem dados reais e sintético desligado → None")
+            return None
+        logger.warning(f"[BITGET] {ticker} — sem dados reais, usando sintético (ALLOW_SYNTHETIC_PRICES=1)")
         return _synthetic_price_history(ticker, period)
 
     # ── Upstash Redis: shared cache que sobrevive a cold start ────────────────
@@ -291,6 +299,9 @@ def fetch_price_history(
             tk = yf.Ticker(ticker, session=_session)
             df = tk.history(period=period, interval=interval, auto_adjust=True)
             if df.empty or len(df) < 50:
+                if not _ALLOW_SYNTH:
+                    logger.warning(f"Empty/insufficient data for {ticker} ({period}) — sintético desligado → None")
+                    return None
                 logger.warning(f"Empty/insufficient data for {ticker} ({period}) — falling back to synthetic")
                 return _synthetic_price_history(ticker, period)
             if isinstance(df.columns, pd.MultiIndex):
@@ -302,12 +313,19 @@ def fetch_price_history(
             err_str = str(e)
             logger.warning(f"Failed to fetch {ticker} (attempt {attempt+1}): {e}")
             if "RateLimit" in type(e).__name__ or "Too Many Requests" in err_str:
+                if not _ALLOW_SYNTH:
+                    logger.warning(f"Rate-limit em {ticker} — sintético desligado → None (sem dados)")
+                    return None
                 return _synthetic_price_history(ticker, period)
             if attempt < 2:
                 wait = 15 + attempt * 15   # 15s, 30s
                 logger.info(f"Aguardando {wait}s antes de retentar {ticker}...")
                 time.sleep(wait)
-    # All attempts exhausted — use synthetic rather than returning None
+    # Esgotou as tentativas. No app vivo NÃO fabrica: retorna None (consumidores degradam
+    # p/ "sem dados"). Sintético só com ALLOW_SYNTHETIC_PRICES=1 (backtests offline).
+    if not _ALLOW_SYNTH:
+        logger.warning(f"All fetch attempts failed for {ticker} ({period}) — sintético desligado → None")
+        return None
     logger.warning(f"All fetch attempts failed for {ticker} ({period}) — falling back to synthetic")
     return _synthetic_price_history(ticker, period)
 
