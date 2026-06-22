@@ -92,3 +92,49 @@ def test_momentum_blend_range():
                                reversal_confirmation=1, distance_ma200=-5)
     assert 0 <= m <= 100
     assert "stoch_lento_semanal" in bd
+
+
+# ───────── unidades de fundamentos: roe/fcf_yield devem sair FRAÇÃO (regressão) ─────────
+# Bug Fase 3: roe e fcf_yield eram gravados como % (ex 25, 8) enquanto o score
+# (score_fundamental_health) usa roe>=0.20 / fcf>=0.08 (FRAÇÃO) → pontuavam ~100
+# SEMPRE, neutralizando o sinal. Trava a unidade na origem (cada provider).
+from app.services import fundamentals_provider as F
+
+
+def test_fundamentals_roe_fcf_are_fractions(monkeypatch):
+    # brapi: returnOnEquity e freeCashflow/marketCap nativos = fração
+    monkeypatch.setenv("BRAPI_TOKEN", "x")
+    monkeypatch.setattr(F, "_http_json", lambda url: {"results": [{
+        "financialData": {"returnOnEquity": 0.25, "debtToEquity": 1.2, "freeCashflow": 8e9},
+        "defaultKeyStatistics": {"dividendYield": 0.06},
+        "marketCap": 1e11,
+    }]})
+    b = F._from_brapi("PETR4.SA")
+    assert b["roe"] is not None and abs(b["roe"] - 0.25) < 1e-6        # fração, não 25
+    assert b["fcf_yield"] is not None and abs(b["fcf_yield"] - 0.08) < 1e-6   # 8e9/1e11
+    assert abs(b["dividend_yield"] - 6.0) < 1e-6                       # DY continua em % (de propósito)
+
+    # finnhub: roeTTM nativo = % (ex 25) → ÷100 = fração
+    monkeypatch.setenv("FINNHUB_API_KEY", "x")
+    monkeypatch.setattr(F, "_http_json", lambda url: {"metric": {
+        "roeTTM": 25.0, "roicTTM": 18.0, "payoutRatioTTM": 40.0}})
+    fh = F._from_finnhub("AAPL")
+    assert abs(fh["roe"] - 0.25) < 1e-6
+    assert abs(fh["roic"] - 0.18) < 1e-6
+    assert abs(fh["payout_ratio"] - 0.40) < 1e-6
+
+    # fmp: returnOnEquityTTM e freeCashFlowYieldTTM nativos = fração
+    monkeypatch.setenv("FMP_API_KEY", "x")
+    monkeypatch.setattr(F, "_http_json", lambda url: [{
+        "returnOnEquityTTM": 0.25, "freeCashFlowYieldTTM": 0.09,
+        "payoutRatioTTM": 0.40, "roicTTM": 0.18, "debtEquityRatioTTM": 1.2}])
+    fm = F._from_fmp("AAPL")
+    assert abs(fm["roe"] - 0.25) < 1e-6
+    assert abs(fm["fcf_yield"] - 0.09) < 1e-6
+
+
+def test_fundamental_score_discriminates_on_roe():
+    # Com a unidade certa (fração), roe alto pontua mais que roe baixo (sinal volta a discriminar).
+    hi = S.score_fundamental_health(payout_ratio=None, debt_to_equity=None, roe=0.25)
+    lo = S.score_fundamental_health(payout_ratio=None, debt_to_equity=None, roe=0.05)
+    assert hi > lo
