@@ -103,3 +103,14 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Fail-LOUD (não crash) se em produção a SECRET_KEY ainda for o PLACEHOLDER — assim o JWT
+# seria assinável por qualquer um que conheça o default público. Aviso em vez de derrubar o
+# boot porque a auth VIVA é o BFF Node/jose (AUTH_SECRET); esta SECRET_KEY do FastAPI hoje é
+# vestigial (routers de auth desativados). Se reativar auth no FastAPI, vire isto um raise.
+if settings.is_production() and settings.SECRET_KEY == "change-this-secret-key-in-production":
+    import logging as _lg
+    _lg.getLogger(__name__).critical(
+        "[CONFIG] SECRET_KEY é o PLACEHOLDER público em produção — rotacione e defina SECRET_KEY "
+        "no ambiente antes de reativar qualquer auth do FastAPI."
+    )

@@ -13,10 +13,19 @@ export const runtime = "nodejs";
 // Auditoria: regex restritivo p/ evitar XSS stored (HTML/JS no fullName).
 const NAME_REGEX = /^[\p{L}\p{N}\s.'-]{1,120}$/u;
 
+// Vocabulário de risco fragmentado no app (select emite EN, Prisma usa PT, types usam "balanced").
+// Normaliza na BORDA para o canônico PT (igual ao default do Prisma) — antes o PATCH só aceitava
+// PT e TODO save vindo do select EN caía em 400.
+const RISK_MAP: Record<string, string> = {
+  conservative: "conservador", conservador: "conservador",
+  moderate: "moderado", balanced: "moderado", moderado: "moderado",
+  aggressive: "agressivo", agressivo: "agressivo",
+};
+
 const PatchSchema = z
   .object({
     fullName: z.string().trim().regex(NAME_REGEX, "invalid_name").optional(),
-    riskProfile: z.enum(["conservador", "moderado", "agressivo"]).optional(),
+    riskProfile: z.string().optional(), // aceita EN ou PT; normalizado abaixo via RISK_MAP
     email: z.string().optional(), // capturado apenas para devolver 501
   })
   .refine((v) => v.fullName !== undefined || v.riskProfile !== undefined || v.email !== undefined, {
@@ -64,7 +73,13 @@ export async function PATCH(request: NextRequest) {
 
   const data: { fullName?: string; riskProfile?: string } = {};
   if (parsed.fullName !== undefined) data.fullName = parsed.fullName;
-  if (parsed.riskProfile !== undefined) data.riskProfile = parsed.riskProfile;
+  if (parsed.riskProfile !== undefined) {
+    const canon = RISK_MAP[parsed.riskProfile.toLowerCase().trim()];
+    if (!canon) {
+      return NextResponse.json({ error: "invalid_risk_profile" }, { status: 400 });
+    }
+    data.riskProfile = canon;
+  }
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "no_fields_provided" }, { status: 400 });

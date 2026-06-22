@@ -94,6 +94,10 @@ def _http_json(url: str):
         except Exception:
             if not _ALLOW_INSECURE:
                 raise
+            # Fallback SEM verificação de cert — risco de MITM (dado forjado). NÃO é silencioso:
+            # loga ERRO para ser visível. Desligue setando ALLOW_INSECURE_SSL=0 no ambiente.
+            logger.error(f"[FUNDAMENTALS][SSL-INSEGURO] verificação TLS falhou; usando CERT_NONE "
+                         f"(risco MITM) p/ {url.split('?')[0]} — set ALLOW_INSECURE_SSL=0 p/ desligar")
             r = _urlreq.urlopen(req, timeout=_TIMEOUT, context=_CTX_NOVERIFY)
         with r:
             return _json.loads(r.read())
@@ -151,7 +155,10 @@ def _from_brapi(ticker: str) -> dict:
         roe = _to_float(fin.get("returnOnEquity"))
         out["roe"] = roe if roe is not None else None   # FRAÇÃO (brapi já manda fração; score usa roe>=0.20)
 
-        out["debt_to_equity"] = _to_float(fin.get("debtToEquity"))
+        # brapi às vezes manda D/E em PERCENTUAL (152.0 = 1.52x); o score usa MÚLTIPLO
+        # (limiares 0.5/3.0). D/E real > 5x é raríssimo → se vier > 5, quase certamente é % → ÷100.
+        _de = _to_float(fin.get("debtToEquity"))
+        out["debt_to_equity"] = (_de / 100.0) if (_de is not None and _de > 5.0) else _de
 
         # dividendYield aparece em defaultKeyStatistics (fração, ex 0.06); fallback p/ results
         dy = _to_float(stats.get("dividendYield"))

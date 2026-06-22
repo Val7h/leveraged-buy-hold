@@ -94,6 +94,7 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
     await portfolioApi.updatePosition(portfolioId, positionId, data);
     await get().fetchPositions(portfolioId);
     await get().fetchMetrics(portfolioId);
+    await get().fetchAnalytics(portfolioId);  // shares/avg_price mudam rotação/risco/stress
   },
 
   removePosition: async (portfolioId, positionId) => {
@@ -106,10 +107,12 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
   toggleSeed: async (portfolioId, positionId) => {
     await portfolioApi.toggleSeed(portfolioId, positionId);
     await get().fetchPositions(portfolioId);
+    await get().fetchAnalytics(portfolioId);  // is_seed muda rotação/venda
   },
 
   toggleCycle: async (portfolioId, positionId) => {
     await portfolioApi.toggleCycle(portfolioId, positionId);
     await get().fetchPositions(portfolioId);
+    await get().fetchAnalytics(portfolioId);  // is_cycle muda rotação/venda
   },
 }));

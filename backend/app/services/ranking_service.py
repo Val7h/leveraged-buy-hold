@@ -84,6 +84,10 @@ def _yahoo_chart_json(ticker: str, query: str):
         except Exception as e:
             last = e
     if _ALLOW_INSECURE:
+        # Fallback SEM verificação de cert — risco de MITM (preço forjado). NÃO silencioso:
+        # loga ERRO. Desligue com ALLOW_INSECURE_SSL=0 no ambiente (recomendado em prod).
+        logger.error(f"[CHART API][SSL-INSEGURO] verificação TLS falhou p/ {ticker}; usando "
+                     f"CERT_NONE (risco MITM) — set ALLOW_INSECURE_SSL=0 p/ desligar")
         try:
             req = _urlreq.Request(f"https://{_CHART_HOSTS[0]}/v8/finance/chart/{ticker}?{query}",
                                   headers={"User-Agent": "Mozilla/5.0"})

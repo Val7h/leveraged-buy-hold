@@ -21,17 +21,17 @@ export default function AssetComparisonModal({
     (a, b) => b.composite_score - a.composite_score
   );
 
-  // Helper functions
+  // Helper functions — scores são 0-100 (não 0-10). Limiares iguais ao RankingPage.scoreColor.
   const getScoreBg = (score: number) => {
-    if (score >= 8) return "bg-success/10";
-    if (score >= 7) return "bg-primary/10";
-    return "bg-warning/10";
+    if (score >= 70) return "bg-success/10";
+    if (score >= 45) return "bg-warning/10";
+    return "bg-danger/10";
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 8) return "text-success";
-    if (score >= 7) return "text-primary";
-    return "text-warning";
+    if (score >= 70) return "text-success";
+    if (score >= 45) return "text-warning";
+    return "text-danger";
   };
 
   const getSignalColor = (signal: string) => {

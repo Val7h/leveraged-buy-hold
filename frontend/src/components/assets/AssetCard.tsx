@@ -102,7 +102,7 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
           <p className="text-2xl font-bold text-text-primary font-mono group-hover:text-primary transition-colors">
             {formatCurrency(asset.current_price, asset.currency || "USD")}
           </p>
-          <p className="text-xs text-success mt-1">↗ +2.3%</p>
+          {/* Variação do dia removida: o detalhe do ativo não traz day_change real — não exibir número fabricado. */}
         </div>
       </div>
 

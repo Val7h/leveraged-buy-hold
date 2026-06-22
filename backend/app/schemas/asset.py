@@ -66,6 +66,10 @@ class AssetScore(BaseModel):
     ticker: str
     company_name: Optional[str] = None
     sector: Optional[str] = None
+    # Sem estes campos o Pydantic v2 PODAVA o que analyze_asset retorna → ações BR
+    # apareciam com "$" e sem badge BR. Declarados p/ não serem descartados na resposta.
+    currency: Optional[str] = None
+    is_brazilian: Optional[bool] = None
     current_price: float
     quality_score: float
     opportunity_score: float

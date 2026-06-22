@@ -3,9 +3,19 @@
 
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { timingSafeEqual } from "crypto";
 import { prisma } from "./db";
 
 export const COOKIE_NAME = "lbh_session";
+
+// Comparação de segredo em tempo CONSTANTE (evita timing attack no solo-mode).
+// timingSafeEqual exige buffers de MESMO tamanho → checa tamanho antes (vaza só o tamanho).
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 function getSecret(): Uint8Array {
@@ -70,7 +80,8 @@ export async function getCurrentUser() {
     soloSecret &&
     soloSecret.length >= 16 &&
     soloEmail &&
-    soloCookie === soloSecret
+    soloCookie &&
+    safeEqual(soloCookie, soloSecret)
   ) {
     return prisma.user.findUnique({
       where: { email: soloEmail.toLowerCase() },
