@@ -37,3 +37,8 @@ jobs:
           pip install pytest
       - name: Golden tests (lógica quant)
         run: python -m pytest tests/test_quant_golden.py -q
+      - name: Backtest determinístico (offline)
+        # Exercita a LÓGICA pura do motor ADC (lots/dívida-por-fluxo, stops
+        # escalonados, deploy de SHY em capitulação, point-in-time, B&H) sobre
+        # séries sintéticas inline. SEM rede (não toca o Yahoo) -> safe no CI.
+        run: python -m pytest tests/test_adc_backtest_offline.py -q

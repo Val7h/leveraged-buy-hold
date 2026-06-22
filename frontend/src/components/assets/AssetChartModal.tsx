@@ -5,7 +5,7 @@ import { formatCurrency, cn } from "@/lib/utils";
 import TickerLogo from "@/components/ui/TickerLogo";
 import {
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine, Legend,
+  Tooltip, ResponsiveContainer, ReferenceLine, Legend, Brush,
 } from "recharts";
 import { X, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
 
@@ -150,8 +150,8 @@ export default function AssetChartModal({ ticker, onClose }: AssetChartModalProp
               {/* Price + MA chart */}
               <div className="mb-1">
                 <p className="text-xs text-text-muted mb-2">Preço · MM50 · MM200</p>
-                <ResponsiveContainer width="100%" height={280}>
-                  <ComposedChart data={displayData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <ResponsiveContainer width="100%" height={320} minWidth={0}>
+                  <ComposedChart data={displayData} margin={{ top: 4, right: 8, left: 0, bottom: 8 }}>
                     <defs>
                       <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%"  stopColor={isPositive ? "#00E676" : "#FF5252"} stopOpacity={0.15} />
@@ -181,6 +181,16 @@ export default function AssetChartModal({ ticker, onClose }: AssetChartModalProp
                         {v === "close" ? "Preço" : v === "ma50" ? "MM50" : "MM200"}
                       </span>
                     )} />
+                    {/* Brush: pan/zoom de faixa por toque (mobile) + arrasto (desktop) */}
+                    <Brush
+                      dataKey="date"
+                      height={30}
+                      travellerWidth={14}
+                      gap={1}
+                      stroke="#00D4FF"
+                      fill="#0B0F14"
+                      tickFormatter={() => ""}
+                    />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

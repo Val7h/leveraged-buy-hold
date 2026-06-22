@@ -60,6 +60,7 @@ def _empty(source=None) -> dict:
     """Dict-padrão de retorno (shape estável). Nunca falta uma chave."""
     return {
         "roe": None,
+        "roic": None,
         "payout_ratio": None,
         "debt_to_equity": None,
         "dividend_yield": None,
@@ -180,6 +181,7 @@ def _from_finnhub(ticker: str) -> dict:
     Campos em 'metric' (Finnhub já entrega em %, NÃO multiplicar):
         beta            = beta
         roe             = roeTTM | roeAnnual            (já em %)
+        roic            = roicTTM | roiTTM | roicAnnual (Finnhub manda em %, ex 15) → ÷100 p/ fração
         payout_ratio    = payoutRatioTTM | payoutRatioAnnual
         debt_to_equity  = "totalDebt/totalEquityQuarterly" | ...Annual | "longTermDebt/equityAnnual"
         dividend_yield  = currentDividendYieldTTM | dividendYieldIndicatedAnnual  (já em %)
@@ -205,6 +207,9 @@ def _from_finnhub(ticker: str) -> dict:
             return None
 
         out["roe"] = pick("roeTTM", "roeAnnual")                       # já em % (igual brapi/FMP)
+        # roic: Finnhub manda em % (ex 15); o score espera FRAÇÃO (roic >= 0.15) → ÷100 (mesmo padrão do payout)
+        _roic = pick("roicTTM", "roiTTM", "roicAnnual")
+        out["roic"] = (_roic / 100.0) if _roic is not None else None
         # payout: Finnhub manda em % (ex 80); o score espera FRAÇÃO (igual FMP, ex 0.8) → ÷100
         _pay = pick("payoutRatioTTM", "payoutRatioAnnual")
         out["payout_ratio"] = (_pay / 100.0) if _pay is not None else None
@@ -231,6 +236,7 @@ def _from_fmp(ticker: str) -> dict:
 
     Mapeamento (nomes de campo tratados defensivamente p/ variações da API):
         roe            = returnOnEquityTTM                    (fração → ×100)
+        roic           = roicTTM | returnOnCapitalEmployedTTM (FMP já manda como fração, ex 0.15 → SEM conversão; score usa roic >= 0.15)
         payout_ratio   = payoutRatioTTM
         debt_to_equity = debtEquityRatioTTM | debtToEquityTTM | debtToEquityRatioTTM
         dividend_yield = dividendYieldTTM | dividendYielTTM   (fração → ×100)
@@ -267,6 +273,8 @@ def _from_fmp(ticker: str) -> dict:
 
             roe = pick("returnOnEquityTTM")
             out["roe"] = roe * 100.0 if roe is not None else None
+            # roic: FMP ratios-ttm entrega como FRAÇÃO (ex 0.15), igual payout → SEM ÷100; score usa roic >= 0.15
+            out["roic"] = pick("roicTTM", "returnOnCapitalEmployedTTM")
             out["payout_ratio"] = pick("payoutRatioTTM")
             out["debt_to_equity"] = pick(
                 "debtEquityRatioTTM", "debtToEquityTTM", "debtToEquityRatioTTM")

@@ -2,7 +2,7 @@
 import React from "react";
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer,
+  Tooltip, ResponsiveContainer, Brush,
 } from "recharts";
 import type { TradeMarker, TradeMarkerType } from "@/types";
 
@@ -113,8 +113,8 @@ interface Props {
 
 const PriceTradeChartRenderer = React.memo(
   ({ chartData, ticker, height }: Props) => (
-    <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+    <ResponsiveContainer width="100%" height={height} minWidth={0}>
+      <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#1E2730" />
         <XAxis
           dataKey="date"
@@ -140,6 +140,16 @@ const PriceTradeChartRenderer = React.memo(
           activeDot={{ r: 4, fill: "#00D4FF" }}
           connectNulls
           name={ticker}
+        />
+        {/* Brush: pan/zoom de faixa por toque (mobile) + arrasto (desktop) */}
+        <Brush
+          dataKey="date"
+          height={30}
+          travellerWidth={14}
+          gap={1}
+          stroke="#00D4FF"
+          fill="#0B0F14"
+          tickFormatter={() => ""}
         />
       </ComposedChart>
     </ResponsiveContainer>
