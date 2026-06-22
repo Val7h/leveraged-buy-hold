@@ -138,3 +138,38 @@ def test_fundamental_score_discriminates_on_roe():
     hi = S.score_fundamental_health(payout_ratio=None, debt_to_equity=None, roe=0.25)
     lo = S.score_fundamental_health(payout_ratio=None, debt_to_equity=None, roe=0.05)
     assert hi > lo
+
+
+# ───────── stress: liquidação pela regra QUANTFURY + mínima intradiária (regressão) ─────────
+# Quantfury liquida quando a PERDA = equity (~-100%, com buffer de slippage → -97%), checado na
+# MÍNIMA do dia (gap/intraday é irreversível) — NÃO na "margem de manutenção -85%" (corretora
+# tradicional, que a Quantfury não tem). Trava o modelo de cauda discutido com o usuário.
+def test_stress_liquidation_quantfury_and_intraday(monkeypatch):
+    from app.services import ranking_service as R
+
+    base = dt.date(2020, 2, 3)
+    def mkser(close_t, low_t=None):
+        out = []
+        for i in range(70):
+            d = base + dt.timedelta(days=i)
+            c = 100.0 if d != dt.date(2020, 3, 16) else close_t
+            lo = (low_t if (d == dt.date(2020, 3, 16) and low_t) else c)
+            out.append((d, c, min(lo, c)))
+        return out
+
+    monkeypatch.setattr(R, "_chart_api_df", lambda tk, days, want_div=False: (tk, None))
+    def run(close_t, low_t, notional):
+        monkeypatch.setattr(R, "_dated_close_low", lambda df: mkser(close_t, low_t))
+        res = P._stress_scenarios(
+            [{"ticker": "X", "notional": float(notional), "distance_ma200": None}],
+            1000.0, float(notional),
+        )
+        return [r for r in res if "COVID" in r["scenario"]][0]
+
+    # Mínima intradiária -26% liquida (eq -104%) mesmo com fechamento -20% recuperado (eq -80%).
+    c1 = run(80.0, 74.0, 4000)   # L=4
+    assert c1["liquidated"] is True and c1["equity_pct"] > -85
+    # Fechamento -22% (eq -88%): sob -85 velho liquidaria; pela regra Quantfury (-97%) NÃO.
+    assert run(78.0, None, 4000)["liquidated"] is False
+    # Regra Quantfury exata: 4x liquida a -25% do ativo (= -100% equity).
+    assert run(75.0, None, 4000)["liquidated"] is True

@@ -397,6 +397,27 @@ def _dated_closes(df) -> List[Tuple[dt.date, float]]:
     return out
 
 
+def _dated_close_low(df):
+    """[(date, close, low)] — close + MÍNIMA do dia (p/ liquidação INTRADIÁRIA no stress).
+    Sem coluna Low (ou Low inválido), usa o close como low (sem informação intradiária).
+    Garante low <= close (saneamento)."""
+    out = []
+    try:
+        closes = df["Close"].astype(float).values
+        lows = df["Low"].astype(float).values if "Low" in df.columns else closes
+        for ts, c, lo in zip(df.index, closes, lows):
+            try:
+                d = ts.date() if hasattr(ts, "date") else dt.date.fromisoformat(str(ts)[:10])
+                c = float(c)
+                lo = float(lo) if (lo and lo > 0) else c
+                out.append((d, c, min(lo, c)))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return out
+
+
 def _weekly_closes_from_df(df) -> List[float]:
     wk = {}
     for d, c in _dated_closes(df):

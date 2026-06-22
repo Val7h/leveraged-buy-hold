@@ -323,7 +323,12 @@ _STRESS_DEFS = [
     ("COVID 2020", "2020-02-01", "2020-04-30", True),
     ("Bear 2022 (juros)", "2022-01-01", "2022-10-31", True),
 ]
-_MARGIN_LIQ_PCT = 85.0   # liquida a -85% do equity (margem de manutenção, antes do zero total)
+# Liquidação na QUANTFURY: NÃO há margem de manutenção tradicional — a posição é liquidada
+# quando a PERDA acumulada = o equity alocado (equity ZERA → ~-100%; ex: 10x→notional -10%,
+# 4x→-25%, 2x→-50%). Buffer de slippage: em pânico/gap você sai um pouco ANTES do zero
+# (spread/execução) → liquida a -(100 - buffer)%. _LIQ_BUFFER_PCT ajusta conforme experiência real.
+_LIQ_BUFFER_PCT = 3.0
+_LIQ_EQUITY_PCT = 100.0 - _LIQ_BUFFER_PCT   # ex: -97% do equity = limiar de liquidação
 
 
 def _discount_factor(dist_ma200: Optional[float]) -> float:
@@ -339,71 +344,82 @@ def _discount_factor(dist_ma200: Optional[float]) -> float:
 
 def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) -> List[dict]:
     """STRESS TEST: replay de crashes reais na carteira ATUAL, alavancada.
-    Reconstrói a SÉRIE PONDERADA da CESTA dentro da janela e tira o tombo DELA — NÃO soma o
-    fundo individual de cada ativo (fundos não são simultâneos → somar superestima a perda).
-    Liquidação é PATH-DEPENDENT: dispara se o equity TOCA a margem de manutenção (-85%) em
-    QUALQUER ponto do caminho, não só no fim (a liquidação é irreversível).
-    Dá dois números: pior caso (entrada no início da janela) e ajustado pelo desconto atual."""
+    Reconstrói a SÉRIE PONDERADA da CESTA na janela (NÃO soma fundos não-simultâneos).
+    LIQUIDAÇÃO (regra Quantfury): liquida quando a PERDA = equity alocado (equity zera, ~-100%;
+    com buffer de slippage → -_LIQ_EQUITY_PCT). Checada na MÍNIMA INTRADIÁRIA (gap/mínima do dia
+    é irreversível), não só no fechamento — path-dependent.
+    Dá dois números: pior caso (entrada no início) e ajustado pelo desconto atual."""
     if not (equity and risk_notional > 0 and rrows):
         return []
-    from app.services.ranking_service import _chart_api_df, _dated_closes
+    from app.services.ranking_service import _chart_api_df, _dated_close_low
     L = risk_notional / equity
+    liq_threshold = -_LIQ_EQUITY_PCT     # ex: -97% do equity (≈ zero, com buffer de slippage)
     series = {}
     for r in rrows:
         try:
             df, _ = _chart_api_df(r["ticker"], 25 * 366, want_div=False)
             if df is not None:
-                series[r["ticker"]] = list(_dated_closes(df))
+                series[r["ticker"]] = list(_dated_close_low(df))   # [(date, close, low)]
         except Exception:
             continue
     out = []
     for name, s, e, allow_disc in _STRESS_DEFS:
         sd, ed = dt.date.fromisoformat(s), dt.date.fromisoformat(e)
-        # Ativos cobertos na janela (≥5 pregões), peso = notional / Σnotional cobertos.
-        # covered: (notional, start_px, {date:close}, [datas ordenadas], discount_factor)
+        # covered: (notional, start_close, {date:(close,low)}, [datas ordenadas], discount_factor)
         covered = []
         for r in rrows:
             ser = series.get(r["ticker"])
             if not ser:
                 continue
-            win = sorted((d, c) for d, c in ser if sd <= d <= ed and c and c > 0)
+            win = sorted((d, c, lo) for d, c, lo in ser if sd <= d <= ed and c and c > 0)
             if len(win) < 5:
                 continue                      # ativo não existia/sem dados na época
             f = _discount_factor(r.get("distance_ma200")) if allow_disc else 1.0
-            covered.append((r["notional"], win[0][1], dict(win), [d for d, _ in win], f))
+            wmap = {d: (c, lo) for d, c, lo in win}
+            covered.append((r["notional"], win[0][1], wmap, [d for d, _, _ in win], f))
         tot_w = sum(n for n, *_ in covered)
         if tot_w <= 0:
             continue
-        # Eixo de datas = união dos pregões dos cobertos; forward-fill por ativo (ponteiro O(n)).
+        # Eixo de datas = união dos pregões; forward-fill por ativo (ponteiro O(n)).
+        # 4 caminhos da cesta (1.0=início): FECHAMENTO (tombo reportado), fechamento×desconto,
+        # e os mesmos pela MÍNIMA intradiária (gatilho de liquidação irreversível).
         all_dates = sorted({d for _, _, _, dates, _ in covered for d in dates})
         ptrs = [0] * len(covered)
-        last_px = [c[1] for c in covered]            # começa no start_px (ratio 1.0)
-        path, path_adj = [], []                       # valor da cesta (1.0 = início) por data
+        last_close = [c[1] for c in covered]                  # começa no start_close (ratio 1.0)
+        path, path_adj, path_low, path_low_adj = [], [], [], []
         for d in all_dates:
-            val = val_adj = 0.0
+            vc = vca = vlow = vlowa = 0.0
             for i, (n, start_px, wmap, dates, f) in enumerate(covered):
+                low_today = None
                 while ptrs[i] < len(dates) and dates[ptrs[i]] <= d:
-                    last_px[i] = wmap[dates[ptrs[i]]]
+                    cc, ll = wmap[dates[ptrs[i]]]
+                    last_close[i] = cc
+                    if dates[ptrs[i]] == d:
+                        low_today = ll
                     ptrs[i] += 1
-                ratio = (last_px[i] / start_px) if start_px else 1.0
                 w = n / tot_w
-                val += w * ratio
-                val_adj += w * (1.0 + f * (ratio - 1.0))   # desconto escala só a QUEDA
-            path.append(val); path_adj.append(val_adj)
-        basket = (min(path) - 1.0) * 100              # tombo da CESTA (início→pior ponto)
+                cratio = (last_close[i] / start_px) if start_px else 1.0
+                lratio = (low_today / start_px) if (low_today and start_px) else cratio
+                vc += w * cratio
+                vca += w * (1.0 + f * (cratio - 1.0))         # desconto escala só a QUEDA
+                vlow += w * lratio
+                vlowa += w * (1.0 + f * (lratio - 1.0))
+            path.append(vc); path_adj.append(vca); path_low.append(vlow); path_low_adj.append(vlowa)
+        basket = (min(path) - 1.0) * 100                       # tombo da cesta no FECHAMENTO
         basket_adj = (min(path_adj) - 1.0) * 100
-        eq_path = [(v - 1.0) * L * 100 for v in path]          # equity ao longo do caminho
-        eq_path_adj = [(v - 1.0) * L * 100 for v in path_adj]
-        eq_min, eq_min_adj = min(eq_path), min(eq_path_adj)    # pior ponto (path-dependent)
+        eq_min = (min(path) - 1.0) * L * 100                   # equity no pior fechamento
+        eq_min_adj = (min(path_adj) - 1.0) * L * 100
+        eq_low = (min(path_low) - 1.0) * L * 100               # equity na pior MÍNIMA (liquidação)
+        eq_low_adj = (min(path_low_adj) - 1.0) * L * 100
         out.append({
             "scenario": name,
             "basket_pct": round(basket, 1),
             "basket_pct_adj": round(basket_adj, 1),
             "equity_pct": round(max(eq_min, -100.0), 1),
             "equity_pct_adj": round(max(eq_min_adj, -100.0), 1),
-            # liquidação intra-janela: equity TOCOU a margem (-85%) em algum ponto do caminho
-            "liquidated": eq_min <= -_MARGIN_LIQ_PCT,
-            "liquidated_adj": eq_min_adj <= -_MARGIN_LIQ_PCT,
+            # Liquidação Quantfury (perda=equity, ~-100% com buffer slippage), na MÍNIMA intradiária.
+            "liquidated": eq_low <= liq_threshold,
+            "liquidated_adj": eq_low_adj <= liq_threshold,
             "coverage": f"{len(covered)}/{len(rrows)}",
         })
     return out
@@ -631,16 +647,16 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                 cumr = np.cumprod(1 + portr); rmr = np.maximum.accumulate(cumr)
                 maxdd_b = float(((cumr - rmr) / rmr).min() * 100)
                 L = risk_notional / eq
-                liq_zero = round(100.0 / L, 1) if L > 0 else None        # zera o equity
-                liq_margin = round(_MARGIN_LIQ_PCT / L, 1) if L > 0 else None  # margem manutenção
+                liq_zero = round(100.0 / L, 1) if L > 0 else None             # queda da cesta que ZERA o equity (perda=equity)
+                liq_dist = round(_LIQ_EQUITY_PCT / L, 1) if L > 0 else None    # queda que LIQUIDA (Quantfury, com buffer slippage)
                 risk = {
                     "leverage": round(L, 2),
                     "var95_equity_daily": round(var_d * 100 * L, 2),       # VaR diário em % do EQUITY
                     "maxdd_basket": round(maxdd_b, 1),                      # pior tombo da cesta (3a)
                     "maxdd_equity": round(max(maxdd_b * L, -100.0), 1),     # como isso bate no equity
-                    "liquidation_distance_pct": liq_margin,                # queda da cesta até a margem (-85% equity)
-                    "liquidation_distance_zero": liq_zero,                 # queda que zera de vez o equity
-                    "liquidated_in_worst": ((maxdd_b * L) <= -_MARGIN_LIQ_PCT) if liq_margin else None,
+                    "liquidation_distance_pct": liq_dist,                  # queda da cesta que liquida (Quantfury: perda=equity)
+                    "liquidation_distance_zero": liq_zero,                 # queda que zera exatamente o equity (sem buffer)
+                    "liquidated_in_worst": ((maxdd_b * L) <= -_LIQ_EQUITY_PCT) if liq_dist else None,
                 }
         except Exception:
             pass
