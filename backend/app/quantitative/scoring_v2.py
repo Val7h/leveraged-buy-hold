@@ -714,19 +714,23 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
     s_beta = score_beta_contextual(beta, momentum, is_tatico=is_tatico)
     s_dd = _clamp(score_maxdd_quality(max_dd_pct) * dd_recovery_mult)
     s_sharpe = score_sharpe(sharpe)
-    s_cagr = score_cagr(cagr if cagr is not None else growth_5y)
+    # DE-DUPLICAÇÃO (#15 passo 1): antes cagr/crescimento/tsr eram TODOS o mesmo g5 de PREÇO
+    # (no ranking: cagr=g5, tsr=dy+g5) → preço-growth contava 3x e o dividendo 2x na Qualidade,
+    # confundindo "ação cara" com "empresa boa". Agora g5 conta UMA vez (crescimento) e o
+    # dividendo UMA vez (dividendos). cagr/tsr_expected ficam na assinatura por compat, mas
+    # NÃO entram mais no score.
     s_gro = score_growth_5y(growth_5y)
-    s_tsr = score_tsr_expected(tsr_expected)
     s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield)
              if dy_avg10 is not None else score_dividend_q(dividend_yield))
     s_fun = score_fundamental_health(payout_ratio, debt_to_equity, roe, roic, fcf_yield)
     breakdown = {"beta": round(s_beta), "max_drawdown": round(s_dd),
-                 "sharpe": round(s_sharpe), "cagr": round(s_cagr),
-                 "crescimento_5a": round(s_gro), "tsr_esperado": round(s_tsr),
+                 "sharpe": round(s_sharpe), "crescimento_5a": round(s_gro),
                  "dividendos": round(s_div), "fundamentos": round(s_fun)}
-    # Pesos ajustados (gestor sênior): menos retrovisor, mais forward/solidez.
-    q = (s_beta*0.10 + s_dd*0.15 + s_sharpe*0.10 + s_cagr*0.08
-         + s_gro*0.11 + s_tsr*0.16 + s_div*0.14 + s_fun*0.16)
+    # Pesos renormalizados p/ somar 1.0 após remover as duplicatas → naturalmente desloca peso
+    # pra FUNDAMENTOS (qualidade real, 0.16→0.22) e risco. INTERINO: pesos finais + métrica de
+    # qualidade REAL (receita/lucro, não preço) e peso Qualidade×Oportunidade pendentes do painel.
+    q = (s_beta*0.13 + s_dd*0.20 + s_sharpe*0.13
+         + s_gro*0.14 + s_div*0.18 + s_fun*0.22)
     return round(_clamp(q), 1), breakdown
 
 
