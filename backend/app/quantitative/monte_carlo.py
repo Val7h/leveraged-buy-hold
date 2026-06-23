@@ -166,51 +166,117 @@ def _path_max_drawdown(path: np.ndarray) -> float:
     return round(mdd * 100.0, 2)
 
 
+# ── ESTRATÉGIA MASTER (ADC) — parâmetros da simulação fiel ────────────────────
+# (#4 passo 2) A simulação deixa de usar um `linspace` de alavancagem sobre o
+# PATRIMÔNIO e passa a seguir a doutrina: alavanca só os FLUXOS NOVOS, com dívida
+# FIXA por fluxo (→ desalavancagem natural), stop escalonado e reserva SHY.
+_STOP_BANDS = (-0.10, -0.20, -0.30)   # stop escalonado: vende 1/3 em cada banda nova
+_SHY_BUILD_FRAC = 0.25                 # topo/correção: 25% do fluxo vira reserva SHY
+_REGIME_TOPO = -0.05                   # dd do pico >= -5%  → topo (protege)
+_REGIME_CORRECAO = -0.20               # -5% .. -20%        → correção
+_REGIME_URSO = -0.35                   # -20% .. -35%       → urso; < -35% → capitulação
+
+
+def _regime_leverage(dd_from_peak: float, max_leverage: float) -> Tuple[float, str]:
+    """Alavancagem-alvo dos NOVOS FLUXOS conforme o regime.
+    Regime = drawdown do pico do PRÓPRIO caminho (proxy auto-referente, já que um
+    caminho sintético não tem um índice externo de mercado). Topo protege (menor
+    multiplicador); capitulação ataca (teto do perfil)."""
+    if dd_from_peak >= _REGIME_TOPO:
+        return max(1.0, max_leverage * 0.50), "topo"
+    if dd_from_peak >= _REGIME_CORRECAO:
+        return max(1.0, max_leverage * 0.70), "correcao"
+    if dd_from_peak >= _REGIME_URSO:
+        return max(1.0, max_leverage * 0.85), "urso"
+    return max_leverage, "capitulacao"
+
+
 def simulate_portfolio(
     initial_equity: float,
     monthly_contribution: float,
     annual_returns: np.ndarray,
-    leverage_schedule: np.ndarray,
+    max_leverage: float,
     dividend_yield_annual: float,
     inflation_rate: float,
     horizon_months: int,
     drip: bool = True,
-) -> Tuple[np.ndarray, float]:
+) -> Tuple[np.ndarray, bool, np.ndarray]:
     """
-    Simulate a single portfolio path.
-    drip=True  → dividends reinvested (aumenta equity)
-    drip=False → dividends paid out as cash (não compõem; mostrados separadamente)
-    Returns (equity_path, is_ruined, total_dividends_paid_out)
+    Simula UM caminho SEGUINDO A ESTRATÉGIA MASTER (Alavancagem Dinâmica Composta):
+      • o aporte INICIAL entra SEM alavancagem (a doutrina alavanca fluxos, não o patrimônio);
+      • cada mês, o FLUXO NOVO (aporte + dividendos) é deployado com alavancagem por regime,
+        criando dívida FIXA (a dívida não cresce com o mercado) → desalavancagem natural
+        quando os ativos sobem;
+      • stop escalonado -10/-20/-30% do pico: vende 1/3 e abate dívida (sobrevivência);
+      • reserva SHY (sem alavancagem) construída no topo/correção e DEPLOYADA (munição de
+        ataque) no urso/capitulação.
+    drip=True  → dividendos reinvestidos como fluxo;  drip=False → pagos como renda (não compõem).
+    Retorna (equity_path, ruined, measured_leverage_path).
     """
-    equity = initial_equity
+    assets = initial_equity      # exposição em risco (notional) — começa SEM alavancagem
+    debt = 0.0                   # dívida (fixa por fluxo; não acompanha o mercado)
+    shy = 0.0                    # reserva de ataque (cash-like, sem alavancagem)
+
     path = np.zeros(horizon_months + 1)
-    path[0] = equity
+    lev_path = np.zeros(horizon_months + 1)
+    path[0] = initial_equity
+    lev_path[0] = 1.0
     ruined = False
-    dividends_paid_out = 0.0
+    peak_assets = assets
+    triggered: set = set()       # stops já disparados desde o último pico
 
     for t in range(horizon_months):
-        lev = leverage_schedule[t] if t < len(leverage_schedule) else 1.0
-        monthly_ret = annual_returns[t]
-        leveraged_ret = lev * monthly_ret
+        # 1) mercado mexe nos ATIVOS; a dívida NÃO muda (causa desalavancagem natural)
+        assets *= (1.0 + annual_returns[t])
 
-        equity = equity * (1 + leveraged_ret)
-        equity += monthly_contribution * (1 + inflation_rate / 12) ** (-t / 12)
+        # 2) pico + drawdown do caminho (proxy de regime)
+        if assets > peak_assets:
+            peak_assets = assets
+            triggered.clear()    # novo pico zera os stops
+        dd = (assets / peak_assets) - 1.0 if peak_assets > 0 else 0.0
 
-        div_income = equity * (dividend_yield_annual / 12)
-        if drip:
-            equity += div_income          # reinveste — compõe o patrimônio
+        # 3) stop escalonado: em cada banda NOVA, vende 1/3 e abate dívida (sobrevivência)
+        for k, band in enumerate(_STOP_BANDS):
+            if dd <= band and k not in triggered:
+                triggered.add(k)
+                sell = assets / 3.0
+                assets -= sell
+                pay = min(debt, sell)
+                debt -= pay
+                shy += (sell - pay)   # sobra do stop vira reserva (munição)
+
+        # 4) dividendos = fluxo proporcional aos ATIVOS
+        div_income = assets * (dividend_yield_annual / 12.0)
+
+        # 5) fluxo novo do mês (aporte corrigido + dividendos se DRIP)
+        contrib = monthly_contribution * (1 + inflation_rate / 12) ** (-t / 12)
+        flow = contrib + (div_income if drip else 0.0)
+
+        # 6) regime → alavancagem dos fluxos + comportamento do SHY
+        lev, regime = _regime_leverage(dd, max_leverage)
+        if regime in ("topo", "correcao"):
+            to_shy = flow * _SHY_BUILD_FRAC   # constrói reserva (parte do fluxo, sem alavancagem)
+            shy += to_shy
+            deploy = flow - to_shy
         else:
-            dividends_paid_out += div_income  # paga como renda, não compõe
+            deploy = flow + shy               # urso/capitulação: solta a reserva de ataque
+            shy = 0.0
 
-        equity = max(equity, 0.0)
+        # 7) alavanca SÓ o fluxo deployado: compra lev*deploy; dívida += (lev-1)*deploy
+        assets += lev * deploy
+        debt += (lev - 1.0) * deploy
 
-        if equity < initial_equity * 0.05:
+        # 8) equity + ruína
+        equity = assets + shy - debt
+        if equity <= initial_equity * 0.05:
             ruined = True
             equity = 0.0
+            assets = debt = shy = 0.0
 
-        path[t + 1] = equity
+        path[t + 1] = max(equity, 0.0)
+        lev_path[t + 1] = (assets / equity) if equity > 1e-9 else 0.0
 
-    return path, ruined
+    return path, ruined, lev_path
 
 
 def run_monte_carlo(
@@ -236,10 +302,13 @@ def run_monte_carlo(
     max_lev_map = {"conservative": 2.0, "balanced": 3.0, "aggressive": 4.0}
     max_leverage = max_lev_map.get(risk_profile, 3.0)
 
-    leverage_schedule = np.linspace(starting_leverage, 1.0, horizon_months)
-    leverage_schedule = np.clip(leverage_schedule, 1.0, max_leverage)
+    # (#4 passo 2) `starting_leverage` foi aposentado: a alavancagem agora é dinâmica
+    # por regime sobre os FLUXOS (ver simulate_portfolio). Mantido na assinatura só por
+    # compatibilidade do caller.
+    _ = starting_leverage
 
     paths = np.zeros((n_simulations, horizon_months + 1))
+    lev_paths = np.zeros((n_simulations, horizon_months + 1))
     ruin_count = 0
 
     for i in range(n_simulations):
@@ -250,17 +319,18 @@ def run_monte_carlo(
             # GBM mensal → retorno SIMPLES mensal (mesma escala do bootstrap)
             monthly_rets = np.expm1(gbm_path(mu, sigma, dt, horizon_months))
 
-        path, ruined = simulate_portfolio(
+        path, ruined, lev_path = simulate_portfolio(
             initial_equity,
             monthly_contribution,
             monthly_rets,
-            leverage_schedule,
+            max_leverage,
             dividend_yield,
             inflation_rate,
             horizon_months,
             drip=drip,
         )
         paths[i] = path
+        lev_paths[i] = lev_path
         if ruined:
             ruin_count += 1
 
@@ -298,8 +368,11 @@ def run_monte_carlo(
     median_final = float(np.median(final_values))
     median_cagr = (median_final / initial_equity) ** (1 / horizon_years) - 1 if median_final > 0 else 0.0
 
+    # alavancagem MEDIDA (mediana dos caminhos) — mostra a desalavancagem natural real,
+    # não mais um schedule chumbado. Sobe quando entram fluxos alavancados e cai sozinha
+    # conforme os ativos compõem.
     leverage_evolution = [
-        {"month": t, "year": round(t / 12, 1), "leverage": round(float(leverage_schedule[min(t, len(leverage_schedule)-1)]), 3)}
+        {"month": t, "year": round(t / 12, 1), "leverage": round(float(np.median(lev_paths[:, t])), 3)}
         for t in time_axis
     ]
 

@@ -145,6 +145,49 @@ def test_momentum_blend_range():
     assert "stoch_lento_semanal" in bd
 
 
+# ───────── Simulador fiel à ESTRATÉGIA MASTER (ADC) — #4 passo 2 ─────────
+# O Monte Carlo deixou de alavancar o PATRIMÔNIO via linspace e passou a seguir a
+# doutrina: aporte inicial SEM alavancagem, fluxos novos alavancados com dívida FIXA
+# (→ desalavancagem natural), stop escalonado e reserva SHY. Trava o comportamento.
+from app.quantitative import monte_carlo as MC
+
+
+def test_adc_sim_regime_leverage_ladder():
+    # topo protege (menor), capitulação ataca (teto do perfil)
+    assert MC._regime_leverage(0.0, 3.0)[1] == "topo"
+    assert MC._regime_leverage(-0.50, 3.0) == (3.0, "capitulacao")
+    topo = MC._regime_leverage(0.0, 3.0)[0]
+    cap = MC._regime_leverage(-0.50, 3.0)[0]
+    assert topo < cap  # topo menos alavancado que capitulação
+
+
+def test_adc_sim_initial_flow_unlevered_and_natural_deleverage():
+    # vale (alavanca os fluxos) seguido de recuperação (desalavanca sozinho)
+    rets = np.concatenate([np.full(8, -0.06), np.full(40, 0.02)])
+    path, ruined, lev = MC.simulate_portfolio(
+        1000.0, 200.0, rets, 3.0, 0.02, 0.03, 48, drip=True)
+    assert lev[0] == 1.0                 # aporte inicial entra SEM alavancagem
+    assert max(lev) > lev[0]             # fluxos no vale criam alavancagem
+    assert max(lev) > lev[-1]            # desalavancagem natural na recuperação
+    assert path[-1] > 0 and not ruined
+
+
+def test_adc_sim_run_monte_carlo_measured_leverage_shape():
+    import pandas as pd
+    np.random.seed(11)
+    idx = pd.date_range("2010-01-01", periods=1260, freq="B")
+    prices = pd.Series(100 * np.cumprod(1 + np.random.normal(0.0004, 0.012, 1260)), index=idx)
+    res = MC.run_monte_carlo(prices, 1000.0, 100.0, horizon_years=5,
+                             risk_profile="balanced", n_simulations=120, drip=True)
+    le = res["leverage_evolution"]
+    assert le[0]["leverage"] == 1.0     # medida começa em 1.0 (base sem alavancagem)
+    assert all(p["leverage"] >= 1.0 for p in le)  # alavancagem medida nunca < 1
+    # shape do contrato com o frontend preservado
+    for k in ("leverage_evolution", "dividend_accumulation", "contribution_breakdown",
+              "percentiles", "scenarios", "ruin_probability"):
+        assert k in res
+
+
 # ───────── unidades de fundamentos: roe/fcf_yield devem sair FRAÇÃO (regressão) ─────────
 # Bug Fase 3: roe e fcf_yield eram gravados como % (ex 25, 8) enquanto o score
 # (score_fundamental_health) usa roe>=0.20 / fcf>=0.08 (FRAÇÃO) → pontuavam ~100
