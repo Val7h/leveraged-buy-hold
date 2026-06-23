@@ -356,15 +356,20 @@ def get_fundamentals(ticker: str) -> dict:
     """
     Retorna fundamentos confiáveis de um ticker. NUNCA lança.
 
-    Returns:
+    Returns (CONTRATO DE UNIDADES — não mexer sem alinhar com o score):
         {
-            "roe": float|None,            # %, ex 24.27
-            "payout_ratio": float|None,   # fração/razão conforme a fonte
+            "roe": float|None,            # FRAÇÃO, ex 0.2427 (score usa roe>=0.20)
+            "roic": float|None,           # FRAÇÃO, ex 0.18  (score usa roic>=0.15)
+            "payout_ratio": float|None,   # FRAÇÃO, ex 0.40  (score usa 0.2..0.7)
             "debt_to_equity": float|None, # múltiplo, ex 1.52
-            "dividend_yield": float|None, # %, ex 6.0
-            "fcf_yield": float|None,      # %, ex 16.2
-            "source": "fmp"|"brapi"|None,
+            "dividend_yield": float|None, # %, ex 6.0        (score_dividend_q usa <3 / <=7)
+            "fcf_yield": float|None,      # FRAÇÃO, ex 0.08  (score usa fcf_yield>=0.08)
+            "rev_growth_5y"/"eps_growth_5y"/"*_ttm": float|None,  # %, ex 12.5 (score_growth_5y usa >=15)
+            "source": "fmp"|"brapi"|"finnhub"|None,
         }
+        ATENÇÃO: roe/roic/payout/fcf_yield saem em FRAÇÃO; só dividend_yield e os growth
+        ficam em %. Finnhub manda roe/roic/payout em % → cada _from_* já faz ÷100. Travado
+        por golden test_fundamentals_roe_fcf_are_fractions — NÃO reintroduzir ÷100 duplo.
 
     Cache em memória com TTL ~6h.
     """
@@ -386,6 +391,27 @@ def get_fundamentals(ticker: str) -> dict:
             result = _empty(None)
         elif key.endswith(".SA"):
             result = _from_brapi(key)
+            # brapi (free) costuma NAO trazer roe/roic/fcf_yield/payout p/ BR -> tenta FMP
+            # (cobre varios .SA, ex PETR4.SA) e PREENCHE so as lacunas (nao sobrescreve o
+            # que o brapi ja trouxe). Espelha o merge do ramo US. FMP ja devolve fracao
+            # nesses campos -> NAO adicionar /100 (contrato de unidades preservado).
+            if (result.get("roe") is None or result.get("roic") is None
+                    or result.get("fcf_yield") is None):
+                try:
+                    fmp = _from_fmp(key)
+                    for k in ("roe", "roic", "fcf_yield", "payout_ratio", "debt_to_equity",
+                              "rev_growth_5y", "eps_growth_5y", "rev_growth_ttm",
+                              "eps_growth_ttm", "dividend_yield", "beta"):
+                        if result.get(k) is None and fmp.get(k) is not None:
+                            result[k] = fmp[k]
+                    if result.get("source") in (None, "brapi") and any(
+                            fmp.get(k) is not None
+                            for k in ("roe", "roic", "fcf_yield", "payout_ratio")):
+                        result["source"] = (
+                            (result.get("source") + "+fmp")
+                            if result.get("source") else "fmp")
+                except Exception as e:
+                    logger.warning(f"[FUNDAMENTALS] FMP fallback BR falhou p/ {key}: {e}")
         else:
             # US/mundo: Finnhub PRIMEIRO (grátis, traz beta junto); FMP como fallback.
             result = _from_finnhub(key)

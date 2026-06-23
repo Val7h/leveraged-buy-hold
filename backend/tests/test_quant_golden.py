@@ -227,6 +227,42 @@ def test_fundamentals_roe_fcf_are_fractions(monkeypatch):
     assert abs(fm["fcf_yield"] - 0.09) < 1e-6
 
 
+def test_br_fundamentals_fmp_fallback_fills_gaps(monkeypatch):
+    # Ramo .SA: brapi (free) NAO traz roe/roic/fcf -> get_fundamentals deve cair no FMP
+    # e preencher as lacunas em FRACAO (sem /100 duplo). Trava a via FMP-para-BR.
+    F._CACHE.clear()  # TTL ~6h: garante que nao volte cache velho
+    monkeypatch.setenv("BRAPI_TOKEN", "x")
+    monkeypatch.setenv("FMP_API_KEY", "x")
+
+    def fake_http(url):
+        # brapi: results/financialData; FMP ratios-ttm: lista [{...TTM...}]
+        if "brapi.dev" in url:
+            # brapi traz so dividend_yield e debt_to_equity; roe/roic/fcf ausentes (None)
+            return {"results": [{
+                "financialData": {"debtToEquity": 1.5},
+                "defaultKeyStatistics": {"dividendYield": 0.07},
+            }]}
+        if "financialmodelingprep.com" in url:
+            # FMP devolve roe/roic/fcf em FRACAO (ja e o contrato)
+            return [{
+                "returnOnEquityTTM": 0.25, "roicTTM": 0.18,
+                "freeCashFlowYieldTTM": 0.09, "payoutRatioTTM": 0.40}]
+        return None
+
+    monkeypatch.setattr(F, "_http_json", fake_http)
+
+    r = F.get_fundamentals("ABCD9.SA")  # ticker fora do cache
+    # roe/roic/fcf vieram pela via FMP, em FRACAO (nao 25/18/9)
+    assert r["roe"] is not None and abs(r["roe"] - 0.25) < 1e-6
+    assert r["roic"] is not None and abs(r["roic"] - 0.18) < 1e-6
+    assert r["fcf_yield"] is not None and abs(r["fcf_yield"] - 0.09) < 1e-6
+    assert r["payout_ratio"] is not None and abs(r["payout_ratio"] - 0.40) < 1e-6
+    # brapi NAO foi sobrescrito: dividend_yield em % (0.07 -> 7.0) e D/E multiplo
+    assert abs(r["dividend_yield"] - 7.0) < 1e-6
+    assert abs(r["debt_to_equity"] - 1.5) < 1e-6
+    assert "fmp" in (r["source"] or "")
+
+
 def test_fundamental_score_discriminates_on_roe():
     # Com a unidade certa (fração), roe alto pontua mais que roe baixo (sinal volta a discriminar).
     hi = S.score_fundamental_health(payout_ratio=None, debt_to_equity=None, roe=0.25)
@@ -267,3 +303,42 @@ def test_stress_liquidation_quantfury_and_intraday(monkeypatch):
     assert run(78.0, None, 4000)["liquidated"] is False
     # Regra Quantfury exata: 4x liquida a -25% do ativo (= -100% equity).
     assert run(75.0, None, 4000)["liquidated"] is True
+
+
+# ───────── simulador usa a fonte chart do Ranking (urllib), nao yfinance ─────────
+# Bug de producao: _build_portfolio_close buscava preco via yfinance (bloqueado no
+# Render) → 400 "Nenhum dado encontrado" p/ TODOS os tickers. Agora a fonte PRIMARIA
+# e a Yahoo chart API / Stooq via urllib (mesma do Ranking, que funciona em prod),
+# com yfinance so como ultimo fallback. Trava a origem do preco no simulador.
+import pandas as pd
+import pytest
+from fastapi import HTTPException
+from app.api.v1 import simulator as SIM
+
+
+def _fake_close_df(n=300):
+    idx = pd.date_range("2018-01-01", periods=n, freq="B")
+    vals = np.linspace(100.0, 200.0, n)
+    return pd.DataFrame({"Close": vals, "High": vals, "Low": vals}, index=idx)
+
+
+def test_simulator_uses_chart_api_source(monkeypatch):
+    # fonte chart devolve (df, None) → serie nao-vazia, SEM tocar em yfinance
+    monkeypatch.setattr(SIM, "_chart_api_df",
+                        lambda tk, days, want_div=False: (_fake_close_df(), None))
+    def _boom(*a, **k):
+        raise AssertionError("fetch_price_history (yfinance) NAO deveria ser chamado")
+    monkeypatch.setattr(SIM, "fetch_price_history", _boom)
+    s = SIM._build_portfolio_close(["FAKE"])
+    assert s is not None and len(s) >= 252
+    assert s.name == "FAKE"
+
+
+def test_simulator_raises_400_when_all_sources_empty(monkeypatch):
+    # chart vazio E yfinance vazio → 400 (sem dado sintetico, comportamento preservado)
+    monkeypatch.setattr(SIM, "_chart_api_df",
+                        lambda tk, days, want_div=False: (None, None))
+    monkeypatch.setattr(SIM, "fetch_price_history", lambda tk, period: None)
+    with pytest.raises(HTTPException) as ei:
+        SIM._build_portfolio_close(["FAKE"])
+    assert ei.value.status_code == 400

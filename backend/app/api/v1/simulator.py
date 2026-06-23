@@ -5,6 +5,7 @@ import pandas as pd
 
 from app.schemas.analysis import SimulationRequest, SimulationResult
 from app.services.market_data import fetch_price_history
+from app.services.ranking_service import _chart_api_df
 from app.quantitative.monte_carlo import run_monte_carlo, run_stress_test
 from app.quantitative.leverage import deleverage_timeline
 
@@ -24,10 +25,21 @@ def _build_portfolio_close(tickers: list[str], rebalancing: str = "none") -> pd.
     series_list = []
     for ticker in tickers:
         df = None
-        for period in ("20y", "10y", "5y"):
-            df = fetch_price_history(ticker, period)
-            if df is not None and len(df) >= 252:
+        # PRIMARIO: Yahoo chart API + Stooq via urllib (mesma fonte do Ranking,
+        # comprovadamente funcional em producao; yfinance e bloqueado no Render).
+        for days in (20 * 366, 10 * 366, 5 * 366):
+            res = _chart_api_df(ticker, days, want_div=False)
+            cand = res[0] if isinstance(res, tuple) else res
+            if cand is not None and len(cand) >= 252:
+                df = cand
                 break
+        # FALLBACK final: yfinance (raramente funciona em prod, mas nao custa).
+        if df is None:
+            for period in ("20y", "10y", "5y"):
+                cand = fetch_price_history(ticker, period)
+                if cand is not None and len(cand) >= 252:
+                    df = cand
+                    break
         if df is not None:
             close = df["Close"].squeeze()
             close.name = ticker
