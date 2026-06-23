@@ -26,6 +26,7 @@ Uso:
 from __future__ import annotations
 
 import os
+import re as _re
 import ssl as _ssl
 import json as _json
 import time as _time
@@ -184,6 +185,78 @@ def _from_brapi(ticker: str) -> dict:
     except Exception as e:
         logger.warning(f"[FUNDAMENTALS] parse brapi {ticker}: {e}")
         return _empty("brapi")
+    return out
+
+
+# ──────────────────────── Fundamentus (Brasil .SA, GRÁTIS) ──────────────────────
+def _from_fundamentus(ticker: str) -> dict:
+    """
+    Fundamentos via fundamentus.com.br (HTML scraping) — cobertura total B3, sem token.
+    Campos: ROE, ROIC → fração (÷100); Div. Yield → %; Dív Líq/Patrim → múltiplo.
+    FCF não disponível nesta fonte.
+    """
+    out = _empty("fundamentus")
+    base = ticker[:-3] if ticker.upper().endswith(".SA") else ticker
+    url = f"https://www.fundamentus.com.br/detalhes.php?papel={_urlparse.quote(base.upper())}"
+    try:
+        req = _urlreq.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept-Language": "pt-BR,pt;q=0.9",
+            "Referer": "https://www.fundamentus.com.br/",
+        })
+        try:
+            r = _urlreq.urlopen(req, timeout=_TIMEOUT, context=_CTX)
+        except Exception:
+            if not _ALLOW_INSECURE:
+                raise
+            r = _urlreq.urlopen(req, timeout=_TIMEOUT, context=_CTX_NOVERIFY)
+        with r:
+            html = r.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        logger.warning(f"[FUNDAMENTALS] fundamentus HTTP falhou {ticker}: {e}")
+        return out
+
+    try:
+        def _field(label: str) -> str | None:
+            pat = (rf'<span class="txt">{_re.escape(label)}</span></td>'
+                   r'\s*<td class="data[^"]*"><span class="[^"]*">\s*([^<]+?)\s*</span>')
+            m = _re.search(pat, html)
+            if not m:
+                return None
+            v = m.group(1).strip()
+            return None if v == "-" else v
+
+        def _pct_frac(v: str | None) -> float | None:
+            if v is None:
+                return None
+            try:
+                return float(v.replace("%", "").replace(".", "").replace(",", ".").strip()) / 100.0
+            except Exception:
+                return None
+
+        def _pct(v: str | None) -> float | None:
+            if v is None:
+                return None
+            try:
+                return float(v.replace("%", "").replace(".", "").replace(",", ".").strip())
+            except Exception:
+                return None
+
+        def _ratio(v: str | None) -> float | None:
+            if v is None:
+                return None
+            try:
+                return float(v.replace(".", "").replace(",", ".").strip())
+            except Exception:
+                return None
+
+        out["roe"] = _pct_frac(_field("ROE"))
+        out["roic"] = _pct_frac(_field("ROIC"))
+        out["dividend_yield"] = _pct(_field("Div. Yield"))
+        out["debt_to_equity"] = _ratio(_field("Dív Líq / Patrim"))
+    except Exception as e:
+        logger.warning(f"[FUNDAMENTALS] parse fundamentus {ticker}: {e}")
+        return _empty("fundamentus")
     return out
 
 
@@ -391,12 +464,23 @@ def get_fundamentals(ticker: str) -> dict:
             result = _empty(None)
         elif key.endswith(".SA"):
             result = _from_brapi(key)
-            # brapi (free) costuma NAO trazer roe/roic/fcf_yield/payout p/ BR -> tenta FMP
-            # (cobre varios .SA, ex PETR4.SA) e PREENCHE so as lacunas (nao sobrescreve o
-            # que o brapi ja trouxe). Espelha o merge do ramo US. FMP ja devolve fracao
-            # nesses campos -> NAO adicionar /100 (contrato de unidades preservado).
-            if (result.get("roe") is None or result.get("roic") is None
-                    or result.get("fcf_yield") is None):
+            # brapi free cobre poucos tickers B3 (PETR4, ITUB4…); resto retorna 403.
+            # Fallback 1: fundamentus.com.br — cobertura total B3, sem token.
+            if (result.get("roe") is None or result.get("roic") is None):
+                try:
+                    fund = _from_fundamentus(key)
+                    for k in ("roe", "roic", "dividend_yield", "debt_to_equity"):
+                        if result.get(k) is None and fund.get(k) is not None:
+                            result[k] = fund[k]
+                    if result.get("source") in (None, "brapi") and any(
+                            fund.get(k) is not None for k in ("roe", "roic")):
+                        result["source"] = (
+                            (result.get("source") + "+fundamentus")
+                            if result.get("source") else "fundamentus")
+                except Exception as e:
+                    logger.warning(f"[FUNDAMENTALS] Fundamentus fallback BR falhou p/ {key}: {e}")
+            # Fallback 2: FMP (cobre alguns .SA; preenche só lacunas ainda None).
+            if (result.get("roe") is None or result.get("fcf_yield") is None):
                 try:
                     fmp = _from_fmp(key)
                     for k in ("roe", "roic", "fcf_yield", "payout_ratio", "debt_to_equity",

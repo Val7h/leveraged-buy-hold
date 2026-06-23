@@ -277,6 +277,33 @@ def test_br_fundamentals_fmp_fallback_fills_gaps(monkeypatch):
     assert "fmp" in (r["source"] or "")
 
 
+def test_br_fundamentals_fundamentus_fallback_fills_roe_roic(monkeypatch):
+    # brapi retorna vazio/403 para maioria dos tickers B3; fundamentus preenche roe/roic/D/E.
+    F._CACHE.clear()
+
+    def fake_http(url):
+        if "brapi.dev" in url:
+            return None  # simula 403 (sem dados)
+        return None  # FMP também vazio no free tier
+
+    monkeypatch.setattr(F, "_http_json", fake_http)
+    monkeypatch.setattr(F, "_from_fundamentus", lambda ticker: {
+        "source": "fundamentus",
+        "roe": 0.354, "roic": 0.260,
+        "dividend_yield": 4.8, "debt_to_equity": -0.19,
+        "fcf_yield": None, "payout_ratio": None,
+        "rev_growth_5y": None, "eps_growth_5y": None,
+        "rev_growth_ttm": None, "eps_growth_ttm": None, "beta": None,
+    })
+
+    r = F.get_fundamentals("WEGE3.SA")
+    assert r["roe"] is not None and abs(r["roe"] - 0.354) < 1e-6,   f"roe errado: {r['roe']}"
+    assert r["roic"] is not None and abs(r["roic"] - 0.260) < 1e-6, f"roic errado: {r['roic']}"
+    assert abs(r["dividend_yield"] - 4.8) < 1e-6,                    f"dy errado: {r['dividend_yield']}"
+    assert abs(r["debt_to_equity"] - (-0.19)) < 1e-6,                f"de errado: {r['debt_to_equity']}"
+    assert "fundamentus" in (r["source"] or ""),                      f"source errado: {r['source']}"
+
+
 def test_fundamental_score_discriminates_on_roe():
     # Com a unidade certa (fração), roe alto pontua mais que roe baixo (sinal volta a discriminar).
     hi = S.score_fundamental_health(payout_ratio=None, debt_to_equity=None, roe=0.25)
