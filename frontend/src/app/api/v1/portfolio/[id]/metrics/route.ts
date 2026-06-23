@@ -93,49 +93,60 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
     fetchSharpe(tickers),
   ]);
 
-  // Compute position-level values
-  let totalEquity = 0;
-  let totalPnl = 0;
-  let weightedLeverageNum = 0;
+  // ── Modelo Quantfury (doutrina de FLUXOS): a alavancagem é MEDIDA pela carteira, NÃO um
+  // multiplicador por posição. notional = shares × preço (já reflete o que você segura, com o
+  // emprestado dentro) → NÃO multiplicar por leverage (isso DOBRAVA o P&L exibido). SOMENTE SHY
+  // fica fora da alavancagem (reserva). "Patrimônio (Equity)" = equity REAL (currentEquity da
+  // Quantfury = ativos − dívida), NÃO o notional bruto (senão subestima o risco).
+  let totalNotional = 0;   // Σ shares×preço (TUDO) = exposição BRUTA
+  let riskNotional = 0;    // exposição de RISCO (exclui SÓ o SHY) = numerador da alavancagem medida
+  let totalCost = 0;       // Σ preço_médio×shares = base de custo (denominador do P&L%)
+  let totalPnl = 0;        // P&L real em $ (SEM ×leverage)
 
   const enriched = positions.map((p, i) => {
     const shares = Number(p.quantity);
     const avgPrice = Number(p.avgPrice);
-    const leverage = Number(p.leverage);
     const currentPrice = prices[i];
-    const value = currentPrice != null ? shares * currentPrice : shares * avgPrice;
-    const pnl =
-      currentPrice != null ? (currentPrice - avgPrice) * shares * leverage : 0;
+    const value = currentPrice != null ? shares * currentPrice : shares * avgPrice; // notional da posição
+    const pnl = currentPrice != null ? (currentPrice - avgPrice) * shares : 0;        // SEM ×leverage
+    const isShy = p.ticker.toUpperCase() === "SHY";
 
-    totalEquity += value;
+    totalNotional += value;
+    if (!isShy) riskNotional += value;     // SOMENTE SHY fora da alavancagem (regra firme do usuário)
+    totalCost += shares * avgPrice;
     totalPnl += pnl;
-    weightedLeverageNum += value * leverage;
 
-    return { ticker: p.ticker, shares, avgPrice, leverage, currentPrice, value, pnl };
+    return { ticker: p.ticker, shares, avgPrice, currentPrice, value, pnl, is_shy: isShy };
   });
 
-  const totalPnlPct =
-    totalEquity > 0 ? (totalPnl / totalEquity) * 100 : null;
-  const weightedAvgLeverage =
-    totalEquity > 0 ? weightedLeverageNum / totalEquity : 1;
+  // Equity REAL = denominador da alavancagem (currentEquity Quantfury). Sem ele declarado, cai
+  // no notional (assume não-alavancado = você possui tudo) e marcamos equity_is_declared=false.
+  const equityDeclared = portfolio.currentEquity != null;
+  const equityReal = equityDeclared ? Number(portfolio.currentEquity) : totalNotional;
+  const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : null;       // retorno sobre base de CUSTO
+  const effectiveLeverage = equityReal > 0 ? riskNotional / equityReal : null;   // alavancagem MEDIDA (SHY fora)
 
   // Allocation breakdown
   const allocation = enriched.map((e) => ({
     ticker: e.ticker,
     value: Math.round(e.value * 100) / 100,
-    weight_pct: totalEquity > 0 ? Math.round((e.value / totalEquity) * 10000) / 100 : 0,
+    weight_pct: totalNotional > 0 ? Math.round((e.value / totalNotional) * 10000) / 100 : 0,
     pnl: Math.round(e.pnl * 100) / 100,
-    leverage: e.leverage,
+    is_shy: e.is_shy,
   }));
 
   return NextResponse.json(
     {
       portfolio_id: id,
       position_count: positions.length,
-      total_equity: Math.round(totalEquity * 100) / 100,
-      total_pnl: Math.round(totalPnl * 100) / 100,
-      total_pnl_pct: totalPnlPct != null ? Math.round(totalPnlPct * 100) / 100 : null,
-      weighted_avg_leverage: Math.round(weightedAvgLeverage * 100) / 100,
+      total_equity: Math.round(equityReal * 100) / 100,          // EQUITY REAL (ativos−dívida), NÃO notional
+      total_notional: Math.round(totalNotional * 100) / 100,     // exposição BRUTA (com emprestado dentro)
+      risk_notional: Math.round(riskNotional * 100) / 100,       // exposição de risco (SHY fora)
+      equity_is_declared: equityDeclared,                        // false → total_equity é estimativa (=notional)
+      total_pnl: Math.round(totalPnl * 100) / 100,               // P&L real em $ (sem ×leverage)
+      total_pnl_pct: totalPnlPct != null ? Math.round(totalPnlPct * 100) / 100 : null,  // sobre base de custo
+      weighted_avg_leverage: effectiveLeverage != null ? Math.round(effectiveLeverage * 100) / 100 : 1,  // MEDIDA (SHY fora)
+      effective_leverage: effectiveLeverage != null ? Math.round(effectiveLeverage * 100) / 100 : null,
       initial_equity: Number(portfolio.initialEquity),
       monthly_contribution: Number(portfolio.monthlyContribution),
       currency: portfolio.currency,

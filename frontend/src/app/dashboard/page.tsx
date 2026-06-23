@@ -227,7 +227,7 @@ export default function DashboardPage() {
                   <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4">
                     <MetricCard label="Patrimônio (Equity)" value={formatCurrency(equity, "USD", true)}
                       accent="primary" icon={<DollarSign size={16} className="text-primary" />} large
-                      tooltip="Valor total do portfólio simulado" />
+                      tooltip="Equity REAL da carteira (ativos − dívida = o que é seu de verdade). Informe o equity da Quantfury na aba Portfólio pra ficar exato; sem ele, mostra a exposição." />
                     <MetricCard label="P&L Total"
                       value={formatCurrency(pnl, "USD", true)}
                       subValue={`${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}% vs PM`}
@@ -238,7 +238,7 @@ export default function DashboardPage() {
                       value={formatLeverage(leverage)}
                       accent={leverage > 2.5 ? "danger" : leverage > 1.5 ? "warning" : "success"}
                       icon={<TrendingUp size={16} className={getLeverageColor(leverage)} />}
-                      tooltip="Alavancagem média ponderada de todas as posições" />
+                      tooltip="Alavancagem MEDIDA da carteira: exposição de risco ÷ equity (SÓ o SHY fica fora). Não se escolhe por posição (Quantfury)." />
                     <MetricCard label="Sharpe Ratio"
                       value={sharpe != null ? sharpe.toFixed(2) : "—"}
                       subValue={vol != null ? `Volatil. ${vol.toFixed(1)}%` : undefined}

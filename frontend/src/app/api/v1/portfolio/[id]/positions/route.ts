@@ -69,17 +69,17 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
     const avgPrice = Number(p.avgPrice);
     const leverage = Number(p.leverage);
     const currentPrice = prices[i];
+    // Quantfury: notional = shares × preço (já reflete o que se segura, com emprestado dentro).
+    // NÃO multiplicar por leverage por-posição — isso DOBRAVA o P&L exibido (a alavancagem é
+    // MEDIDA pela carteira, não escolhida por posição).
     const currentValue =
       currentPrice != null ? shares * currentPrice : null;
-    const notionalValue =
-      currentValue != null ? currentValue * leverage : null;
+    const notionalValue = currentValue;
     const pnl =
-      currentPrice != null
-        ? (currentPrice - avgPrice) * shares * leverage
-        : null;
+      currentPrice != null ? (currentPrice - avgPrice) * shares : null;
     const pnlPct =
       currentPrice != null && avgPrice > 0
-        ? (currentPrice / avgPrice - 1) * 100 * leverage
+        ? (currentPrice / avgPrice - 1) * 100
         : null;
     return {
       raw: p,
