@@ -648,6 +648,14 @@ _TATICO_WHITELIST = {
 # ─────────────────────────── Regime (porte de run_ranking) ───────────────────────────
 MULT = {"CAPIT.EXTREMA": 5, "CAPITULACAO": 4, "NEUTRO": 3, "TOPO": 2}
 
+# #15b — financeiras/bancos: no crivo de qualidade, ROIC e FCF não fazem sentido e D/E alto é o
+# NEGÓCIO (não risco). Whitelist curada (honesta/barata/auditável — não há setor parseado das fontes).
+_FINANCEIRAS = {
+    "ITUB4.SA", "ITUB3.SA", "BBAS3.SA", "BBDC4.SA", "BBDC3.SA", "SANB11.SA", "B3SA3.SA",
+    "BPAC11.SA", "ITSA4.SA", "ITSA3.SA",
+    "JPM", "BAC", "WFC", "C", "GS", "MS", "USB", "PNC", "SCHW", "AXP", "V", "MA", "BRK-B", "BRK.B",
+}
+
 
 def regime(idx: Optional[np.ndarray]) -> str:
     if idx is None or len(idx) < 210:
@@ -806,24 +814,54 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             dy_avg10=dy_avg10, dy_worst=dy_worst, dd_recovery_mult=dd_recovery_mult,
         )
 
+        # SELO DE CONFIANÇA (movido p/ ANTES do veredito — o crivo #15b precisa dele).
+        # Dado faltando não pode parecer "mediano" 50: ALTA = fundamentos + beta publicado (ou
+        # crypto/índice, onde preço/momentum bastam); BAIXA = sem fundamentos + beta de regressão.
+        _no_fund_cat = (cat == "CRYPTO") or tk.startswith("^") or "=" in tk
+        _has_fund = any(fund.get(k) is not None for k in ("roe", "payout_ratio", "debt_to_equity"))
+        _beta_pub = beta_source in ("finnhub", "fmp")
+        if _no_fund_cat or (_has_fund and _beta_pub):
+            confidence = "ALTA"
+        elif _has_fund or _beta_pub:
+            confidence = "MEDIA"
+        else:
+            confidence = "BAIXA"
+
         if bucket == "RESERVA":
             verdict = "RESERVA"
         else:
             verdict = S.aporte_verdict(momentum, quality)
 
-        # FILTRO DE DETERIORAÇÃO (anti-faca): só é faca quem NÃO criou valor no longo prazo
-        # (CAGR ≤ 0 em ~6 anos = declínio estrutural, ex: NKE/ADBE/TLT). Um ativo de CAGR
-        # positivo só corrigindo (ex: BTC em capitulação, PEP caída) SEGUE sendo compra —
-        # respeita "empresa boa caída ainda é compra contrária" e a compra de crypto no fundo.
-        deteriorating = (cagr is not None and cagr <= 0)
-        if deteriorating and verdict in ("COMPRAR FORTE", "COMPRAR"):
-            verdict = "ESPECULATIVO"   # descontado mas sem criar valor no longo prazo → faca
+            # FILTRO DE DETERIORAÇÃO (anti-faca): CAGR de PREÇO ≤ 0 em ~6a = declínio estrutural
+            # (NKE/ADBE/TLT). CAGR positivo só corrigindo SEGUE compra (BTC no fundo, PEP caída).
+            if cagr is not None and cagr <= 0 and verdict in ("COMPRAR FORTE", "COMPRAR"):
+                verdict = "ESPECULATIVO"
 
-        # REGRA DO OURO: ouro em capitulação do mercado de ações → hedge → comprar forte
+            # CRIVO DE QUALIDADE-REAL POR TIPO (#15b): porteira de fundamentos da EMPRESA (não preço).
+            # Rebaixa 1 degrau se a qualidade-real não passa o piso (afrouxado pela confiança). Falta de
+            # dado NÃO barra (crivo não opina). Tipo: financeira (whitelist)/cíclica (is_tatico)/normal.
+            tipo_crivo = ("financeira" if tk.upper() in _FINANCEIRAS
+                          else ("ciclica" if is_tatico else "normal"))
+            crivo_nota, _crivo_n = S.score_quality_crivo(
+                tipo_crivo, roe=fund.get("roe"), roic=fund.get("roic"),
+                fcf_yield=fund.get("fcf_yield"), debt_to_equity=fund.get("debt_to_equity"),
+                dy_avg10=dy_avg10, dy_worst=dy_worst, dividend_yield=dy,
+                growth_5y=fund_growth, confidence=confidence)
+            if crivo_nota is not None and crivo_nota < S.crivo_piso(confidence):
+                if verdict == "COMPRAR FORTE":
+                    verdict = "COMPRAR"
+                elif verdict == "COMPRAR":
+                    verdict = "JUSTO"
+
+            # Confiança BAIXA não alavanca no talo sobre "50 falso" → no máximo COMPRAR.
+            if confidence == "BAIXA" and verdict == "COMPRAR FORTE":
+                verdict = "COMPRAR"
+
+        # REGRA DO OURO: ouro em capitulação do mercado de ações → hedge → COMPRAR FORTE (override).
         if tk.upper() in ("GLD", "GC=F") and equity_regime in ("CAPITULACAO", "CAPIT.EXTREMA"):
             verdict = "COMPRAR FORTE"
 
-        rank = quality * 0.55 + momentum * 0.45  # qualidade manda (hold de décadas)
+        rank = quality * 0.45 + momentum * 0.55  # #15b: oportunidade decide o desempate (comprar bem)
 
         # Alavancagem = multiplicador do regime; só em candidato de compra (não RESERVA)
         is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3))
@@ -831,25 +869,15 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # Crypto NÃO segue o 4x/5x do regime — teto 3x (defensivo não convive c/ 5x em BTC).
         if cat == "CRYPTO":
             leverage = min(leverage, 3.0)
-        # ESPECULATIVO (faca/descontado arriscado) → teto 2x (reduz, não zera).
+        # ESPECULATIVO (faca) → teto 2x. #15b: COMPRAR de qualidade BAIXA (<50) → teto 3x mesmo em
+        # capitulação (participa da pechincha, sem o talo de alavancagem sem qualidade comprovada).
         if verdict == "ESPECULATIVO":
             leverage = min(leverage, 2.0)
+        elif verdict == "COMPRAR" and quality is not None and quality < 50:
+            leverage = min(leverage, 3.0)
         # SHY = reserva: na Quantfury só dá p/ ter até US$10k de notional → "alavancagem" de SHY
-        # é irrelevante (basta pôr os 10k). Não força leverage aqui; fica fora da medida na carteira.
+        # é irrelevante. Não força leverage aqui; fica fora da medida na carteira.
         stops = S.staggered_stops(leverage)
-
-        # SELO DE CONFIANÇA DOS DADOS (revisão: dado faltando não pode parecer "mediano" 50).
-        _no_fund_cat = (cat == "CRYPTO") or tk.startswith("^") or "=" in tk
-        _has_fund = any(fund.get(k) is not None for k in ("roe", "payout_ratio", "debt_to_equity"))
-        _beta_pub = beta_source in ("finnhub", "fmp")   # beta publicado (não regressão)
-        if _no_fund_cat:
-            confidence = "ALTA"                          # crypto/índice: preço/momentum bastam
-        elif _has_fund and _beta_pub:
-            confidence = "ALTA"
-        elif _has_fund or _beta_pub:
-            confidence = "MEDIA"
-        else:
-            confidence = "BAIXA"                         # sem fundamentos + beta de regressão = "50 falso"
 
         return {
             "ticker": tk,

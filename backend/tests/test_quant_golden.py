@@ -21,6 +21,30 @@ def test_aporte_verdict_thresholds():
     assert S.aporte_verdict(20, 80) == "ESTICADO"          # sem desconto agora (NÃO exclui)
 
 
+def test_aporte_verdict_two_bands_15b():
+    # #15b "número ótimo": pechincha forte (mom>=70) + boa-o-suficiente (>=58) já é FORTE
+    assert S.aporte_verdict(72, 60) == "COMPRAR FORTE"
+    assert S.aporte_verdict(72, 50) == "COMPRAR"           # pechincha + qualidade média → só COMPRAR
+    # momento bom (60-69): só a EXCELENTE (>=75) sobe a FORTE
+    assert S.aporte_verdict(65, 80) == "COMPRAR FORTE"     # excelência compra o momento que falta
+    assert S.aporte_verdict(65, 60) == "COMPRAR"           # boa, não excelente → COMPRAR
+
+
+def test_quality_crivo_by_type_and_missing_data():
+    # financeira: ROE pilar; D/E alto (5.0) é IGNORADO (é o negócio do banco, não risco)
+    nota_fin, _ = S.score_quality_crivo("financeira", roe=0.22, dy_avg10=8.0, dy_worst=7.0, debt_to_equity=5.0)
+    assert nota_fin is not None and nota_fin >= 70
+    # normal: o MESMO D/E 5.0 + roic/fcf baixos DERRUBAM (entram no crivo)
+    nota_norm, _ = S.score_quality_crivo("normal", roe=0.22, roic=0.05, fcf_yield=0.02,
+                                         debt_to_equity=5.0, dy_avg10=8.0, dy_worst=7.0)
+    assert nota_norm is not None and nota_norm < nota_fin
+    # falta de dado: < 2 termos reais → crivo NÃO opina (None, não "50 falso")
+    n_none, cnt = S.score_quality_crivo("normal", roe=0.22)
+    assert n_none is None and cnt == 0
+    # piso afrouxa pela confiança (menos dado → mais tolerante)
+    assert S.crivo_piso("ALTA") > S.crivo_piso("BAIXA")
+
+
 # ─────────────────────── beta contextual (amplificador) ───────────────────
 def test_beta_contextual_amplifier():
     assert S.score_beta_contextual(0.3) > 90                       # baixo = defensivo bom

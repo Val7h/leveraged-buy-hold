@@ -752,25 +752,108 @@ def compute_momentum(slow_stoch_weekly=None, discount_from_top=None,
     return round(_clamp(m), 1), breakdown
 
 
+# #15b — "número ótimo" (qualidade importa E não perde pechincha):
+_VERDICT_PISO_FORTE = 58.0      # boa-o-suficiente p/ COMPRAR FORTE quando a pechincha é forte
+_VERDICT_EXCELENCIA = 75.0      # excelente "compra" o momento que falta (FORTE com momento só bom)
+_VERDICT_PISO_COMPRAR = 45.0    # abaixo disto = ESPECULATIVO (faca), momento nenhum salva
+
+
 def aporte_verdict(momentum: float, quality: float) -> str:
-    """
-    Veredito de ENTRADA — combina momento E qualidade (anti-faca).
-    Nada exclui (todos rankeiam), mas 'COMPRAR FORTE' exige qualidade decente:
-    descontado + qualidade fraca = ESPECULATIVO (provável faca caindo), não compra forte.
-    """
+    """Veredito de ENTRADA (#15b). DUAS faixas de qualidade acima do piso:
+      - PECHINCHA FORTE (momentum≥70): empresa boa-o-suficiente (≥58) já alcança COMPRAR FORTE
+        (não perde a pechincha por a empresa não ser excelente).
+      - MOMENTO BOM (60-69): só a EXCELENTE (≥75) sobe a FORTE (qualidade recompensada).
+      - quality < 45 → ESPECULATIVO (faca). Nada exclui (segue no ranking).
+    Por cima disto, o CRIVO de fundamentos por TIPO + confiança (ranking_service) rebaixa 1 degrau."""
     if momentum >= 70:
-        if quality >= 62:
+        if quality >= _VERDICT_PISO_FORTE:
             return "COMPRAR FORTE"
-        if quality >= 45:
+        if quality >= _VERDICT_PISO_COMPRAR:
             return "COMPRAR"
-        return "ESPECULATIVO"      # muito descontado, mas qualidade fraca = faca
-    if momentum >= 55:
-        if quality >= 50:
+        return "ESPECULATIVO"      # pechincha forte, mas qualidade fraca = faca
+    if momentum >= 60:
+        if quality >= _VERDICT_EXCELENCIA:
+            return "COMPRAR FORTE"   # excelência compra o momento que falta
+        if quality >= _VERDICT_PISO_COMPRAR:
+            return "COMPRAR"
+        return "ESPECULATIVO"
+    if momentum >= 50:
+        if quality >= _VERDICT_PISO_COMPRAR:
             return "COMPRAR"
         return "ESPECULATIVO"
     if momentum >= 42:
         return "JUSTO"             # boa empresa, hora mediana — aguardar entrada melhor
     return "ESTICADO"              # sem desconto agora (NÃO é exclusão)
+
+
+# ─────────────────── CRIVO DE QUALIDADE-REAL POR TIPO (#15b) ───────────────────
+# Porteira que julga SÓ fundamentos da EMPRESA (não preço), por TIPO, e SÓ com dado que EXISTE
+# (ausente SAI, não vira "50 falso"). Renormaliza sobre os termos presentes. Piso afrouxa pela
+# confiança (menos dado → mais tolerante; não pune a empresa pela cegueira do provedor).
+_CRIVO_PISO_BASE = 58.0
+_CRIVO_CONF_ADJ = {"ALTA": 0.0, "MEDIA": 6.0, "BAIXA": 12.0}
+
+
+def crivo_piso(confidence: str = "ALTA") -> float:
+    """Piso de qualidade-real p/ liberar COMPRAR FORTE, afrouxado pela confiança dos dados."""
+    return _CRIVO_PISO_BASE - _CRIVO_CONF_ADJ.get(confidence, 0.0)
+
+
+def _q_roic(v):
+    if v is None: return None
+    if v >= 0.15: return 100.0
+    if v <= 0: return 0.0
+    return _clamp(v / 0.15 * 100)
+
+
+def _q_fcf(v):
+    if v is None: return None
+    if v >= 0.08: return 100.0
+    if v <= 0: return 10.0
+    return _clamp(v / 0.08 * 100)
+
+
+def _q_roe(v):
+    if v is None: return None
+    if v >= 0.20: return 100.0
+    if v <= 0: return 0.0
+    return _clamp(v / 0.20 * 100)
+
+
+def _q_debt(v):
+    if v is None: return None
+    if v <= 0.5: return 100.0
+    if v >= 3.0: return 10.0
+    return _clamp(100 - ((v - 0.5) / 2.5) * 90)
+
+
+def score_quality_crivo(tipo, roe=None, roic=None, fcf_yield=None, debt_to_equity=None,
+                        dy_avg10=None, dy_worst=None, dividend_yield=None,
+                        growth_5y=None, confidence="ALTA"):
+    """Nota do CRIVO (0-100) por TIPO, sobre fundamentos REAIS presentes. Retorna (nota, n_termos);
+    (None, 0) se < 2 termos reais (crivo NÃO opina — falta de dado não barra).
+      - financeira: ROE pilar; IGNORA roic/fcf/D-E (D/E alto é o modelo do banco, não risco).
+      - ciclica (is_tatico): D/E pilar; ROIC com TETO 70 (pico de ciclo engana); crescimento meio-peso.
+      - normal: roic+fcf+dividendo+D/E+roe+crescimento."""
+    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield) if dy_avg10 is not None
+             else (score_dividend_q(dividend_yield) if dividend_yield is not None else None))
+    s_gro = score_growth_5y(growth_5y) if growth_5y is not None else None
+    s_roe, s_roic, s_fcf, s_de = _q_roe(roe), _q_roic(roic), _q_fcf(fcf_yield), _q_debt(debt_to_equity)
+
+    if tipo == "financeira":
+        comps = [(s_roe, 0.45), (s_div, 0.30), (s_gro, 0.25)]
+    elif tipo == "ciclica":
+        s_roic_cap = min(s_roic, 70.0) if s_roic is not None else None   # ROIC de pico não "compra 100"
+        comps = [(s_de, 0.35), (s_div, 0.30), (s_roic_cap, 0.20), (s_gro, 0.15)]
+    else:  # normal
+        comps = [(s_roic, 0.28), (s_fcf, 0.22), (s_div, 0.20), (s_de, 0.15), (s_roe, 0.15), (s_gro, 0.15)]
+
+    present = [(s, w) for s, w in comps if s is not None]
+    if len(present) < 2:
+        return None, 0                 # crivo não opina (sem dado suficiente)
+    wsum = sum(w for _, w in present)
+    nota = sum(s * w for s, w in present) / wsum if wsum > 0 else 50.0
+    return round(_clamp(nota), 1), len(present)
 
 
 # ─────────────────────────── RATINGS ───────────────────────────
