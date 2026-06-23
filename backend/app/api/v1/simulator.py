@@ -111,7 +111,8 @@ def simulate(request: SimulationRequest):
             "equity_curve": curve,
             "final_value": final_val,
             "cagr": round(cagr * 100, 2),
-            "max_drawdown": -30.0,
+            # tombo REAL do caminho daquele percentil (calculado na simulação), não mais -30 chumbado
+            "max_drawdown": mc_result.get("scenario_drawdowns", {}).get(key, 0.0),
             "ruin_probability": mc_result["ruin_probability"] if p == 5 else 0.0,
         })
 

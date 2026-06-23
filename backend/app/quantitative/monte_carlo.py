@@ -132,6 +132,40 @@ def gbm_path(
     return returns
 
 
+def bootstrap_monthly_returns(
+    daily_log_returns: np.ndarray,
+    n_months: int,
+    days_per_month: int = 21,
+) -> np.ndarray:
+    """Bootstrap de retornos MENSAIS a partir de retornos log DIÁRIOS.
+    Para cada mês, soma um bloco de ~21 dias consecutivos (preserva autocorrelação intra-mês)
+    e converte para retorno SIMPLES (expm1). Corrige o bug de usar retorno DIÁRIO como passo
+    MENSAL (que fazia metade das trajetórias crescer ~21x mais devagar)."""
+    n = len(daily_log_returns)
+    if n <= days_per_month:
+        m = float(np.expm1(float(np.sum(daily_log_returns))))
+        return np.full(n_months, m)
+    out = np.empty(n_months)
+    for k in range(n_months):
+        start = np.random.randint(0, n - days_per_month)
+        out[k] = np.expm1(float(np.sum(daily_log_returns[start: start + days_per_month])))
+    return out
+
+
+def _path_max_drawdown(path: np.ndarray) -> float:
+    """Pior tombo (peak-to-trough) de um caminho de equity, em % (≤ 0)."""
+    peak = -np.inf
+    mdd = 0.0
+    for v in path:
+        if v > peak:
+            peak = v
+        if peak > 0:
+            dd = (v - peak) / peak
+            if dd < mdd:
+                mdd = dd
+    return round(mdd * 100.0, 2)
+
+
 def simulate_portfolio(
     initial_equity: float,
     monthly_contribution: float,
@@ -210,9 +244,11 @@ def run_monte_carlo(
 
     for i in range(n_simulations):
         if i % 2 == 0:
-            monthly_rets = bootstrap_returns(log_returns, horizon_months)
+            # bootstrap MENSAL (blocos de ~21 dias somados → retorno simples mensal)
+            monthly_rets = bootstrap_monthly_returns(log_returns, horizon_months)
         else:
-            monthly_rets = gbm_path(mu, sigma, dt, horizon_months)
+            # GBM mensal → retorno SIMPLES mensal (mesma escala do bootstrap)
+            monthly_rets = np.expm1(gbm_path(mu, sigma, dt, horizon_months))
 
         path, ruined = simulate_portfolio(
             initial_equity,
@@ -230,9 +266,11 @@ def run_monte_carlo(
 
     ruin_probability = ruin_count / n_simulations
 
-    # Aplica FX se solicitado (multiplica todos os valores por taxa BRL/USD)
-    if fx_brl_usd != 1.0:
-        paths = paths * fx_brl_usd
+    # FX NÃO é aplicado aqui — o caller (simulator.py) já converte os INPUTS (initial_equity,
+    # monthly_contribution) pra moeda alvo, então toda a simulação já roda em BRL/USD certo.
+    # Multiplicar os outputs de novo DOBRAVA o câmbio. (fx_brl_usd mantido na assinatura só
+    # por compatibilidade do caller; ignorado de propósito.)
+    _ = fx_brl_usd
 
     percentile_levels = [5, 10, 25, 50, 75, 90, 95]
     final_values = paths[:, -1]
@@ -243,6 +281,7 @@ def run_monte_carlo(
 
     time_axis = list(range(0, horizon_months + 1, 12))
     scenario_curves = {}
+    scenario_drawdowns = {}
     sorted_indices = np.argsort(final_values)
     n = len(sorted_indices)
     for p in [5, 25, 50, 75, 95]:
@@ -252,6 +291,8 @@ def run_monte_carlo(
             {"month": t, "year": round(t / 12, 1), "value": round(float(curve[t]), 2)}
             for t in time_axis
         ]
+        # tombo REAL do caminho completo (todos os meses), não um -30% chumbado
+        scenario_drawdowns[f"p{p}"] = _path_max_drawdown(curve)
 
     total_contributions = initial_equity + monthly_contribution * horizon_months
     median_final = float(np.median(final_values))
@@ -299,6 +340,7 @@ def run_monte_carlo(
         "sigma_annual_pct": round(sigma * 100, 2),
         "percentiles": percentile_values,
         "scenarios": scenario_curves,
+        "scenario_drawdowns": scenario_drawdowns,   # tombo real por percentil (substitui o -30 chumbado)
         "leverage_evolution": leverage_evolution,
         "dividend_accumulation": dividend_accumulation,
         "contribution_breakdown": contribution_breakdown,
