@@ -65,6 +65,10 @@ def _empty(source=None) -> dict:
         "debt_to_equity": None,
         "dividend_yield": None,
         "fcf_yield": None,
+        # Crescimento REAL da EMPRESA (não do preço) — em %, ex 8.5. Só Finnhub (US) traz; BR=None.
+        # Substitui o "g5 de preço" na nota de Qualidade (quebra a circularidade). Ausente→None.
+        "rev_growth_5y": None,
+        "eps_growth_5y": None,
         "beta": None,
         "beta_note": None,
         "source": source,
@@ -226,6 +230,12 @@ def _from_finnhub(ticker: str) -> dict:
             "longTermDebt/equityQuarterly", "longTermDebt/equityAnnual")
         out["dividend_yield"] = pick(
             "currentDividendYieldTTM", "dividendYieldIndicatedAnnual", "dividendYield5Y")
+        # Crescimento REAL da empresa (#15a) — Finnhub manda em % (ex 8.5). O score (score_growth_5y)
+        # ESPERA % (limiares 15/-5), igual ao g5 de preço que substituímos → SEM conversão (≠ roe/roic
+        # que viram fração). Custo ZERO de request (mesmo metric=all). Fallback p/ YoY se não houver 5Y.
+        # ⚠️ VALIDAR AO VIVO: confirmar que o valor real vem em % (ex 8.5), não fração (0.085).
+        out["rev_growth_5y"] = pick("revenueGrowth5Y", "revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy")
+        out["eps_growth_5y"] = pick("epsGrowth5Y", "epsGrowthTTMYoy", "epsGrowthQuarterlyYoy")
         b = pick("beta")
         if b is not None and b != 0:
             out["beta"] = b

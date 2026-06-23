@@ -87,6 +87,18 @@ def test_quality_blend_range_and_keys():
     assert {"beta", "max_drawdown", "dividendos", "fundamentos"}.issubset(bd.keys())
 
 
+def test_quality_blend_renormalizes_without_real_growth():
+    # #15a: a Qualidade usa crescimento REAL (receita/EPS, não preço). Ausente (BR/jovem) → o termo
+    # SAI e os pesos RENORMALIZAM (sem injetar "50 falso"); a chave crescimento_5a é omitida.
+    _, bd_with = S.compute_quality_blend(beta=0.6, max_dd_pct=-20, dividend_yield=4,
+                                         growth_5y=12, sharpe=1.0, roic=0.18, momentum=60)
+    q_wo, bd_wo = S.compute_quality_blend(beta=0.6, max_dd_pct=-20, dividend_yield=4,
+                                          growth_5y=None, sharpe=1.0, roic=0.18, momentum=60)
+    assert "crescimento_5a" in bd_with
+    assert "crescimento_5a" not in bd_wo
+    assert 0 <= q_wo <= 100
+
+
 def test_momentum_blend_range():
     m, bd = S.compute_momentum(slow_stoch_weekly=15, discount_from_top=-10,
                                reversal_confirmation=1, distance_ma200=-5)

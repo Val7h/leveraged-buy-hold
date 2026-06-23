@@ -771,7 +771,17 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # Dividendo por CONSISTÊNCIA (média 10a + pior ano) — BR. Fallback: trailing.
         dy = dy_chart if dy_chart else fund.get("dividend_yield")  # dividendos reais; fallback fund
         dy_avg10, dy_worst = _dividend_consistency(annual_dy)
-        cagr = g5  # CAGR de preço (retorno total, ~6 anos)
+        cagr = g5  # CAGR de PREÇO (retorno total, ~6 anos) — fica só no anti-faca/display, NÃO na Qualidade
+
+        # CRESCIMENTO REAL da empresa (#15a): receita (60%, menos manipulável que EPS) + lucro/EPS (40%),
+        # em %. Substitui o g5 de PREÇO na nota de Qualidade (quebra a circularidade "preço sobe→empresa
+        # boa"). Só US (Finnhub) traz; ausente (BR/jovem) → None → o blend renormaliza SEM o crescimento
+        # (não injeta 50 falso). NUNCA cair no g5 de preço aqui.
+        _rg, _eg = fund.get("rev_growth_5y"), fund.get("eps_growth_5y")
+        if _rg is not None and _eg is not None:
+            fund_growth = _rg * 0.6 + _eg * 0.4
+        else:
+            fund_growth = _rg if _rg is not None else _eg   # o que houver; senão None
 
         # Preço atual, variação diária e moeda — para exibição na linha do ranking.
         current_price = float(a[-1]) if len(a) else None
@@ -788,7 +798,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             reversal_confirmation=rev, distance_ma200=dma,
         )
         quality, qb = S.compute_quality_blend(
-            beta=beta, max_dd_pct=dd, dividend_yield=dy, growth_5y=g5,
+            beta=beta, max_dd_pct=dd, dividend_yield=dy, growth_5y=fund_growth,
             roe=fund.get("roe"), debt_to_equity=fund.get("debt_to_equity"),
             payout_ratio=fund.get("payout_ratio"), roic=fund.get("roic"),
             fcf_yield=fund.get("fcf_yield"), sharpe=shp, cagr=cagr, tsr_expected=tsr,

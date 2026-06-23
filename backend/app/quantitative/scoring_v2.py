@@ -719,18 +719,22 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
     # confundindo "ação cara" com "empresa boa". Agora g5 conta UMA vez (crescimento) e o
     # dividendo UMA vez (dividendos). cagr/tsr_expected ficam na assinatura por compat, mas
     # NÃO entram mais no score.
-    s_gro = score_growth_5y(growth_5y)
     s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield)
              if dy_avg10 is not None else score_dividend_q(dividend_yield))
     s_fun = score_fundamental_health(payout_ratio, debt_to_equity, roe, roic, fcf_yield)
     breakdown = {"beta": round(s_beta), "max_drawdown": round(s_dd),
-                 "sharpe": round(s_sharpe), "crescimento_5a": round(s_gro),
+                 "sharpe": round(s_sharpe),
                  "dividendos": round(s_div), "fundamentos": round(s_fun)}
-    # Pesos renormalizados p/ somar 1.0 após remover as duplicatas → naturalmente desloca peso
-    # pra FUNDAMENTOS (qualidade real, 0.16→0.22) e risco. INTERINO: pesos finais + métrica de
-    # qualidade REAL (receita/lucro, não preço) e peso Qualidade×Oportunidade pendentes do painel.
-    q = (s_beta*0.13 + s_dd*0.20 + s_sharpe*0.13
-         + s_gro*0.14 + s_div*0.18 + s_fun*0.22)
+    # Componentes (score, peso). CRESCIMENTO (#15a) é REAL da empresa (receita/EPS, não preço) e só
+    # entra se houver dado — ausente (BR/jovem) o termo SAI e os pesos RENORMALIZAM (não injeta "50
+    # falso"; honestidade > falso mediano). Pesos somam 1.0 com crescimento; sem ele, renormaliza.
+    comps = [(s_beta, 0.13), (s_dd, 0.20), (s_sharpe, 0.13), (s_div, 0.18), (s_fun, 0.22)]
+    if growth_5y is not None:
+        s_gro = score_growth_5y(growth_5y)
+        comps.append((s_gro, 0.14))
+        breakdown["crescimento_5a"] = round(s_gro)
+    wsum = sum(w for _, w in comps)
+    q = (sum(s * w for s, w in comps) / wsum) if wsum > 0 else 50.0
     return round(_clamp(q), 1), breakdown
 
 
