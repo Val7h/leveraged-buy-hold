@@ -702,7 +702,8 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
                           payout_ratio=None, roic=None, fcf_yield=None,
                           sharpe=None, cagr=None, tsr_expected=None,
                           momentum=None, is_tatico=False,
-                          dy_avg10=None, dy_worst=None, dd_recovery_mult=1.0):
+                          dy_avg10=None, dy_worst=None, dd_recovery_mult=1.0,
+                          fundamentals_apply=True):
     """
     Qualidade (0-100) — pesos (nada exclui). Beta é CONTEXTUAL (amplificador):
     oversold + beta alto = bônus; sobrecomprado + beta alto = penalidade (depende do momento).
@@ -723,12 +724,19 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
              if dy_avg10 is not None else score_dividend_q(dividend_yield))
     s_fun = score_fundamental_health(payout_ratio, debt_to_equity, roe, roic, fcf_yield)
     breakdown = {"beta": round(s_beta), "max_drawdown": round(s_dd),
-                 "sharpe": round(s_sharpe),
-                 "dividendos": round(s_div), "fundamentos": round(s_fun)}
+                 "sharpe": round(s_sharpe), "dividendos": round(s_div)}
     # Componentes (score, peso). CRESCIMENTO (#15a) é REAL da empresa (receita/EPS, não preço) e só
     # entra se houver dado — ausente (BR/jovem) o termo SAI e os pesos RENORMALIZAM (não injeta "50
     # falso"; honestidade > falso mediano). Pesos somam 1.0 com crescimento; sem ele, renormaliza.
-    comps = [(s_beta, 0.13), (s_dd, 0.20), (s_sharpe, 0.13), (s_div, 0.18), (s_fun, 0.22)]
+    comps = [(s_beta, 0.13), (s_dd, 0.20), (s_sharpe, 0.13), (s_div, 0.18)]
+    # FUNDAMENTOS: só entram p/ EMPRESAS. ETF/commodity NÃO são empresas (não têm ROE/ROIC/FCF) →
+    # o termo SAI e os pesos RENORMALIZAM (não ancora a nota num "50 falso"; mesma lógica do
+    # crescimento). fundamentals_apply=False vem do ranking p/ ETF/COMMODITY. Ação sem dado (BR)
+    # MANTÉM o termo neutro DE PROPÓSITO: é empresa (o fundamento existe, só falta o dado) — não
+    # julgar uma empresa só pelo preço.
+    if fundamentals_apply:
+        breakdown["fundamentos"] = round(s_fun)
+        comps.append((s_fun, 0.22))
     if growth_5y is not None:
         s_gro = score_growth_5y(growth_5y)
         comps.append((s_gro, 0.14))

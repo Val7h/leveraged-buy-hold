@@ -123,6 +123,20 @@ def test_quality_blend_renormalizes_without_real_growth():
     assert 0 <= q_wo <= 100
 
 
+def test_quality_blend_etf_renormalizes_fundamentals_out():
+    # ETF/commodity NAO sao empresas -> fundamentals_apply=False: o termo "fundamentos" SAI do
+    # breakdown e os pesos RENORMALIZAM (nao ancora num 50 falso). Para um ativo com componentes
+    # altos, tirar o 50 falso SOBE a nota. Acao (apply=True) mantem o termo neutro.
+    q_etf, bd_etf = S.compute_quality_blend(beta=0.55, max_dd_pct=-10, dividend_yield=8,
+                                            sharpe=1.2, momentum=55, fundamentals_apply=False)
+    q_stock, bd_stock = S.compute_quality_blend(beta=0.55, max_dd_pct=-10, dividend_yield=8,
+                                                sharpe=1.2, momentum=55, fundamentals_apply=True)
+    assert "fundamentos" not in bd_etf      # ETF: termo removido
+    assert "fundamentos" in bd_stock        # acao: termo mantido (50 neutro)
+    assert q_etf > q_stock                  # sem a ancora 50 falsa, ETF bom sobe
+    assert 0 <= q_etf <= 100
+
+
 def test_is_falling_knife_15c():
     # negócio encolhendo (crescimento real 5a < 0) = faca
     assert S.is_falling_knife(-3.0, None, 8.0) is True

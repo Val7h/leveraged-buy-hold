@@ -818,6 +818,10 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             fcf_yield=fund.get("fcf_yield"), sharpe=shp, cagr=cagr, tsr_expected=tsr,
             momentum=momentum, is_tatico=is_tatico,
             dy_avg10=dy_avg10, dy_worst=dy_worst, dd_recovery_mult=dd_recovery_mult,
+            # ETF/commodity NÃO são empresas → fundamentos não se aplicam (renormaliza o termo
+            # em vez de fingir 50). Ações (BR/US/Europa) mantêm o termo: são empresas — ausência
+            # de dado é falta de cobertura, não estrutura (não julgar empresa só pelo preço).
+            fundamentals_apply=(cat not in ("ETF", "COMMODITY")),
         )
 
         # SELO DE CONFIANÇA (movido p/ ANTES do veredito — o crivo #15b precisa dele).
