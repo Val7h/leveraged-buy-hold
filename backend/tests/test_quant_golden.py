@@ -123,6 +123,21 @@ def test_quality_blend_renormalizes_without_real_growth():
     assert 0 <= q_wo <= 100
 
 
+def test_is_falling_knife_15c():
+    # negócio encolhendo (crescimento real 5a < 0) = faca
+    assert S.is_falling_knife(-3.0, None, 8.0) is True
+    # boa empresa (5a +) mas APODRECENDO recente (TTM muito negativo) = faca
+    assert S.is_falling_knife(10.0, -15.0, 8.0) is True
+    # boa empresa, recente ok, preço caído = NÃO é faca (é pechincha)
+    assert S.is_falling_knife(10.0, 4.0, -5.0) is False
+    # CÍCLICA: queda recente é o CICLO (não rot) → ignora real, usa só o preço de 6a
+    assert S.is_falling_knife(-3.0, -20.0, 6.0, is_tatico=True) is False
+    assert S.is_falling_knife(10.0, 5.0, -2.0, is_tatico=True) is True
+    # sem dado real (BR): fallback no CAGR de preço de 6a
+    assert S.is_falling_knife(None, None, -1.0) is True
+    assert S.is_falling_knife(None, None, 5.0) is False
+
+
 def test_momentum_blend_range():
     m, bd = S.compute_momentum(slow_stoch_weekly=15, discount_from_top=-10,
                                reversal_confirmation=1, distance_ma200=-5)

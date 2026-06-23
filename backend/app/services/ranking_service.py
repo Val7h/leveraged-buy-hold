@@ -790,6 +790,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             fund_growth = _rg * 0.6 + _eg * 0.4
         else:
             fund_growth = _rg if _rg is not None else _eg   # o que houver; senão None
+        # Crescimento RECENTE (TTM) p/ o anti-faca #15c (apodrecimento atual) — mesmo blend 60/40.
+        _rt, _et = fund.get("rev_growth_ttm"), fund.get("eps_growth_ttm")
+        if _rt is not None and _et is not None:
+            recent_growth = _rt * 0.6 + _et * 0.4
+        else:
+            recent_growth = _rt if _rt is not None else _et
 
         # Preço atual, variação diária e moeda — para exibição na linha do ranking.
         current_price = float(a[-1]) if len(a) else None
@@ -832,9 +838,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         else:
             verdict = S.aporte_verdict(momentum, quality)
 
-            # FILTRO DE DETERIORAÇÃO (anti-faca): CAGR de PREÇO ≤ 0 em ~6a = declínio estrutural
-            # (NKE/ADBE/TLT). CAGR positivo só corrigindo SEGUE compra (BTC no fundo, PEP caída).
-            if cagr is not None and cagr <= 0 and verdict in ("COMPRAR FORTE", "COMPRAR"):
+            # ANTI-FACA (#15c): faca = NEGÓCIO encolhendo (crescimento REAL de 5a < 0, OU recente
+            # TTM apodrecendo), não só preço barato. Carry ZERO (Quantfury) → sem custo de carrego a
+            # vencer. Preço de 6a (cagr) só como FALLBACK sem dado real (BR). Cíclica: queda recente
+            # é o CICLO (a compra), não rot → usa só o preço.
+            if verdict in ("COMPRAR FORTE", "COMPRAR") and S.is_falling_knife(
+                    fund_growth, recent_growth, cagr, is_tatico=is_tatico):
                 verdict = "ESPECULATIVO"
 
             # CRIVO DE QUALIDADE-REAL POR TIPO (#15b): porteira de fundamentos da EMPRESA (não preço).

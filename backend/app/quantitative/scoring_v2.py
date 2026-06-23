@@ -786,6 +786,30 @@ def aporte_verdict(momentum: float, quality: float) -> str:
     return "ESTICADO"              # sem desconto agora (NÃO é exclusão)
 
 
+# ─────────────────── ANTI-FACA POR DECLÍNIO DO NEGÓCIO (#15c) ───────────────────
+# Faca = empresa ENCOLHENDO (não só preço barato). Quantfury é CARRY ZERO → NÃO há "custo de
+# carrego" a vencer (o sênior assumiu juro de margem; não se aplica). O corte é o NEGÓCIO declinante.
+_KNIFE_RECENT_PCT = -8.0   # encolhimento RECENTE (TTM) que conta como "apodrecendo agora"
+
+
+def is_falling_knife(growth_5y_real, recent_growth, price_cagr, is_tatico=False):
+    """True se é faca (rebaixa COMPRAR/FORTE → ESPECULATIVO). #15c:
+      - CÍCLICA (is_tatico): crescimento real é enganoso (fase do ciclo) → usa SÓ o preço de 6a
+        (anti-faca clássico). Queda recente de receita numa cíclica é o CICLO (a compra), não rot.
+      - NÃO-cíclica: faca = negócio encolhendo de VERDADE — crescimento real de 5a < 0 (estrutural),
+        OU crescimento RECENTE (TTM) muito negativo (< -8% = boa empresa apodrecendo agora, que a
+        média de 6a esconde). Preço de 6a só como FALLBACK quando não há dado real (BR/jovem)."""
+    if is_tatico:
+        return price_cagr is not None and price_cagr <= 0
+    if growth_5y_real is not None and growth_5y_real < 0:
+        return True
+    if recent_growth is not None and recent_growth < _KNIFE_RECENT_PCT:
+        return True
+    if growth_5y_real is None and recent_growth is None and price_cagr is not None and price_cagr <= 0:
+        return True
+    return False
+
+
 # ─────────────────── CRIVO DE QUALIDADE-REAL POR TIPO (#15b) ───────────────────
 # Porteira que julga SÓ fundamentos da EMPRESA (não preço), por TIPO, e SÓ com dado que EXISTE
 # (ausente SAI, não vira "50 falso"). Renormaliza sobre os termos presentes. Piso afrouxa pela

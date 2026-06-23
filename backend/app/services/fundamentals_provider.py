@@ -69,6 +69,10 @@ def _empty(source=None) -> dict:
         # Substitui o "g5 de preço" na nota de Qualidade (quebra a circularidade). Ausente→None.
         "rev_growth_5y": None,
         "eps_growth_5y": None,
+        # Crescimento RECENTE (TTM YoY) — p/ o anti-faca #15c pegar a boa empresa APODRECENDO agora
+        # (que a média de 6a esconde). Em %, ex -12. Só Finnhub (US).
+        "rev_growth_ttm": None,
+        "eps_growth_ttm": None,
         "beta": None,
         "beta_note": None,
         "source": source,
@@ -236,6 +240,9 @@ def _from_finnhub(ticker: str) -> dict:
         # ⚠️ VALIDAR AO VIVO: confirmar que o valor real vem em % (ex 8.5), não fração (0.085).
         out["rev_growth_5y"] = pick("revenueGrowth5Y", "revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy")
         out["eps_growth_5y"] = pick("epsGrowth5Y", "epsGrowthTTMYoy", "epsGrowthQuarterlyYoy")
+        # RECENTE (TTM YoY) separado — p/ o anti-faca #15c (apodrecimento atual). Em %.
+        out["rev_growth_ttm"] = pick("revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy")
+        out["eps_growth_ttm"] = pick("epsGrowthTTMYoy", "epsGrowthQuarterlyYoy")
         b = pick("beta")
         if b is not None and b != 0:
             out["beta"] = b
