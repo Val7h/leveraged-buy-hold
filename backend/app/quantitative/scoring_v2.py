@@ -621,8 +621,22 @@ def score_dividend_q(dy: Optional[float]) -> float:
     return _floor(100 - (dy - 7) * 5)          # yield alto demais penaliza leve
 
 
+def _is_compounder(roe: Optional[float], roic: Optional[float]) -> bool:
+    """Compounder de alta rentabilidade: ROIC alto (≥15%) OU ROE alto (≥18%).
+    São negócios que reinvestem o lucro a alta taxa em vez de distribuir (RADL3/ADBE).
+    Usado p/ desarmar o castigo de yield baixo na QUALIDADE (yield baixo aqui é OPÇÃO de
+    reinvestir growth, não fraqueza)."""
+    return (roic is not None and roic >= 0.15) or (roe is not None and roe >= 0.18)
+
+
+# Yield abaixo disto, num compounder, é "opção de reinvestir" (não renda) → não pune qualidade.
+_COMPOUNDER_LOW_YIELD = 3.0
+
+
 def score_dividend_sustainable(avg10: Optional[float], worst_year: Optional[float],
-                               trailing: Optional[float] = None) -> float:
+                               trailing: Optional[float] = None,
+                               roe: Optional[float] = None,
+                               roic: Optional[float] = None) -> float:
     """
     Dividendo por CONSISTÊNCIA (decisão do usuário): nível ao longo do ciclo × nunca cortou.
       - nível = nota sobre a MÉDIA de 10 anos (não o pico de um ano de bonança).
@@ -632,10 +646,22 @@ def score_dividend_sustainable(avg10: Optional[float], worst_year: Optional[floa
         ratio≥0.6 → ×1.0 · 0.4–0.6 → ×0.7 · <0.4 → ×0.4 (cortou feio em algum ano).
     Growth/não-renda (média <1.5%): pontua só o nível, SEM castigo de corte (dividendo
     simbólico oscila muito em termos relativos — não tankar NVDA/GOOGL por isso).
-    Sem média 10a (jovem/sem dados) → cai no score trailing tradicional.
+    GROWTH GUARD do compounder (#2, sep. QUALIDADE×VALUATION): yield BAIXO (<3%) num
+    COMPOUNDER de alta rentabilidade (ROIC≥15% ou ROE≥18%, ex RADL3/ADBE) NÃO pune a
+    qualidade — o yield baixo é OPÇÃO de reinvestir (growth), não fraqueza do negócio.
+    Devolve nota NEUTRA-ALTA p/ o termo não derrubar a Qualidade (a doutrina de renda
+    continua valendo p/ quem ESCOLHE ser pagador: yield alto consistente ainda pontua alto).
+    Sem média 10a (jovem/sem dados) → cai no score trailing tradicional (com o mesmo guard).
     """
     if avg10 is None:
+        # compounder de yield baixo (trailing) não é punido pelo dividendo na qualidade
+        if (trailing is not None and 0 <= trailing < _COMPOUNDER_LOW_YIELD
+                and _is_compounder(roe, roic)):
+            return 75.0
         return score_dividend_q(trailing)
+    # GROWTH GUARD: compounder de yield baixo → neutro-alto (não derruba a qualidade)
+    if avg10 < _COMPOUNDER_LOW_YIELD and _is_compounder(roe, roic):
+        return 75.0
     nivel = score_dividend_q(avg10)
     if avg10 < 1.5 or worst_year is None:
         return nivel                                  # growth/sem renda ou histórico curto
@@ -720,15 +746,27 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
     # confundindo "ação cara" com "empresa boa". Agora g5 conta UMA vez (crescimento) e o
     # dividendo UMA vez (dividendos). cagr/tsr_expected ficam na assinatura por compat, mas
     # NÃO entram mais no score.
-    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield)
-             if dy_avg10 is not None else score_dividend_q(dividend_yield))
+    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield, roe=roe, roic=roic)
+             if dy_avg10 is not None
+             else score_dividend_sustainable(None, None, dividend_yield, roe=roe, roic=roic))
     s_fun = score_fundamental_health(payout_ratio, debt_to_equity, roe, roic, fcf_yield)
     breakdown = {"beta": round(s_beta), "max_drawdown": round(s_dd),
-                 "sharpe": round(s_sharpe), "dividendos": round(s_div)}
+                 "sharpe": round(s_sharpe)}
     # Componentes (score, peso). CRESCIMENTO (#15a) é REAL da empresa (receita/EPS, não preço) e só
     # entra se houver dado — ausente (BR/jovem) o termo SAI e os pesos RENORMALIZAM (não injeta "50
     # falso"; honestidade > falso mediano). Pesos somam 1.0 com crescimento; sem ele, renormaliza.
-    comps = [(s_beta, 0.13), (s_dd, 0.20), (s_sharpe, 0.13), (s_div, 0.18)]
+    comps = [(s_beta, 0.13), (s_dd, 0.20), (s_sharpe, 0.13)]
+    # DIVIDENDO na QUALIDADE (#2 sep. QUALIDADE×VALUATION): para um COMPOUNDER de yield baixo
+    # (ROIC≥15%/ROE≥18% + yield <3%, ex RADL3/ADBE), o yield baixo é OPÇÃO de reinvestir — NÃO é
+    # sinal de baixa qualidade. O termo de dividendos SAI e os pesos RENORMALIZAM (mesma lógica do
+    # crescimento ausente/ETF), em vez de derrubar a nota. Pagador de renda (yield ≥3% ou não-
+    # compounder) MANTÉM o termo: dividendo consistente alto continua bom (TAEE11/BBSE3 não caem).
+    _div_yield = dividend_yield if dy_avg10 is None else dy_avg10
+    _compounder_low_yield = (_is_compounder(roe, roic) and _div_yield is not None
+                             and 0 <= _div_yield < _COMPOUNDER_LOW_YIELD)
+    if not _compounder_low_yield:
+        comps.append((s_div, 0.18))
+        breakdown["dividendos"] = round(s_div)
     # FUNDAMENTOS: só entram p/ EMPRESAS. ETF/commodity NÃO são empresas (não têm ROE/ROIC/FCF) →
     # o termo SAI e os pesos RENORMALIZAM (não ancora a nota num "50 falso"; mesma lógica do
     # crescimento). fundamentals_apply=False vem do ranking p/ ETF/COMMODITY. Ação sem dado (BR)
@@ -867,10 +905,18 @@ def score_quality_crivo(tipo, roe=None, roic=None, fcf_yield=None, debt_to_equit
       - financeira: ROE pilar; IGNORA roic/fcf/D-E (D/E alto é o modelo do banco, não risco).
       - ciclica (is_tatico): D/E pilar; ROIC com TETO 70 (pico de ciclo engana); crescimento meio-peso.
       - normal: roic+fcf+dividendo+D/E+roe+crescimento."""
-    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield) if dy_avg10 is not None
+    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield, roe=roe, roic=roic)
+             if dy_avg10 is not None
              else (score_dividend_q(dividend_yield) if dividend_yield is not None else None))
     s_gro = score_growth_5y(growth_5y) if growth_5y is not None else None
     s_roe, s_roic, s_fcf, s_de = _q_roe(roe), _q_roic(roic), _q_fcf(fcf_yield), _q_debt(debt_to_equity)
+
+    # COMPOUNDER de yield baixo (#2): yield <3% + ROIC≥15%/ROE≥18% → o dividendo NÃO julga o negócio
+    # (é opção de reinvestir). Tira o termo de dividendos do crivo "normal" e renormaliza, p/ ROIC/
+    # FCF/ROE dominarem (RADL3/ADBE não são rebaixadas por yield baixo). Pagador de renda mantém.
+    _div_yield = dividend_yield if dy_avg10 is None else dy_avg10
+    _compounder_low_yield = (_is_compounder(roe, roic) and _div_yield is not None
+                             and 0 <= _div_yield < _COMPOUNDER_LOW_YIELD)
 
     if tipo == "financeira":
         comps = [(s_roe, 0.45), (s_div, 0.30), (s_gro, 0.25)]
@@ -878,7 +924,8 @@ def score_quality_crivo(tipo, roe=None, roic=None, fcf_yield=None, debt_to_equit
         s_roic_cap = min(s_roic, 70.0) if s_roic is not None else None   # ROIC de pico não "compra 100"
         comps = [(s_de, 0.35), (s_div, 0.30), (s_roic_cap, 0.20), (s_gro, 0.15)]
     else:  # normal
-        comps = [(s_roic, 0.28), (s_fcf, 0.22), (s_div, 0.20), (s_de, 0.15), (s_roe, 0.15), (s_gro, 0.15)]
+        s_div_norm = None if _compounder_low_yield else s_div   # compounder de yield baixo: dividendo SAI
+        comps = [(s_roic, 0.28), (s_fcf, 0.22), (s_div_norm, 0.20), (s_de, 0.15), (s_roe, 0.15), (s_gro, 0.15)]
 
     present = [(s, w) for s, w in comps if s is not None]
     if len(present) < 2:

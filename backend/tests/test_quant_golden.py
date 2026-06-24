@@ -64,6 +64,77 @@ def test_dividend_consistency_scoring():
     assert growth == S.score_dividend_q(0.3)
 
 
+# ───────────── #2 SEPARAR QUALIDADE × VALUATION (compounder de yield baixo) ─────────────
+# Doutrina: QUALIDADE vem dos FUNDAMENTOS do negócio (ROE/ROIC/etc), NÃO do yield nem de
+# quão caro/barato está. Yield BAIXO num compounder de ROIC alto (RADL3/ADBE) NÃO derruba a
+# qualidade; valuation caro (WMT) NÃO sobe a qualidade. Renda consistente alta (TAEE11) segue boa.
+def test_compounder_low_yield_dividend_guard():
+    # RADL3/ADBE: yield baixo + ROIC alto → o termo de dividendo NÃO pune (neutro-alto), não cai
+    radl = S.score_dividend_sustainable(avg10=1.0, worst_year=0.8, roe=0.176, roic=0.228)
+    assert radl >= 70                                     # compounder não é punido pelo yield
+    # MESMO yield baixo, mas ROIC/ROE medíocres (não-compounder) → SEM guard (volta ao nível baixo)
+    medio = S.score_dividend_sustainable(avg10=1.0, worst_year=0.8, roe=0.06, roic=0.07)
+    assert medio < radl
+    # guard também vale sem média 10a (só trailing): ADBE-like, yield baixo + ROIC alto
+    adbe = S.score_dividend_sustainable(None, None, trailing=0.0, roe=0.62, roic=0.36)
+    assert adbe >= 70
+    # pagador de renda alta consistente NÃO é afetado pelo guard (segue alto)
+    taee = S.score_dividend_sustainable(avg10=8.0, worst_year=7.0)
+    assert taee >= 80
+
+
+def test_quality_blend_compounder_not_demoted_by_low_yield():
+    # RADL3: ROE 17.6%, ROIC 22.8%, yield ~1% → qualidade ALTA, e o termo de dividendo SAI
+    # do breakdown (renormaliza), em vez de derrubar a nota.
+    q_radl, bd_radl = S.compute_quality_blend(
+        beta=0.7, max_dd_pct=-25, dividend_yield=1.0, growth_5y=12,
+        roe=0.176, roic=0.228, fcf_yield=0.04, sharpe=1.2, momentum=55)
+    assert "dividendos" not in bd_radl                    # compounder: dividendo renormalizado p/ fora
+    assert q_radl >= 70                                    # qualidade alta, não rebaixada
+
+    # Controle: o MESMO ativo SE fosse não-compounder (ROIC baixo) MANTÉM o dividendo no blend.
+    _, bd_noncomp = S.compute_quality_blend(
+        beta=0.7, max_dd_pct=-25, dividend_yield=1.0, growth_5y=12,
+        roe=0.06, roic=0.07, fcf_yield=0.04, sharpe=1.2, momentum=55)
+    assert "dividendos" in bd_noncomp                     # não-compounder de yield baixo: termo fica
+
+
+def test_quality_crivo_compounder_low_yield_not_demoted():
+    # RADL3 no crivo "normal": ROIC/FCF/ROE dominam; yield baixo NÃO derruba → nota ALTA
+    n_radl, _ = S.score_quality_crivo("normal", roe=0.176, roic=0.228, fcf_yield=0.04,
+                                      debt_to_equity=0.6, dividend_yield=1.0, growth_5y=12)
+    assert n_radl is not None and n_radl >= 75
+
+    # ADBE: ROE 62%, ROIC 36%, FCF yield 13.5% (excelente E barata), yield ~0 → nota ALTA
+    n_adbe, _ = S.score_quality_crivo("normal", roe=0.62, roic=0.36, fcf_yield=0.135,
+                                      debt_to_equity=0.3, dividend_yield=0.0, growth_5y=15)
+    assert n_adbe is not None and n_adbe >= 85
+
+    # TAEE11 (staple de yield alto consistente): segue ALTA (a doutrina de renda continua valendo)
+    n_taee, _ = S.score_quality_crivo("normal", roe=0.18, roic=0.12, fcf_yield=0.07,
+                                      debt_to_equity=0.8, dy_avg10=9.0, dy_worst=8.0, growth_5y=6)
+    assert n_taee is not None and n_taee >= 70
+
+
+def test_quality_expensive_low_yield_mediocre_roic_not_top():
+    # WMT: FCF yield 1.3% (caríssima, EV/FCF ~80x), ROIC/ROE medíocres, yield baixo →
+    # NÃO recebe nota máxima de qualidade (valuation caro NÃO premia; fundamentos fracos seguram).
+    n_wmt, _ = S.score_quality_crivo("normal", roe=0.08, roic=0.10, fcf_yield=0.013,
+                                     debt_to_equity=1.5, dividend_yield=1.3, growth_5y=5)
+    assert n_wmt is not None and n_wmt < 70               # fundamentos fracos → longe do topo
+
+    # WMT NÃO é compounder → o dividendo PERMANECE no blend (não ganha guard de compounder)
+    q_wmt, bd_wmt = S.compute_quality_blend(
+        beta=0.5, max_dd_pct=-15, dividend_yield=1.3, growth_5y=5,
+        roe=0.08, roic=0.10, fcf_yield=0.013, sharpe=1.5, momentum=50)
+    assert "dividendos" in bd_wmt
+    # e fica abaixo de um compounder verdadeiro de qualidade
+    q_radl, _ = S.compute_quality_blend(
+        beta=0.7, max_dd_pct=-25, dividend_yield=1.0, growth_5y=12,
+        roe=0.176, roic=0.228, fcf_yield=0.04, sharpe=1.2, momentum=55)
+    assert q_wmt < q_radl
+
+
 def test_dividend_consistency_helper_worst_year():
     y = dt.date.today().year
     annual = {y - 1: 8.0, y - 2: 0.0, y - 3: 7.0, y - 4: 9.0, y - 5: 6.0}

@@ -192,13 +192,67 @@ def _stooq_df(ticker: str, days: int):
         return None, None
 
 
+# ─────────────────────── Dividendo EXTRAORDINÁRIO → DY RECORRENTE ────────────────
+# Diagnóstico do gestor sênior (jun/2026): o DY headline mistura dividendo recorrente com
+# pagamento EXTRAORDINÁRIO/único, inflando picks e alavancando 3x sobre um carry que NÃO se
+# repete (ITUB4 8,4% com R$2,12 de 1 extraordinário de dez/2025; recorrente ~3-4%). Para uma
+# estratégia de dividendos, o yield correto é o RECORRENTE TRAILING — não o forward nem o
+# inflado por extraordinário. CONSERVADOR: na dúvida, SUBESTIMA (nunca infla); se não dá p/
+# detectar com segurança, mantém o valor original (NUNCA fabrica).
+_EXTRA_PAGTO_MULT = 2.0     # 1 pagamento > 2× a MEDIANA dos pagamentos regulares do ano = outlier
+_EXTRA_ANUAL_MULT = 1.8     # OU o total do ano salta > 1,8× a mediana dos demais anos = ano inflado
+
+
+def _recurring_annual_amount(year_amounts: list, peer_year_totals: list) -> Optional[float]:
+    """Total RECORRENTE de dividendos de UM ano, removendo o excesso extraordinário.
+
+    `year_amounts`: lista dos pagamentos individuais DAQUELE ano (nominal, R$/US$).
+    `peer_year_totals`: totais anuais dos OUTROS anos (p/ a 2ª trava de "ano que salta").
+    Retorna o total recorrente (≤ total bruto), ou None se nada a corrigir / inseguro.
+
+    Regra de detecção (precisa de ≥3 pagamentos p/ ter mediana robusta dos regulares):
+      (a) um pagamento individual > 2× a MEDIANA dos demais pagamentos do ano → é outlier;
+          o recorrente substitui esse outlier pela mediana dos regulares (normaliza, não zera).
+      (b) o TOTAL do ano > 1,8× a mediana dos totais dos outros anos → ano inflado; capa o
+          total no maior dos pares "normais" (mediana × 1,8) — só quando há ≥2 anos de par.
+    Conservador: aplica a correção que der o MENOR total recorrente (subestima na dúvida)."""
+    amts = sorted(float(x) for x in year_amounts if x and x > 0)
+    if not amts:
+        return None
+    bruto = sum(amts)
+    recorrente = bruto
+
+    # (a) outlier de PAGAMENTO dentro do ano (precisa de base de ≥3 pagamentos)
+    if len(amts) >= 3:
+        for i, pago in enumerate(amts):
+            regulares = amts[:i] + amts[i + 1:]
+            med_reg = float(np.median(regulares))
+            if med_reg > 0 and pago > _EXTRA_PAGTO_MULT * med_reg:
+                # substitui o outlier pela mediana dos regulares (normaliza o excesso)
+                cand = bruto - pago + med_reg
+                recorrente = min(recorrente, cand)
+
+    # (b) ANO que salta vs. os outros anos (precisa de ≥2 anos de par)
+    peers = [float(p) for p in peer_year_totals if p and p > 0]
+    if len(peers) >= 2:
+        med_peer = float(np.median(peers))
+        if med_peer > 0 and bruto > _EXTRA_ANUAL_MULT * med_peer:
+            cand = _EXTRA_ANUAL_MULT * med_peer   # capa no teto "normal" (não no exato p/ não exagerar)
+            recorrente = min(recorrente, cand)
+
+    if recorrente < bruto - 1e-9:
+        return round(recorrente, 6)
+    return None
+
+
 def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: bool = False):
     """
     (DataFrame[index=datetime, Close], dy_trailing[, annual_dy]) via Yahoo chart API.
     Substitui fetch_price_history (que cai em dados SINTÉTICOS qd yfinance falha).
-    dy_trailing = soma de dividendos dos últimos 365d / preço atual × 100 (None se não pediu).
-    want_annual=True → retorna também {ano: dy_anual_%} (dividendos do ano / preço atual),
-    p/ score de consistência do dividendo (média 10a + pior ano). Retorna (None, None[, None]).
+    dy_trailing = soma de dividendos RECORRENTES dos últimos 365d / preço atual × 100
+    (extraordinário removido; None se não pediu).
+    want_annual=True → retorna também {ano: dy_anual_RECORRENTE_%}, p/ score de consistência
+    do dividendo (média 10a + pior ano). Retorna (None, None[, None]).
     """
     try:
         import pandas as pd
@@ -244,11 +298,52 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: b
             divs = (res.get("events") or {}).get("dividends") or {}
             price = float(pairs[-1][1])  # preço atual (ajuste≈1 na última data) → DY trailing OK
             cutoff = end - 365 * 86400
-            total = sum(float(v.get("amount", 0) or 0) for k, v in divs.items() if int(k) >= cutoff)
-            dy = round(total / price * 100, 2) if (price and total > 0) else 0.0
+
+            # PAGAMENTOS por ano (lista) p/ detectar EXTRAORDINÁRIO; e o TS de cada pagamento
+            # (p/ saber quais entram no trailing 365d). Mantém o ano-base do pagamento.
+            pagtos_ano: Dict[int, list] = {}      # {ano: [amount, ...]}  (todos os anos com dado)
+            for k, v in divs.items():
+                try:
+                    tsd = int(v.get("date", k))
+                    amt = float(v.get("amount", 0) or 0)
+                    if amt <= 0:
+                        continue
+                    pagtos_ano.setdefault(dt.datetime.utcfromtimestamp(tsd).year, []).append((tsd, amt))
+                except Exception:
+                    continue
+
+            # Total RECORRENTE por ano (remove o excesso extraordinário). by_year_brut = headline.
+            by_year: Dict[int, float] = {y: sum(a for _, a in lst) for y, lst in pagtos_ano.items()}
+            by_year_rec: Dict[int, float] = {}
+            for y, lst in pagtos_ano.items():
+                amts = [a for _, a in lst]
+                peers = [tot for yy, tot in by_year.items() if yy != y]
+                rec = _recurring_annual_amount(amts, peers)
+                by_year_rec[y] = rec if rec is not None else by_year[y]
+
+            # TRAILING 365d: usa os pagamentos reais dos últimos 365d, MAS escala pelo fator
+            # recorrente/bruto do ano de cada pagamento (assim o extraordinário do ano sai do
+            # trailing também). Conservador: nunca infla o trailing.
+            total_brut = 0.0
+            total_rec = 0.0
+            for y, lst in pagtos_ano.items():
+                fator = (by_year_rec[y] / by_year[y]) if by_year.get(y) else 1.0
+                for tsd, amt in lst:
+                    if tsd >= cutoff:
+                        total_brut += amt
+                        total_rec += amt * fator
+            dy = round(total_rec / price * 100, 2) if (price and total_rec > 0) else 0.0
+            # Headline informativo (DY bruto, com extraordinário) — só p/ display/transparência.
+            # NÃO entra no score. Guardado em df.attrs p/ não mudar a assinatura do retorno.
+            try:
+                df.attrs["dy_headline"] = (round(total_brut / price * 100, 2)
+                                           if (price and total_brut > 0) else 0.0)
+            except Exception:
+                pass
+
             if want_annual:
-                # DY anual histórico CORRETO: dividendo nominal ÷ preço BRUTO médio DAQUELE ano.
-                # (usar preço de hoje subestima; usar preço AJUSTADO infla — ambos errados.)
+                # DY anual histórico CORRETO: dividendo RECORRENTE nominal ÷ preço BRUTO médio
+                # DAQUELE ano. (usar preço de hoje subestima; usar preço AJUSTADO infla.)
                 raw = q.get("close") or cl
                 px_year: Dict[int, list] = {}
                 for i, t in enumerate(ts):
@@ -256,15 +351,8 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: b
                     if rc and rc > 0:
                         px_year.setdefault(dt.datetime.utcfromtimestamp(int(t)).year, []).append(float(rc))
                 avg_px = {y: sum(v) / len(v) for y, v in px_year.items() if v}
-                by_year: Dict[int, float] = {}
-                for k, v in divs.items():
-                    try:
-                        y = dt.datetime.utcfromtimestamp(int(v.get("date", k))).year
-                        by_year[y] = by_year.get(y, 0.0) + float(v.get("amount", 0) or 0)
-                    except Exception:
-                        continue
                 annual = {y: round(amt / avg_px[y] * 100, 2)
-                          for y, amt in by_year.items() if avg_px.get(y)}
+                          for y, amt in by_year_rec.items() if avg_px.get(y)}
         if want_annual:
             return df, dy, annual
         return df, dy
@@ -935,6 +1023,29 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             else:
                 beta, beta_source = beta_reg, "reg1a" + _suf
 
+        # GUARD DE BETA IMPLAUSÍVEL (#3): beta NEGATIVO para ativo de RISCO (ação/ETF de equity)
+        # é ARTEFATO de janela/regressão (TTE −0,17 é impossível p/ petrolífera), NÃO sinal de
+        # defensividade. Beta negativo alimentaria INDEVIDAMENTE o bônus de "defensivo" no scoring
+        # → red flag. Regra (conservadora, NUNCA fabrica): se o beta final for < 0 e o ativo for de
+        # risco (não SHY/ouro/cripto/índice), rejeita o artefato em cascata:
+        #   1) tenta a regressão LONGA de 5a, se ainda não foi a fonte e for ≥ 0 (mais estável);
+        #   2) senão, piso SETORIAL conservador: cíclica (is_tatico/_TATICO_US) ~1.0, defensiva ~0.5.
+        # Petrolíferas com beta ~0.1-0.2 são SUSPEITAS mas POSSÍVEIS (janela) → mantidas; só o
+        # NEGATIVO é inaceitável. SHY/ouro/cripto ficam de fora (beta baixo/negativo é o papel deles).
+        _is_risk_asset = (cat not in ("CRYPTO", "COMMODITY")
+                          and not tk.startswith("^") and "=" not in tk
+                          and tk.upper() not in ("SHY", "GLD", "GC=F"))
+        if _is_risk_asset and beta is not None and beta < 0.0:
+            _tku = tk.upper()
+            _ciclica = (bucket == "TATICO") or (_tku in _TATICO_US)
+            if "reg5a" not in beta_source and beta_long is not None and beta_long >= 0.0:
+                beta, beta_source = beta_long, "reg5a:beta_neg_guard"
+            else:
+                _piso = 1.0 if _ciclica else 0.5
+                logger.info(f"[RANKING][BETA GUARD] {tk}: beta {beta:.2f} NEGATIVO (artefato) → "
+                            f"piso setorial {_piso} ({'ciclica' if _ciclica else 'defensiva'})")
+                beta, beta_source = _piso, "piso_setorial:beta_neg_guard"
+
         # TÁTICO: cíclica descolada OU bucket curado OU cíclica US curada, exceto whitelist.
         #
         # BR: auto-detecção por dados (corr baixa + σ alta), protegida pela whitelist.
@@ -996,7 +1107,14 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         rsi = _rsi(wclose if use_wk else a)                   # RSI SEMANAL
 
         # Dividendo por CONSISTÊNCIA (média 10a + pior ano) — BR. Fallback: trailing.
+        # dy_chart já é o DY RECORRENTE (extraordinário/forward removidos em _chart_api_df) — é o
+        # que entra no score. O headline (bruto, com extraordinário) fica só p/ display.
         dy = dy_chart if dy_chart else fund.get("dividend_yield")  # dividendos reais; fallback fund
+        try:
+            _dyh = df_full.attrs.get("dy_headline")
+        except Exception:
+            _dyh = None
+        _dy_headline = _round_or_none(_dyh, 1) if _dyh is not None else _round_or_none(dy, 1)
         dy_avg10, dy_worst = _dividend_consistency(annual_dy)
         cagr = g5  # CAGR de PREÇO (retorno total, ~6 anos) — fica só no anti-faca/display, NÃO na Qualidade
 
@@ -1107,6 +1225,14 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             leverage = min(leverage, 2.0)
         elif verdict == "COMPRAR" and quality is not None and quality < 50:
             leverage = min(leverage, 3.0)
+        # TRAVA DE ALAVANCAGEM POR BETA ALTO (#3) — REGRA Nº1 = SOBREVIVÊNCIA. beta ≥ 1.45 já é
+        # ~1,5x de sensibilidade ao mercado; 3x×1,5 = ~4,5x de exposição EFETIVA num drawdown =
+        # risco de LIQUIDAÇÃO (B3SA3 1,48, ADBE 1,46). O 2x topo/3x neutro/4-5x capitulação do
+        # regime NÃO se aplica a beta tão alto. CAPE a alavancagem em 2.0x — teto INVIOLÁVEL,
+        # igual ao teto por ativo de crypto. NÃO é exclusão (o ativo continua no ranking), só capa
+        # a alavancagem sugerida. Aplicado por ÚLTIMO p/ prevalecer sobre os tetos acima.
+        if beta is not None and beta >= 1.45:
+            leverage = min(leverage, 2.0)
         # SHY = reserva: na Quantfury só dá p/ ter até US$10k de notional → "alavancagem" de SHY
         # é irrelevante. Não força leverage aqui; fica fora da medida na carteira.
         stops = S.staggered_stops(leverage)
@@ -1136,6 +1262,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "cagr": _round_or_none(g5, 0),
             "sharpe": _round_or_none(shp, 2),
             "dividend_yield": _round_or_none(dy, 1),
+            "dividend_yield_headline": _dy_headline,
             "dy_avg10": _round_or_none(dy_avg10, 1),
             "dy_worst_year": _round_or_none(dy_worst, 1),
             "max_dd": _round_or_none(dd, 0),

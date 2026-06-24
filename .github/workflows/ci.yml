@@ -59,3 +59,7 @@ jobs:
         # Tickers europeus de bolsa local trocados por ADR US líquido; carga do
         # universo sem duplicados nem sufixo de bolsa local inesperado.
         run: python -m pytest tests/test_europe_adr.py -q
+      - name: Dividend recorrente + beta/leverage guards
+        # Exclusão de dividendo extraordinário (dy recorrente), guard de beta
+        # negativo implausível e trava de alavancagem em beta>=1.45 (sobrevivência).
+        run: python -m pytest tests/test_ranking_dividend_beta.py -q
