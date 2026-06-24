@@ -43,6 +43,8 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
     is_cycle: p.isCycle,
     last_verdict: p.lastVerdict ?? null,
     verdict_since: p.verdictSince ? p.verdictSince.toISOString() : null,
+    // Data de abertura (Prisma) → TRAVA DE DURAÇÃO no backend (>24m + esticado).
+    openedAt: p.openedAt ? p.openedAt.toISOString() : null,
   }));
   const equity = portfolio.currentEquity != null ? Number(portfolio.currentEquity) : null;
 
