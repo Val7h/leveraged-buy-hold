@@ -18,6 +18,11 @@ type Analytics = {
   aporte_regime?: any;
   stress?: any[];
   deleverage?: any[];
+  // Travas Fase 2:
+  thesis_stops?: any[];
+  duration_warnings?: any[];
+  credit_shock?: any;
+  exposure_caps?: any;
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -63,9 +68,87 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const aporte = analytics.aporte || [];
   const stress = analytics.stress || [];
   const deleverage = analytics.deleverage || [];
+  // Travas Fase 2:
+  const thesisStops = analytics.thesis_stops || [];
+  const durationWarnings = analytics.duration_warnings || [];
+  const creditShock = analytics.credit_shock || null;
+  const exposureCaps = analytics.exposure_caps || null;
+  const exposureAlerts = (exposureCaps && exposureCaps.alerts) || [];
 
   return (
     <div className="space-y-4">
+      {/* TRAVA 3. Choque de crédito — desalavanca TUDO (vermelho quando triggered) */}
+      {creditShock && creditShock.triggered && (
+        <section className="bg-danger/5 rounded-xl border border-danger/40 p-4">
+          <h3 className="text-sm font-semibold text-danger mb-1">⚠ Choque de crédito — desalavancar</h3>
+          <p className="text-[11px] text-text-muted mb-2">{creditShock.recommendation}</p>
+          <div className="text-xs font-mono text-danger mb-1">Sinal: {creditShock.signal}</div>
+          <div className="text-[10px] text-text-muted italic">{creditShock.proxy_note}</div>
+        </section>
+      )}
+
+      {/* TRAVA 1. Stop de TESE objetivo — fundamento quebrou (vermelho) */}
+      {thesisStops.length > 0 && (
+        <section className="bg-danger/5 rounded-xl border border-danger/40 p-4">
+          <h3 className="text-sm font-semibold text-danger mb-1">⚠ Stop de tese (fundamento quebrou)</h3>
+          <p className="text-[11px] text-text-muted mb-3">
+            Sair quando o <b>fundamento</b> quebra (FCF negativo, ROIC desabou, dividendo cortado) — independente do preço.
+            Diferente do stop de sobrevivência (-10%) e do stop de preço.
+          </p>
+          <div className="space-y-1.5">
+            {thesisStops.map((s: any) => (
+              <div key={s.ticker} className="flex items-start gap-2 text-xs">
+                <span className="px-1.5 py-0.5 rounded bg-danger/20 border border-danger/50 text-danger font-semibold text-[10px] shrink-0">TESE</span>
+                <span className="font-semibold text-text-primary shrink-0">{s.ticker}</span>
+                <span className="text-text-muted">— {s.reason}</span>
+                {s.is_seed && <span className="text-[9px] text-emerald-400 shrink-0">(semente — não imune; você decide)</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* TRAVA 2. Duração — tempo mata, não preço (âmbar) */}
+      {durationWarnings.length > 0 && (
+        <section className="bg-amber-500/5 rounded-xl border border-amber-500/40 p-4">
+          <h3 className="text-sm font-semibold text-amber-400 mb-1">⏳ Duração longa sem tese se realizando</h3>
+          <p className="text-[11px] text-text-muted mb-3">
+            Posições paradas há muito tempo e sem upside (esticado/justo). Tempo mata o capital alavancado — só alerta, considere girar.
+          </p>
+          <div className="space-y-1.5">
+            {durationWarnings.map((d: any) => (
+              <div key={d.ticker} className="flex items-center gap-2 text-xs">
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-400 font-semibold text-[10px]">
+                  {(d.months_held / 12).toFixed(1)}a
+                </span>
+                <span className="font-semibold text-text-primary">{d.ticker}</span>
+                <span className="text-text-muted">— {d.verdict?.toLowerCase()} há {Number(d.months_held).toFixed(0)} meses, considerar girar capital</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* TRAVA 4. Exposição agregada & concentração (âmbar) */}
+      {exposureAlerts.length > 0 && (
+        <section className="bg-amber-500/5 rounded-xl border border-amber-500/40 p-4">
+          <h3 className="text-sm font-semibold text-amber-400 mb-1">Trava de exposição agregada</h3>
+          <p className="text-[11px] text-text-muted mb-3">
+            Concentração de ativo (&gt; {fmt(exposureCaps?.concentration_limit_pct, "%", 0)} do risco), de bucket, ou cluster de ativos colados (corr ≥ 0,8) que esconde risco real.
+          </p>
+          <div className="space-y-1.5">
+            {exposureAlerts.map((a: any, i: number) => (
+              <div key={i} className="flex items-start gap-2 text-xs">
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-400 font-semibold text-[10px] shrink-0">
+                  {a.type === "concentracao_ativo" ? "ATIVO" : a.type === "concentracao_bucket" ? "BUCKET" : "CLUSTER"}
+                </span>
+                <span className="text-text-muted">{a.message}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* 0y. Stress test — replay de crashes na carteira atual */}
       {stress.length > 0 && (
         <section className="bg-surface rounded-xl border border-border p-4">

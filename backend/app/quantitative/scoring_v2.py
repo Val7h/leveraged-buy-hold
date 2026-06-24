@@ -910,3 +910,347 @@ def opportunity_rating(opportunity_score: float) -> str:
     if opportunity_score >= 35:
         return "FRACA"
     return "SOBRECOMPRADO"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCORE DE CRYPTO (framework SEPARADO — ratificado por Pal/Hayes/Woo)
+# ══════════════════════════════════════════════════════════════════════════════
+# Doutrina (MODELO_RANKING_ALAVANCAGEM.md §🪙): crypto NÃO usa fundamentos, dividendo,
+# Beta-vs-SPY nem SELIC. Estrutura ratificada:
+#   • Portão de Sobrevivência: Liquidez 30% + MarketCap/Dominância 25% + Saúde on-chain 25% + Lindy 20%
+#   • REGIME domina ~60% (liquidez global, carry iene, crédito China, DXY, dominância BTC, halving)
+#   • TIMING ~40% (MVRV-Z 30% + Reserve Risk 20% + Funding 20% + Puell 15% + SOPR 15%)
+#   • Leverage por ativo: BTC 2x · ETH 1.75x · top-10 1.25x · resto 1x (teto crypto 3x)
+#   • Stop = fechamento SEMANAL · risk-free 0% · circuit breaker OI>p90 E funding>p90
+#
+# REGRA DE OURO: fator sem fonte GRÁTIS confiável SAI do score e os pesos RENORMALIZAM
+# (mesmo padrão de fundamentals_apply=False). Em PRODUÇÃO, com fontes grátis, OMITIMOS:
+#   • Saúde on-chain z-score, MVRV-Z, Reserve Risk, Puell, SOPR  → Glassnode (PAGO)
+#   • Liquidez líquida global (Fed-RRP-TGA), crédito China        → macro pago/frágil
+# IMPLEMENTADOS com fonte grátis: Liquidez (CoinGecko volume), MarketCap/Dominância
+# (CoinGecko), Lindy (tabela estática), DXY + USD/JPY + BTC-regime (Yahoo chart),
+# Funding contrarian + circuit breaker (Binance free), momentum/MM200 técnico (preço).
+# Cada função abaixo é PURA: recebe números já buscados; None = fator ausente (renormaliza).
+
+# Tetos de alavancagem por ativo (decisão usuário: teto crypto 3x).
+CRYPTO_LEV_CAP = 3.0
+CRYPTO_LEV_BY_ASSET = {"BTC": 2.0, "ETH": 1.75}   # demais: top-10 1.25x, resto 1x
+
+
+def crypto_leverage_cap(symbol: Optional[str], market_cap_rank: Optional[int]) -> float:
+    """
+    Teto de alavancagem POR ATIVO (doutrina §5): BTC 2x · ETH 1.75x · top-10 1.25x ·
+    resto 1x. Nunca acima do teto-classe crypto (3x). symbol já sem sufixo (ex 'BTC').
+    market_cap_rank do CoinGecko define o top-10 (rank None → conservador: 1x).
+    """
+    sym = (symbol or "").upper().strip()
+    if sym in CRYPTO_LEV_BY_ASSET:
+        return min(CRYPTO_LEV_BY_ASSET[sym], CRYPTO_LEV_CAP)
+    if market_cap_rank is not None and market_cap_rank <= 10:
+        return min(1.25, CRYPTO_LEV_CAP)
+    return 1.0
+
+
+# ─────────────────────── Portão de Sobrevivência (sub-scores) ───────────────────────
+def score_crypto_liquidity(volume_24h: Optional[float]) -> Optional[float]:
+    """Liquidez real (proxy: volume 24h em USD). None se ausente (renormaliza).
+    Escala log: $10M→~10 · $100M→~40 · $1B→~70 · $10B→100 (BTC/ETH saturam no topo)."""
+    v = volume_24h
+    if v is None or v <= 0:
+        return None
+    import math as _m
+    # log10(1e7)=7 → 0 ; log10(1e10)=10 → 100. Faixa $10M..$10B.
+    sc = (_m.log10(v) - 7.0) / 3.0 * 100.0
+    return _clamp(sc)
+
+
+def score_crypto_marketcap(market_cap_rank: Optional[int],
+                           btc_dominance: Optional[float] = None,
+                           symbol: Optional[str] = None) -> Optional[float]:
+    """MarketCap/Dominância (sobrevivência). Rank baixo = mais estabelecido = nota alta.
+    rank 1→100 · 5→~85 · 10→~70 · 50→~25 · 100+→~10. None se rank ausente (renormaliza).
+    Dominância só ajusta BTC (dominância alta = BTC forte na rotação)."""
+    if market_cap_rank is None:
+        return None
+    r = market_cap_rank
+    if r <= 1:
+        base = 100.0
+    elif r <= 10:
+        base = _clamp(100 - (r - 1) / 9 * 30)        # 1→100, 10→70
+    elif r <= 50:
+        base = _clamp(70 - (r - 10) / 40 * 45)       # 10→70, 50→25
+    elif r <= 100:
+        base = _clamp(25 - (r - 50) / 50 * 15)       # 50→25, 100→10
+    else:
+        base = 10.0
+    # Dominância: tempera o BTC (alta dominância = liderança na rotação de risco).
+    if (symbol or "").upper() == "BTC" and btc_dominance is not None:
+        if btc_dominance >= 55:
+            base = _clamp(base + 0)        # já no teto
+        elif btc_dominance <= 40:
+            base = _clamp(base - 5)        # dominância baixa = alts liderando
+    return _clamp(base)
+
+
+def score_crypto_lindy(age_years: Optional[float]) -> Optional[float]:
+    """Efeito Lindy: idade da rede (anos desde a gênese). Fato público imutável.
+    0a→20 · 3a→~50 · 8a→~85 · 15a+→100. None se gênese desconhecida (renormaliza)."""
+    if age_years is None:
+        return None
+    a = max(0.0, age_years)
+    if a >= 15:
+        return 100.0
+    return _clamp(20 + a / 15 * 80)
+
+
+def compute_crypto_survival(volume_24h=None, market_cap_rank=None, btc_dominance=None,
+                            age_years=None, onchain_z=None, symbol=None):
+    """
+    PORTÃO DE SOBREVIVÊNCIA (0-100) — Liquidez 30% + MarketCap/Dom 25% + on-chain 25% + Lindy 20%.
+    on-chain z-score OMITIDO em produção (Glassnode pago) → None → termo SAI e RENORMALIZA.
+    Cada fator ausente SAI; se TODOS faltarem → (None, {}, omits). Woo: alt sem on-chain
+    não é excluída — perde o componente e renormaliza (a penalidade no teto vem da confiança).
+    """
+    s_liq = score_crypto_liquidity(volume_24h)
+    s_mc = score_crypto_marketcap(market_cap_rank, btc_dominance, symbol)
+    s_oc = None if onchain_z is None else _clamp(50 + onchain_z * 15)   # z→nota (ausente=None)
+    s_lindy = score_crypto_lindy(age_years)
+    comps = [(s_liq, 0.30, "liquidez"), (s_mc, 0.25, "marketcap_dominancia"),
+             (s_oc, 0.25, "saude_onchain"), (s_lindy, 0.20, "lindy")]
+    present = [(s, w, k) for s, w, k in comps if s is not None]
+    omits = [k for s, w, k in comps if s is None]
+    breakdown = {k: round(s) for s, w, k in present}
+    if not present:
+        return None, breakdown, omits
+    wsum = sum(w for _, w, _ in present)
+    score = sum(s * w for s, w, _ in present) / wsum
+    return round(_clamp(score), 1), breakdown, omits
+
+
+# ─────────────────────── REGIME de liquidez (domina ~60%) ───────────────────────
+def score_crypto_regime(dxy_change=None, usdjpy_change=None, btc_regime=None,
+                        btc_dominance=None):
+    """
+    REGIME (0-100) — "a liquidez é o oceano" (Pal). Quanto MAIS expansiva a liquidez,
+    melhor p/ crypto. Fatores GRÁTIS implementados:
+      • DXY (proxy inverso de liquidez): dólar caindo = liquidez expansiva = bom.
+      • USD/JPY (carry iene): iene fortalecendo forte (USD/JPY caindo) = desmonte de
+        carry = RUIM (ago/2024). Subindo moderado = carry estável = neutro/bom.
+      • Regime de preço do BTC (já temos regime()): capitulação = oceano vazio/baixa;
+        topo = euforia (regime quente, mas o TIMING cuida do "sair antes").
+    OMITIDOS (fonte paga/frágil → renormaliza): liquidez líquida global (Fed-RRP-TGA),
+    crédito China, crédito HY OAS, halving. dxy_change/usdjpy_change = variação % recente.
+    """
+    comps = []
+    breakdown = {}
+    omits = ["liquidez_global_fed_rrp_tga", "credito_china", "credito_hy_oas", "halving"]
+
+    if dxy_change is not None:
+        # DXY subindo = aperto (ruim). +5% → ~20 ; 0 → 60 ; -5% → 100.
+        s_dxy = _clamp(60 - dxy_change * 8)
+        comps.append((s_dxy, 0.35))
+        breakdown["dxy"] = round(s_dxy)
+    if usdjpy_change is not None:
+        # Desmonte de carry = USD/JPY CAINDO forte = ruim. -5% → ~25 ; 0 → 60 ; +3% → ~85.
+        # Subida forte demais (>+8%) tampouco é "boa" p/ crypto, mas não penaliza aqui.
+        s_jpy = _clamp(60 + usdjpy_change * 7) if usdjpy_change <= 5 else 90.0
+        comps.append((s_jpy, 0.25))
+        breakdown["carry_iene_usdjpy"] = round(s_jpy)
+    if btc_regime is not None:
+        reg_map = {"CAPIT.EXTREMA": 30.0, "CAPITULACAO": 45.0, "NEUTRO": 65.0, "TOPO": 55.0}
+        s_reg = reg_map.get(btc_regime, 60.0)
+        comps.append((s_reg, 0.40))
+        breakdown["regime_preco_btc"] = round(s_reg)
+
+    if not comps:
+        return None, breakdown, omits
+    wsum = sum(w for _, w in comps)
+    score = sum(s * w for s, w in comps) / wsum
+    return round(_clamp(score), 1), breakdown, omits
+
+
+# ─────────────────────── TIMING (~40%) ───────────────────────
+def score_crypto_funding(funding_rate: Optional[float]) -> Optional[float]:
+    """
+    Funding rate CONTRARIAN (Woo/Hayes): funding NEGATIVO = capitulação/compra (nota alta);
+    funding muito POSITIVO = excesso de alavancagem comprada = topo (nota baixa).
+    funding_rate em FRAÇÃO por janela (ex 0.0001 = 0.01%). None se ausente (renormaliza).
+      ≤ -0.0005 (capitulação) → 100 · 0 → 60 · +0.0003 (neutro-alto) → ~35 · ≥+0.001 → 0.
+    """
+    f = funding_rate
+    if f is None:
+        return None
+    if f <= -0.0005:
+        return 100.0
+    if f >= 0.001:
+        return 0.0
+    # interpola linear de (-0.0005→100) a (0.001→0)
+    return _clamp(100 - (f + 0.0005) / 0.0015 * 100)
+
+
+def score_crypto_timing_technical(slow_stoch_weekly=None, distance_ma200=None,
+                                  discount_from_top=None, reversal_confirmation=None):
+    """
+    TIMING técnico LEVE (confirmação tática — doutrina: peso reduzido pois sobrepõe MVRV).
+    Reusa os scorers de preço já existentes (stoch lento semanal, MM200, desconto×reversão).
+    None só se TODOS ausentes. Em produção é o grosso do TIMING (MVRV/Reserve/Puell/SOPR
+    são Glassnode pago → OMITIDOS e renormalizados)."""
+    comps = []
+    breakdown = {}
+    if slow_stoch_weekly is not None:
+        s = score_slow_stoch_weekly(slow_stoch_weekly)
+        comps.append((s, 0.45)); breakdown["stoch_lento_semanal"] = round(s)
+    if distance_ma200 is not None:
+        s = score_distance_ma200(distance_ma200)
+        comps.append((s, 0.30)); breakdown["distancia_ma200"] = round(s)
+    if discount_from_top is not None:
+        s = score_discount_from_top(discount_from_top, reversal_confirmation)
+        comps.append((s, 0.25)); breakdown["desconto_x_reversao"] = round(s)
+    if not comps:
+        return None, breakdown
+    wsum = sum(w for _, w in comps)
+    return round(_clamp(sum(s * w for s, w in comps) / wsum), 1), breakdown
+
+
+def compute_crypto_timing(funding_rate=None, slow_stoch_weekly=None, distance_ma200=None,
+                          discount_from_top=None, reversal_confirmation=None,
+                          mvrv_z=None, reserve_risk=None, puell=None, sopr=None):
+    """
+    TIMING (0-100). Pesos ratificados: MVRV-Z 30% + Reserve Risk 20% + Funding 20% +
+    Puell 15% + SOPR 15% (+ técnico como confirmação leve). MVRV-Z/Reserve/Puell/SOPR
+    são Glassnode (PAGO) → OMITIDOS em produção → None → SAEM e RENORMALIZAM. Restam
+    Funding (Binance free) + técnico de preço. Cada fator ausente SAI.
+    """
+    comps = []
+    breakdown = {}
+    omits = []
+    s_fund = score_crypto_funding(funding_rate)
+    if s_fund is not None:
+        comps.append((s_fund, 0.20)); breakdown["funding_contrarian"] = round(s_fund)
+    else:
+        omits.append("funding_contrarian")
+    s_tech, tech_bd = score_crypto_timing_technical(
+        slow_stoch_weekly, distance_ma200, discount_from_top, reversal_confirmation)
+    if s_tech is not None:
+        comps.append((s_tech, 0.20)); breakdown["tecnico_preco"] = round(s_tech)
+        breakdown.update(tech_bd)
+    # On-chain pago: cada um, se vier (None em prod), entra com seu peso.
+    for val, w, key in ((mvrv_z, 0.30, "mvrv_z"), (reserve_risk, 0.20, "reserve_risk"),
+                        (puell, 0.15, "puell"), (sopr, 0.15, "sopr")):
+        if val is not None:
+            comps.append((_clamp(val), w)); breakdown[key] = round(_clamp(val))
+        else:
+            omits.append(key)
+    if not comps:
+        return None, breakdown, omits
+    wsum = sum(w for _, w in comps)
+    return round(_clamp(sum(s * w for s, w in comps) / wsum), 1), breakdown, omits
+
+
+# ─────────────────────── CIRCUIT BREAKER (Hayes — binário) ───────────────────────
+def crypto_circuit_breaker(oi_percentile=None, funding_percentile=None) -> bool:
+    """
+    Circuit breaker de liquidação em cascata (binário, não ponderado): OI > p90 E
+    funding > p90 → 'SOBREALAVANCADO' → trava entradas + força 1x. Percentis 0-100.
+    Ambos ausentes (sem histórico de OI/funding) → False (não trava sem evidência).
+    """
+    if oi_percentile is None or funding_percentile is None:
+        return False
+    return oi_percentile > 90.0 and funding_percentile > 90.0
+
+
+def crypto_confidence(survival_omits, regime_omits, timing_omits) -> str:
+    """
+    Confiança do score de crypto pela QUANTIDADE de fatores on-chain/macro omitidos.
+    Em produção (só fontes grátis) muitos on-chain saem → confiança no MÁXIMO MEDIA
+    (honestidade: não alavancar no talo sobre fatores ausentes). Conta as omissões de
+    on-chain pago + macro pago (não as omissões 'esperadas' já contabilizadas).
+    """
+    paid_onchain = {"saude_onchain", "mvrv_z", "reserve_risk", "puell", "sopr"}
+    omitted_paid = (set(survival_omits or []) | set(timing_omits or [])) & paid_onchain
+    n = len(omitted_paid)
+    if n >= 4:
+        return "BAIXA"     # quase todo o on-chain estrutural ausente
+    if n >= 1:
+        return "MEDIA"
+    return "ALTA"
+
+
+def compute_crypto_score(volume_24h=None, market_cap_rank=None, btc_dominance=None,
+                         age_years=None, onchain_z=None, symbol=None,
+                         dxy_change=None, usdjpy_change=None, btc_regime=None,
+                         funding_rate=None, slow_stoch_weekly=None, distance_ma200=None,
+                         discount_from_top=None, reversal_confirmation=None,
+                         mvrv_z=None, reserve_risk=None, puell=None, sopr=None,
+                         oi_percentile=None, funding_percentile=None):
+    """
+    SCORE DE CRYPTO consolidado (framework separado, ratificado Pal/Hayes/Woo).
+
+    Composição (doutrina):
+      • Sobrevivência → vira QUALIDADE (portão de não-ir-a-zero).
+      • REGIME (~60%) + TIMING (~40%) → vira MOMENTO/oportunidade de aporte.
+    Pesos renormalizam quando faltam fatores (REGRA DE OURO — nada fabricado).
+
+    Retorna dict com chaves compatíveis com a linha do ranking:
+      quality, momentum, quality_breakdown, momentum_breakdown, confidence,
+      leverage_cap, circuit_breaker, omitted (fatores que saíram, p/ transparência).
+    Score nunca lança; faixas sempre 0-100. Fatores ausentes documentados em 'omitted'.
+    """
+    survival, surv_bd, surv_omits = compute_crypto_survival(
+        volume_24h=volume_24h, market_cap_rank=market_cap_rank, btc_dominance=btc_dominance,
+        age_years=age_years, onchain_z=onchain_z, symbol=symbol)
+    regime_s, reg_bd, reg_omits = score_crypto_regime(
+        dxy_change=dxy_change, usdjpy_change=usdjpy_change, btc_regime=btc_regime,
+        btc_dominance=btc_dominance)
+    timing_s, tim_bd, tim_omits = compute_crypto_timing(
+        funding_rate=funding_rate, slow_stoch_weekly=slow_stoch_weekly,
+        distance_ma200=distance_ma200, discount_from_top=discount_from_top,
+        reversal_confirmation=reversal_confirmation, mvrv_z=mvrv_z,
+        reserve_risk=reserve_risk, puell=puell, sopr=sopr)
+
+    # MOMENTO = REGIME (~60%) + TIMING (~40%). Se um faltar, o outro carrega (renormaliza).
+    mcomps = []
+    if regime_s is not None:
+        mcomps.append((regime_s, 0.60))
+    if timing_s is not None:
+        mcomps.append((timing_s, 0.40))
+    if mcomps:
+        mwsum = sum(w for _, w in mcomps)
+        momentum = round(_clamp(sum(s * w for s, w in mcomps) / mwsum), 1)
+    else:
+        momentum = 50.0
+
+    quality = survival if survival is not None else 50.0
+
+    breaker = crypto_circuit_breaker(oi_percentile, funding_percentile)
+    lev_cap = crypto_leverage_cap(symbol, market_cap_rank)
+    if breaker:
+        lev_cap = 1.0   # SOBREALAVANCADO → força sizing 1x (Hayes)
+
+    momentum_breakdown = {}
+    if regime_s is not None:
+        momentum_breakdown["regime"] = round(regime_s)
+    if timing_s is not None:
+        momentum_breakdown["timing"] = round(timing_s)
+    momentum_breakdown.update({f"regime_{k}": v for k, v in reg_bd.items()})
+    momentum_breakdown.update({f"timing_{k}": v for k, v in tim_bd.items()})
+
+    confidence = crypto_confidence(surv_omits, reg_omits, tim_omits)
+
+    return {
+        "quality": round(quality, 1),
+        "momentum": momentum,
+        "regime_score": regime_s,
+        "timing_score": timing_s,
+        "survival_score": survival,
+        "quality_breakdown": surv_bd,
+        "momentum_breakdown": momentum_breakdown,
+        "confidence": confidence,
+        "leverage_cap": lev_cap,
+        "circuit_breaker": breaker,
+        "omitted": {
+            "survival": surv_omits,
+            "regime": reg_omits,
+            "timing": tim_omits,
+        },
+    }

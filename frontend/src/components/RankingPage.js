@@ -92,6 +92,39 @@ const MOMENTUM_LABELS = {
   desconto_x_reversao: "Desconto × reversão",
   distancia_ma200: "Distância MM200",
 };
+// Crypto usa framework SEPARADO (Pal/Hayes/Woo): sobrevivência (qualidade) +
+// regime/timing (momento). Rótulos próprios — fundamentos/dividendo/beta não se aplicam.
+const CRYPTO_QUALITY_LABELS = {
+  liquidez: "Liquidez (vol 24h)",
+  marketcap_dominancia: "Market cap / Dom.",
+  saude_onchain: "Saúde on-chain",
+  lindy: "Lindy (idade)",
+};
+const CRYPTO_MOMENTUM_LABELS = {
+  regime: "Regime liquidez",
+  timing: "Timing",
+  regime_dxy: "DXY",
+  regime_carry_iene_usdjpy: "Carry iene (USD/JPY)",
+  regime_regime_preco_btc: "Regime preço BTC",
+  timing_funding_contrarian: "Funding (contrarian)",
+  timing_tecnico_preco: "Técnico de preço",
+  timing_stoch_lento_semanal: "Stoch lento sem.",
+  timing_distancia_ma200: "Distância MM200",
+  timing_desconto_x_reversao: "Desconto × reversão",
+};
+// Nome legível de cada fator OMITIDO (transparência: por que saiu do score).
+const CRYPTO_OMIT_LABELS = {
+  saude_onchain: "Saúde on-chain (z-score)",
+  mvrv_z: "MVRV-Z",
+  reserve_risk: "Reserve Risk",
+  puell: "Puell Multiple",
+  sopr: "SOPR",
+  liquidez_global_fed_rrp_tga: "Liquidez global (Fed−RRP−TGA)",
+  credito_china: "Crédito China",
+  credito_hy_oas: "Crédito HY (OAS)",
+  halving: "Halving",
+  funding_contrarian: "Funding",
+};
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -583,34 +616,95 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy })
 
           <div>
             <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">Dados de entrada</div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-              <Stat label="Stoch sem." value={fmtNum(asset.slow_stoch_weekly, 0)} />
-              <Stat label="Desc. topo" value={fmtPct(asset.discount_from_top)} />
-              <Stat label="Dist. MM200" value={fmtPct(asset.distance_ma200)} />
-              <Stat label="Beta" value={fmtNum(asset.beta)} />
-              <Stat label="CAGR" value={fmtPct(asset.cagr, 0)} />
-              <Stat
-                label={asset.sharpe < 0 ? "Sharpe ⚠" : "Sharpe"}
-                value={fmtNum(asset.sharpe)}
-                accent={asset.sharpe < 0 ? "text-warning" : undefined}
-              />
-              <Stat label="Div. yield" value={fmtPct(asset.dividend_yield)} />
-            </div>
+            {asset.is_crypto ? (
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                <Stat label="Stoch sem." value={fmtNum(asset.slow_stoch_weekly, 0)} />
+                <Stat label="Desc. topo" value={fmtPct(asset.discount_from_top)} />
+                <Stat label="Dist. MM200" value={fmtPct(asset.distance_ma200)} />
+                <Stat label="MC rank" value={asset.market_cap_rank != null ? `#${asset.market_cap_rank}` : "—"} />
+                <Stat label="Dominância BTC" value={fmtPct(asset.btc_dominance, 1)} />
+                <Stat label="Idade" value={asset.age_years != null ? `${asset.age_years}a` : "—"} />
+                <Stat
+                  label="Funding"
+                  value={asset.funding_rate != null ? `${(asset.funding_rate * 100).toFixed(3)}%` : "—"}
+                  accent={asset.funding_rate != null && asset.funding_rate < 0 ? "text-success" : undefined}
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                <Stat label="Stoch sem." value={fmtNum(asset.slow_stoch_weekly, 0)} />
+                <Stat label="Desc. topo" value={fmtPct(asset.discount_from_top)} />
+                <Stat label="Dist. MM200" value={fmtPct(asset.distance_ma200)} />
+                <Stat label="Beta" value={fmtNum(asset.beta)} />
+                <Stat label="CAGR" value={fmtPct(asset.cagr, 0)} />
+                <Stat
+                  label={asset.sharpe < 0 ? "Sharpe ⚠" : "Sharpe"}
+                  value={fmtNum(asset.sharpe)}
+                  accent={asset.sharpe < 0 ? "text-warning" : undefined}
+                />
+                <Stat label="Div. yield" value={fmtPct(asset.dividend_yield)} />
+              </div>
+            )}
           </div>
 
           <div>
             <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">
-              Qualidade — <span className="text-success font-semibold">{Math.round(asset.quality)}</span> / 100
+              {asset.is_crypto ? "Sobrevivência" : "Qualidade"} —{" "}
+              <span className="text-success font-semibold">{Math.round(asset.quality)}</span> / 100
             </div>
-            <FactorGrid data={asset.quality_breakdown} labels={QUALITY_LABELS} raw={qualityRaw(asset)} />
+            <FactorGrid
+              data={asset.quality_breakdown}
+              labels={asset.is_crypto ? CRYPTO_QUALITY_LABELS : QUALITY_LABELS}
+              raw={asset.is_crypto ? undefined : qualityRaw(asset)}
+            />
           </div>
 
           <div>
             <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">
-              Momento — <span className="text-primary font-semibold">{Math.round(asset.momentum)}</span> / 100
+              {asset.is_crypto ? "Regime + Timing" : "Momento"} —{" "}
+              <span className="text-primary font-semibold">{Math.round(asset.momentum)}</span> / 100
             </div>
-            <FactorGrid data={asset.momentum_breakdown} labels={MOMENTUM_LABELS} raw={momentumRaw(asset)} />
+            <FactorGrid
+              data={asset.momentum_breakdown}
+              labels={asset.is_crypto ? CRYPTO_MOMENTUM_LABELS : MOMENTUM_LABELS}
+              raw={asset.is_crypto ? undefined : momentumRaw(asset)}
+            />
           </div>
+
+          {asset.is_crypto && (
+            <div className="space-y-2">
+              {asset.circuit_breaker && (
+                <div className="text-[11px] text-danger font-medium">
+                  ⚡ Circuit breaker SOBREALAVANCADO (OI &gt; p90 E funding &gt; p90) — entradas travadas, sizing 1x
+                </div>
+              )}
+              <div className="text-[10px] text-text-muted leading-relaxed">
+                Stop por <span className="text-warning">fechamento SEMANAL</span> (nunca intraday — wicks liquidam no fundo).
+                {asset.leverage_cap_asset != null && (
+                  <> Teto por ativo: <span className="text-primary">{asset.leverage_cap_asset}x</span>.</>
+                )}
+              </div>
+              {asset.crypto_omitted &&
+                (() => {
+                  const all = [
+                    ...(asset.crypto_omitted.survival || []),
+                    ...(asset.crypto_omitted.regime || []),
+                    ...(asset.crypto_omitted.timing || []),
+                  ];
+                  const seen = new Set();
+                  const names = all
+                    .filter((k) => !seen.has(k) && seen.add(k))
+                    .map((k) => CRYPTO_OMIT_LABELS[k] || k);
+                  if (names.length === 0) return null;
+                  return (
+                    <div className="text-[10px] text-text-muted leading-relaxed">
+                      Fatores omitidos (sem fonte grátis confiável — pesos renormalizados):{" "}
+                      <span className="text-text-secondary">{names.join(" · ")}</span>
+                    </div>
+                  );
+                })()}
+            </div>
+          )}
 
           <div>
             <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">

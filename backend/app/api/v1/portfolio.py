@@ -377,6 +377,8 @@ class _AnalyticsPos(BaseModel):
     is_cycle: bool = False
     last_verdict: Optional[str] = None
     verdict_since: Optional[str] = None
+    # Data de abertura da posição (Prisma) — usada pela TRAVA DE DURAÇÃO (>24m + esticado).
+    openedAt: Optional[str] = None
 
 
 class _AnalyticsBody(BaseModel):

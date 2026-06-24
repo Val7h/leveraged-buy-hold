@@ -1,5 +1,6 @@
 """Portfolio metrics calculation service."""
 import math
+import logging
 import datetime as dt
 import numpy as np
 import pandas as pd
@@ -11,6 +12,8 @@ from app.models.position import Position
 from app.services.market_data import get_portfolio_live_data, fetch_price_history
 from app.quantitative.indicators import historical_max_drawdown, sharpe_ratio
 from app.quantitative.leverage import historical_var, expected_shortfall, annualized_volatility
+
+logger = logging.getLogger(__name__)
 
 
 def _basket_risk(position_data: List[dict]) -> Optional[Dict]:
@@ -425,6 +428,292 @@ def _stress_scenarios(rrows: List[dict], equity: float, risk_notional: float) ->
     return out
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TRAVAS DE PORTFÓLIO (Fase 2) — rede de segurança AGREGADA. Doutrina: prefira FALSO
+# POSITIVO (alertar à toa) a FALSO NEGATIVO. Nunca fabrica dado: fonte falha → trava
+# silenciosa com flag, não inventa número.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Limiares (conservadores — sobrevivência é a regra nº1).
+_THESIS_ROIC_FLOOR = 0.05          # ROIC abaixo disso (quando tese era saudável) = quebra
+_THESIS_ROIC_ABS = 0.03            # gatilho absoluto sem histórico
+_DURATION_MONTHS_MAX = 24          # > 24 meses parado sem tese se realizando
+_CREDIT_VIX_THRESHOLD = 30.0       # VIX ≥ 30 = regime de stress (proxy de crédito)
+_CONCENTRATION_PCT_MAX = 25.0      # maior posição > 25% do notional de risco = alerta
+_CLUSTER_CORR = 0.8                # ativos com corr ≥ 0.8 = cluster de risco oculto
+
+
+def _thesis_stops(rows: List[dict]) -> List[dict]:
+    """TRAVA 1 — STOP DE TESE OBJETIVO (não de preço): sai quando o FUNDAMENTO quebra,
+    independente do preço. Diferente do stop de sobrevivência (-10%/⅓) e do stop de preço.
+
+    Gatilhos (qualquer um dispara):
+      • fcf_yield < 0          → empresa QUEIMANDO caixa
+      • roic < 0.03 (absoluto) → retorno sobre capital ruído/destruição de valor
+      • dividend_yield == 0 quando dy_worst_year do ranking também == 0 → corte de dividendo
+    NÃO aplica a SHY/reserva, crypto, índices, câmbio (sem fundamentos).
+    is_seed NÃO é imune (se a tese quebrou, até âncora deve ser revista) — mas flag p/
+    o usuário decidir. Fonte falha → posição fica silenciosa (não inventa número)."""
+    from app.services.fundamentals_provider import get_fundamentals, _is_no_fundamentals
+    out = []
+    for r in rows:
+        tk = r["ticker"]
+        tu = tk.upper()
+        if r.get("is_shy") or tu == "SHY" or _is_no_fundamentals(tu):
+            continue
+        try:
+            f = get_fundamentals(tu)
+        except Exception:
+            continue
+        if not f:
+            continue
+        fcf = f.get("fcf_yield")
+        roic = f.get("roic")
+        dy = f.get("dividend_yield")
+        reasons = []
+        # FCF negativo — queimando caixa (gatilho mais duro).
+        if fcf is not None and fcf < 0:
+            reasons.append("FCF yield negativo — empresa queimando caixa")
+        # ROIC desabou. Sem histórico de "saudável", usamos o gatilho absoluto 0.03.
+        # (mantemos a constante de piso 0.05 documentada caso haja histórico no futuro).
+        if roic is not None and roic < _THESIS_ROIC_ABS:
+            reasons.append(f"ROIC {roic*100:.1f}% — retorno sobre capital quebrado (<{_THESIS_ROIC_ABS*100:.0f}%)")
+        # Corte de dividendo: DY zerou E o pior-ano do ranking também é 0 (sinal de corte,
+        # não apenas empresa que nunca pagou). dy_worst_year vem do ranking cache.
+        dy_worst = r.get("dy_worst_year")
+        if dy is not None and dy == 0 and dy_worst is not None and dy_worst == 0 and r.get("dividend_yield"):
+            # r["dividend_yield"] (do ranking) já indicava DY > 0 antes → agora zerou.
+            reasons.append("dividendo cortado — DY despencou a zero")
+        if not reasons:
+            continue
+        out.append({
+            "ticker": tk,
+            "reason": "; ".join(reasons),
+            "fcf_yield": round(fcf, 4) if fcf is not None else None,
+            "roic": round(roic, 4) if roic is not None else None,
+            "dividend_yield": round(dy, 2) if dy is not None else None,
+            "is_seed": bool(r.get("is_seed")),
+            "source": f.get("source"),
+        })
+    return out
+
+
+def _duration_warnings(rows: List[dict], positions: List[dict]) -> List[dict]:
+    """TRAVA 2 — DURAÇÃO (tempo mata, não preço): posição alavancada PARADA tempo demais
+    (openedAt > 24 meses) E que está ESTICADO ou JUSTO no ranking (sem upside, tese não
+    se realizando) → alerta 'duração longa sem tese se realizando, considerar girar capital'.
+    Só ALERTA, não força. Reaproveita o verdict do ranking cache (já em rows).
+    openedAt vem das positions (Prisma)."""
+    opened_by_tk: Dict[str, str] = {}
+    for p in positions:
+        oa = p.get("openedAt") or p.get("opened_at")
+        if oa:
+            opened_by_tk[p["ticker"].upper()] = oa
+    out = []
+    today = dt.date.today()
+    for r in rows:
+        tu = r["ticker"].upper()
+        oa = opened_by_tk.get(tu)
+        if not oa:
+            continue
+        try:
+            opened = dt.date.fromisoformat(str(oa)[:10])
+        except Exception:
+            continue
+        months = (today - opened).days / 30.44
+        if months < _DURATION_MONTHS_MAX:
+            continue
+        v = r.get("verdict")
+        if v not in ("ESTICADO", "JUSTO"):
+            continue
+        out.append({
+            "ticker": r["ticker"],
+            "months_held": round(months, 1),
+            "verdict": v,
+            "is_seed": bool(r.get("is_seed")),
+            "reason": (f"Parada há {months/12:.1f} anos e {v.lower()} (sem upside) — "
+                       "duração longa sem tese se realizando, considerar girar capital"),
+        })
+    out.sort(key=lambda x: -x["months_held"])
+    return out
+
+
+def _credit_shock() -> Dict:
+    """TRAVA 3 — GATILHO DE CHOQUE DE CRÉDITO (desalavanca TUDO). Sinal macro GRÁTIS.
+
+    PROXY (limitação assumida): NÃO temos spread de crédito puro (OAS HY) de graça.
+    Usamos como proxy de stress:
+      1. VIX ≥ 30 (medo extremo) — já buscado na market-bar; sinal principal.
+      2. (reforço) HYG (junk bonds) caindo forte vs LQD (investment grade) nos últimos
+         ~20 pregões — quando o spread de crédito abre, HYG cai MAIS que LQD. Se as duas
+         séries vierem grátis via chart API, computamos o diferencial; senão, fica só VIX.
+    ⚠ HONESTIDADE: VIX é volatilidade de equity, NÃO spread de crédito. Pode dar falso
+    positivo (vol alta sem stress de crédito) — e a doutrina ACEITA isso (preferimos
+    falso positivo a falso negativo na rede de segurança). Fonte falha → triggered=False
+    com nota, nunca fabrica número."""
+    from app.services.ranking_service import _chart_api_series
+    vix = None
+    signals = []
+    triggered = False
+    try:
+        a, _ = _chart_api_series("^VIX", 90)
+        if a is not None and len(a):
+            vix = float(a[-1])
+    except Exception:
+        vix = None
+    if vix is not None and vix >= _CREDIT_VIX_THRESHOLD:
+        triggered = True
+        signals.append(f"VIX {vix:.1f} ≥ {_CREDIT_VIX_THRESHOLD:.0f} (regime de medo extremo)")
+
+    # Reforço opcional: HYG vs LQD (spread proxy via ETFs). Best-effort, grátis.
+    hyg_lqd_spread = None
+    try:
+        from app.services.ranking_service import _chart_api_df, _dated_closes
+        dfh, _ = _chart_api_df("HYG", 120, want_div=False)
+        dfl, _ = _chart_api_df("LQD", 120, want_div=False)
+        if dfh is not None and dfl is not None:
+            ch = {d.isoformat(): c for d, c in _dated_closes(dfh)}
+            cl = {d.isoformat(): c for d, c in _dated_closes(dfl)}
+            common = sorted(set(ch) & set(cl))
+            if len(common) >= 25:
+                # retorno relativo dos últimos ~20 pregões (HYG - LQD). Muito negativo = stress.
+                rh = ch[common[-1]] / ch[common[-21]] - 1
+                rl = cl[common[-1]] / cl[common[-21]] - 1
+                hyg_lqd_spread = round((rh - rl) * 100, 2)
+                # HYG sub-performando LQD em > 3pp em 20 pregões = crédito abrindo.
+                if hyg_lqd_spread <= -3.0:
+                    triggered = True
+                    signals.append(f"HYG vs LQD {hyg_lqd_spread:+.1f}pp/20d (junk apanhando — spread de crédito abrindo)")
+    except Exception:
+        hyg_lqd_spread = None
+
+    if triggered:
+        signal = " · ".join(signals)
+        rec = ("REGIME DE STRESS DE CRÉDITO: reduza a alavancagem geral (desalavanque TUDO) — "
+               "corte exposição de risco, suba o equity/reserva. Rede de segurança: ato preventivo.")
+    else:
+        signal = (f"VIX {vix:.1f}" if vix is not None else "VIX indisponível") + " — sem sinal de stress"
+        rec = "Sem gatilho de choque de crédito agora — manter o plano."
+
+    return {
+        "triggered": bool(triggered),
+        "signal": signal,
+        "recommendation": rec,
+        "vix": round(vix, 1) if vix is not None else None,
+        "vix_threshold": _CREDIT_VIX_THRESHOLD,
+        "hyg_lqd_spread_20d": hyg_lqd_spread,
+        "proxy_note": ("Proxy GRÁTIS: VIX (vol de equity) + HYG/LQD (ETFs de crédito). "
+                       "NÃO é spread de crédito puro (OAS HY) — pode dar falso positivo. "
+                       "A doutrina aceita: melhor alertar à toa que não alertar."),
+    }
+
+
+def _exposure_caps(rows: List[dict], buckets: List[dict], correlation: Dict,
+                   risk_notional: float, effective_leverage: Optional[float]) -> Dict:
+    """TRAVA 4 — EXPOSIÇÃO AGREGADA + CONCENTRAÇÃO. Além do effective_leverage (já existe):
+      • CONCENTRAÇÃO de ativo único: maior posição como % do notional de RISCO (sem SHY).
+        Alerta se > 25%.
+      • CONCENTRAÇÃO de bucket: bucket acima do alvo+banda (Acelerador/satélite estourando).
+      • CLUSTER OCULTO: soma das posições que andam coladas (corr ≥ 0.8 entre si) — risco
+        que a diversificação aparente esconde. Usa a matriz que portfolio_analytics já calcula.
+    Retorna alertas estruturados (lista) + métricas. Só alerta — não força."""
+    alerts = []
+    risk_rows = [r for r in rows if not r.get("is_shy")]
+    risk_tot = sum(r["notional"] for r in risk_rows) or (risk_notional if risk_notional else 0.0)
+
+    # 1) Concentração de ativo único (% do notional de risco).
+    top_position = None
+    if risk_tot > 0:
+        biggest = max(risk_rows, key=lambda r: r["notional"], default=None)
+        if biggest:
+            pct = round(biggest["notional"] / risk_tot * 100, 1)
+            top_position = {"ticker": biggest["ticker"], "pct_of_risk_notional": pct,
+                            "limit": _CONCENTRATION_PCT_MAX}
+            if pct > _CONCENTRATION_PCT_MAX:
+                alerts.append({
+                    "type": "concentracao_ativo",
+                    "severity": "warning",
+                    "ticker": biggest["ticker"],
+                    "value": pct,
+                    "limit": _CONCENTRATION_PCT_MAX,
+                    "message": (f"{biggest['ticker']} é {pct:.0f}% do notional de risco "
+                                f"(> {_CONCENTRATION_PCT_MAX:.0f}%) — concentração perigosa, "
+                                "considere reduzir/diversificar."),
+                })
+
+    # 2) Concentração de bucket: real acima do alvo + banda de 5%.
+    bucket_breaches = []
+    for b in buckets:
+        target = b.get("target")
+        real = b.get("real")
+        if target is None or real is None:
+            continue
+        band = target + 5.0
+        if real > band:
+            bucket_breaches.append({"bucket": b["bucket"], "real": real, "target": target})
+            alerts.append({
+                "type": "concentracao_bucket",
+                "severity": "warning",
+                "bucket": b["bucket"],
+                "value": real,
+                "limit": band,
+                "message": (f"Bucket {b['bucket']} em {real:.0f}% (alvo {target:.0f}% + banda 5%) — "
+                            "acima do limite, rebalancear."),
+            })
+
+    # 3) Cluster oculto: posições com corr ≥ 0.8 entre si — soma do notional de risco.
+    clusters = []
+    pairs = (correlation or {}).get("redundant_pairs") or []
+    if pairs and risk_tot > 0:
+        # agrupa tickers conectados por pares ≥0.8 (componentes conexos simples).
+        notional_by_tk = {r["ticker"]: r["notional"] for r in risk_rows}
+        adj: Dict[str, set] = {}
+        for p in pairs:
+            a, b = p.get("a"), p.get("b")
+            if a is None or b is None:
+                continue
+            adj.setdefault(a, set()).add(b)
+            adj.setdefault(b, set()).add(a)
+        seen = set()
+        for node in list(adj.keys()):
+            if node in seen:
+                continue
+            stack, comp = [node], []
+            while stack:
+                n = stack.pop()
+                if n in seen:
+                    continue
+                seen.add(n)
+                comp.append(n)
+                stack.extend(adj.get(n, set()) - seen)
+            if len(comp) < 2:
+                continue
+            comp_notional = sum(notional_by_tk.get(t, 0.0) for t in comp)
+            pct = round(comp_notional / risk_tot * 100, 1)
+            clusters.append({"tickers": sorted(comp), "pct_of_risk_notional": pct})
+            if pct > _CONCENTRATION_PCT_MAX:
+                alerts.append({
+                    "type": "cluster_correlacao",
+                    "severity": "warning",
+                    "tickers": sorted(comp),
+                    "value": pct,
+                    "limit": _CONCENTRATION_PCT_MAX,
+                    "message": (f"Cluster {', '.join(sorted(comp))} (corr ≥ {_CLUSTER_CORR}) soma "
+                                f"{pct:.0f}% do notional de risco — diversificação aparente, "
+                                "risco real concentrado."),
+                })
+    clusters.sort(key=lambda c: -c["pct_of_risk_notional"])
+
+    return {
+        "effective_leverage": effective_leverage,
+        "top_position": top_position,
+        "bucket_breaches": bucket_breaches,
+        "clusters": clusters,
+        "alerts": alerts,
+        "concentration_limit_pct": _CONCENTRATION_PCT_MAX,
+    }
+
+
 def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                         cooldown_tickers: Optional[List[str]] = None) -> Dict:
     """
@@ -724,6 +1013,32 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
             ef = eq * ((1 + g) ** y)
             deleverage.append({"years": y, "leverage": round(1 + debt / ef, 2)})
 
+    # ── TRAVAS DE PORTFÓLIO (Fase 2) — rede de segurança agregada ─────────────────
+    # Cada trava é blindada: fonte falha → fica silenciosa (lista vazia / triggered=False),
+    # nunca derruba o analytics nem fabrica número.
+    try:
+        thesis_stops = _thesis_stops(rows)
+    except Exception as e:
+        logger.warning(f"[TRAVAS] thesis_stops falhou: {e}")
+        thesis_stops = []
+    try:
+        duration_warnings = _duration_warnings(rows, positions)
+    except Exception as e:
+        logger.warning(f"[TRAVAS] duration_warnings falhou: {e}")
+        duration_warnings = []
+    try:
+        credit_shock = _credit_shock()
+    except Exception as e:
+        logger.warning(f"[TRAVAS] credit_shock falhou: {e}")
+        credit_shock = {"triggered": False, "signal": "indisponível",
+                        "recommendation": "Sinal macro indisponível — manter o plano."}
+    try:
+        exposure_caps = _exposure_caps(rows, buckets, correlation, risk_notional,
+                                       totals.get("effective_leverage"))
+    except Exception as e:
+        logger.warning(f"[TRAVAS] exposure_caps falhou: {e}")
+        exposure_caps = {"alerts": [], "clusters": [], "bucket_breaches": []}
+
     import datetime as _dt
     return {
         "assets": rows, "totals": totals, "buckets": buckets,
@@ -731,6 +1046,11 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         "survival_stops": survival_stops, "risk": risk,
         "aporte": aporte, "aporte_regime": aporte_regime,
         "stress": stress, "deleverage": deleverage,
+        # Travas Fase 2:
+        "thesis_stops": thesis_stops,
+        "duration_warnings": duration_warnings,
+        "credit_shock": credit_shock,
+        "exposure_caps": exposure_caps,
         "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
     }
 

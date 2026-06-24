@@ -42,6 +42,10 @@ try:
 except Exception:  # módulo ausente/erro → fundamentos ficam neutros, não derruba o ranking
     def get_fundamentals(_tk):
         return {}
+try:
+    from app.services import crypto_data as CD
+except Exception:  # módulo ausente/erro → crypto cai no caminho genérico (não derruba o ranking)
+    CD = None
 
 logger = logging.getLogger(__name__)
 
@@ -694,13 +698,26 @@ def _round_or_none(v, ndigits=1):
 def _fetch_indices() -> Tuple[Dict[str, Optional[np.ndarray]], Dict[str, Optional[dict]], str]:
     idxc: Dict[str, Optional[np.ndarray]] = {}
     idxdm: Dict[str, Optional[dict]] = {}
-    for ix in set(INDEX_BY_CAT.values()) | {"^GSPC"}:
+    # DX-Y.NYB (DXY) e JPY=X (USD/JPY) entram p/ o REGIME de crypto (proxy de liquidez +
+    # carry do iene). São tickers especiais → chart API confiável (mesmo padrão dos índices).
+    for ix in set(INDEX_BY_CAT.values()) | {"^GSPC", "DX-Y.NYB", "JPY=X"}:
         # Índices são tickers especiais (^...) → chart API confiável (evita sintético)
         closes, dm = _chart_api_series(ix, 6 * 366)
         idxc[ix] = closes
         idxdm[ix] = dm
     equity_regime = regime(idxc.get("^GSPC"))
     return idxc, idxdm, equity_regime
+
+
+def _pct_change_recent(closes: Optional[np.ndarray], lookback: int = 63) -> Optional[float]:
+    """Variação % nos últimos ~3 meses (63 pregões). Usado p/ DXY/USDJPY no regime crypto.
+    None se série ausente/curta (fator omitido → renormaliza no scorer de crypto)."""
+    if closes is None or len(closes) < lookback + 1:
+        return None
+    base = float(closes[-lookback - 1])
+    if base == 0:
+        return None
+    return float((closes[-1] / base - 1) * 100)
 
 
 def _ma200_slope(a: np.ndarray, lookback: int = 40) -> Optional[float]:
@@ -713,6 +730,153 @@ def _ma200_slope(a: np.ndarray, lookback: int = 40) -> Optional[float]:
         return None
     base = ma[-1 - lookback]
     return float((ma[-1] / base - 1) * 100) if base else None
+
+
+def _crypto_verdict(momentum: float, quality: float) -> str:
+    """Veredito de aporte p/ CRYPTO. Sobrevivência (quality) é o portão de não-ir-a-zero;
+    REGIME+TIMING (momentum) é a oportunidade. Mais conservador que ações: crypto pede
+    sobrevivência mínima decente p/ COMPRAR FORTE (sem dividendo/fundamento que ampare)."""
+    if momentum >= 65:
+        if quality >= 60:
+            return "COMPRAR FORTE"
+        if quality >= 40:
+            return "COMPRAR"
+        return "ESPECULATIVO"
+    if momentum >= 52:
+        if quality >= 40:
+            return "COMPRAR"
+        return "ESPECULATIVO"
+    if momentum >= 42:
+        return "JUSTO"
+    return "ESTICADO"
+
+
+def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
+                    sstoch=None, stoch_k=None, stoch_d=None, dma=None,
+                    disc=None, rev=None, wclose=None, use_wk=False, idxc=None) -> Optional[dict]:
+    """
+    Caminho dedicado de scoring p/ CRYPTO (framework ratificado Pal/Hayes/Woo).
+    Fatores GRÁTIS: liquidez/marketcap/dominância (CoinGecko), Lindy (tabela estática),
+    funding + circuit breaker (Binance free), regime DXY/USDJPY/BTC (Yahoo chart),
+    momentum técnico de preço. On-chain pago OMITIDO → renormaliza (REGRA DE OURO).
+    Blindado: qualquer falha → None (o chamador cai no genérico). Nunca derruba o ranking.
+    """
+    try:
+        idxc = idxc or {}
+        # Fatores externos GRÁTIS (CoinGecko/Binance). CD ausente/falha → tudo None (renormaliza).
+        cd = CD.fetch_all(tk) if CD is not None else {}
+        symbol = (cd.get("symbol") or tk.upper().replace("-USD", ""))
+
+        # Regime: DXY + USD/JPY (variação ~3m) + regime de preço do próprio BTC.
+        dxy_change = _pct_change_recent(idxc.get("DX-Y.NYB"))
+        usdjpy_change = _pct_change_recent(idxc.get("JPY=X"))
+        btc_reg = regime(idxc.get("BTC-USD"))
+
+        score = S.compute_crypto_score(
+            volume_24h=cd.get("volume_24h"), market_cap_rank=cd.get("market_cap_rank"),
+            btc_dominance=cd.get("btc_dominance"), age_years=cd.get("age_years"),
+            onchain_z=None,   # OMITIDO (Glassnode pago) → renormaliza
+            symbol=symbol,
+            dxy_change=dxy_change, usdjpy_change=usdjpy_change, btc_regime=btc_reg,
+            funding_rate=cd.get("funding_rate"),
+            slow_stoch_weekly=sstoch, distance_ma200=dma,
+            discount_from_top=disc, reversal_confirmation=rev,
+            mvrv_z=None, reserve_risk=None, puell=None, sopr=None,  # OMITIDOS (pago)
+            oi_percentile=None, funding_percentile=None,            # sem histórico p90 grátis confiável
+        )
+
+        quality = score["quality"]
+        momentum = score["momentum"]
+        confidence = score["confidence"]
+
+        # Métricas de display (mesmas dos ativos de ações, p/ a linha não ficar vazia).
+        dd, dd_full, dd_recent = _drawdown_option_b(a_long)
+        shp = _sharpe(a)
+        rsi = _rsi(wclose if use_wk else a)
+        hist_years = round(len(a_long) / 252.0, 1)
+        day_change_pct = ((a[-1] / a[-2] - 1) * 100) if len(a) >= 2 and a[-2] else None
+
+        if bucket == "RESERVA":
+            verdict = "RESERVA"
+        else:
+            verdict = _crypto_verdict(momentum, quality)
+            if confidence == "BAIXA" and verdict == "COMPRAR FORTE":
+                verdict = "COMPRAR"   # sem on-chain estrutural → não alavanca no talo
+
+        reg_display = btc_reg  # regime da CATEGORIA crypto = regime do BTC (líder)
+        mult = MULT.get(reg_display, 3)
+
+        # Alavancagem: teto POR ATIVO (BTC 2x · ETH 1.75x · top-10 1.25x · resto 1x), nunca >3x.
+        # Circuit breaker (já refletido em leverage_cap=1 dentro do scorer) força 1x.
+        lev_cap = score["leverage_cap"]
+        is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3))
+        leverage = float(mult) if (is_buy_candidate and bucket != "RESERVA") else 1.0
+        leverage = min(leverage, lev_cap)
+        if verdict == "ESPECULATIVO":
+            leverage = min(leverage, 2.0)
+        leverage = min(leverage, lev_cap)   # teto por ativo é inviolável
+
+        rank = quality * 0.45 + momentum * 0.55
+        stops = S.staggered_stops(leverage)
+
+        return {
+            "ticker": tk,
+            "name": name,
+            "bucket": bucket,
+            "confidence": confidence,
+            "current_price": _round_or_none(current_price, 2),
+            "day_change_pct": _round_or_none(day_change_pct, 2),
+            "currency": "USD",
+            "verdict": verdict,
+            "quality": round(quality),
+            "momentum": round(momentum),
+            "rank": round(rank, 1),
+            "quality_breakdown": score["quality_breakdown"],
+            "momentum_breakdown": score["momentum_breakdown"],
+            "is_crypto": True,
+            "crypto_omitted": score["omitted"],
+            "circuit_breaker": score["circuit_breaker"],
+            "regime_score": score["regime_score"],
+            "timing_score": score["timing_score"],
+            "survival_score": score["survival_score"],
+            "leverage_cap_asset": lev_cap,
+            # Fatores brutos p/ display/transparência.
+            "volume_24h": cd.get("volume_24h"),
+            "market_cap": cd.get("market_cap"),
+            "market_cap_rank": cd.get("market_cap_rank"),
+            "btc_dominance": _round_or_none(cd.get("btc_dominance"), 1),
+            "age_years": cd.get("age_years"),
+            "funding_rate": cd.get("funding_rate"),
+            "dxy_change_3m": _round_or_none(dxy_change, 1),
+            "usdjpy_change_3m": _round_or_none(usdjpy_change, 1),
+            "slow_stoch_weekly": _round_or_none(sstoch, 0),
+            "stoch_k": _round_or_none(stoch_k, 1),
+            "stoch_d": _round_or_none(stoch_d, 1),
+            "discount_from_top": _round_or_none(disc, 1),
+            "distance_ma200": _round_or_none(dma, 1),
+            "rsi": _round_or_none(rsi, 0),
+            "beta": None,
+            "beta_source": "n/a (crypto)",
+            "cagr": None,
+            "sharpe": _round_or_none(shp, 2),
+            "dividend_yield": None,
+            "max_dd": _round_or_none(dd, 0),
+            "max_dd_full": _round_or_none(dd_full, 0),
+            "max_dd_recent": _round_or_none(dd_recent, 0),
+            "hist_years": hist_years,
+            "is_tatico": False,
+            "leverage": round(leverage, 1),
+            "regime": reg_display,
+            "staggered_stops": {
+                "stop_1_pct": stops.get("stop_1_pct"),
+                "stop_2_pct": stops.get("stop_2_pct"),
+                "liquidation_pct": stops.get("liquidation_pct"),
+            },
+            "stop_note": "stop por FECHAMENTO SEMANAL (nunca intraday — wicks liquidam no fundo)",
+        }
+    except Exception as e:
+        logger.warning(f"[RANKING][CRYPTO] {tk} falhou no scorer dedicado: {e}")
+        return None
 
 
 def _analyze(tk: str, bucket: str, name: str, cat: str,
@@ -768,6 +932,21 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         rev = I.reversal_confirmation(wclose if use_wk else a)
         stoch_k, stoch_d = weekly_stoch_kd(df)                 # %K e %D semanais (máx/mín reais)
         sstoch = stoch_d                                       # linha lenta pontua no score
+
+        # ─────────────────────── CRYPTO: framework SEPARADO ───────────────────────
+        # Crypto NÃO usa o blend de ações (sem fundamentos/dividendo/Beta-vs-SPY/SELIC).
+        # Roteia p/ compute_crypto_score com fatores GRÁTIS (CoinGecko/Binance/Yahoo).
+        # On-chain pago (MVRV-Z/Reserve/Puell/SOPR/z-score) OMITIDO → renormaliza.
+        if cat == "CRYPTO":
+            res = _analyze_crypto(
+                tk, name, bucket, cat, df, a, a_long, current_price=float(a[-1]) if len(a) else None,
+                sstoch=sstoch, stoch_k=stoch_k, stoch_d=stoch_d, dma=dma,
+                disc=disc, rev=rev, wclose=wclose, use_wk=use_wk,
+                idxc=idxc)
+            if res is not None:
+                return res
+            # Falha no caminho crypto → cai no genérico abaixo (blindagem; nunca derruba).
+
         g5 = _growth5y(a)
         # Drawdown OPÇÃO B: pior tombo da história, ponderando mais os últimos ~10a (BR).
         dd, dd_full, dd_recent = _drawdown_option_b(a_long)

@@ -42,3 +42,12 @@ jobs:
         # escalonados, deploy de SHY em capitulação, point-in-time, B&H) sobre
         # séries sintéticas inline. SEM rede (não toca o Yahoo) -> safe no CI.
         run: python -m pytest tests/test_adc_backtest_offline.py -q
+      - name: Score de crypto (lógica pura)
+        # Framework Pal/Hayes/Woo: renormalização de fatores on-chain ausentes,
+        # leverage caps por ativo (BTC 2x/ETH 1.75x/top10 1.25x), circuit breaker,
+        # funding contrarian. Fontes monkeypatchadas (sem rede).
+        run: python -m pytest tests/test_crypto_scoring.py -q
+      - name: Travas de portfólio (Fase 2)
+        # Stop de tese objetivo, trava de duração, choque de crédito, exposição
+        # agregada. Posições/fundamentos sintéticos (sem rede).
+        run: python -m pytest tests/test_portfolio_travas.py -q
