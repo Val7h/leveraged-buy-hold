@@ -644,8 +644,28 @@ _TATICO_SIGMA_MIN = 1.40      # e balança bem mais que o índice
 # WHITELIST: empresas de qualidade que a regra de dados poderia marcar errado (corr baixa por
 # motivo idiossincrático bom, não por ser cíclica de commodity). NUNCA viram TÁTICO automático.
 _TATICO_WHITELIST = {
+    # BR — compounders / defensivas estruturais
     "WEGE3.SA", "ITUB4.SA", "ITSA4.SA", "BBSE3.SA", "TAEE11.SA", "EGIE3.SA",
     "VIVT3.SA", "ABEV3.SA", "RADL3.SA", "RENT3.SA", "B3SA3.SA", "WEGE3",
+    # US — compounders / defensivas a PROTEGER de falso-tático. corr/σ contra ^GSPC é
+    # ruidoso (S&P concentrado em tech → defensivas parecem "descoladas"); marcar um
+    # compounder como tático mataria INDEVIDAMENTE o bônus de beta defensivo. Lista curada
+    # com todo compounder/defensiva do universo US (universe.py categoria US).
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "AVGO", "ORCL", "ADBE", "CSCO",
+    "BRK-B", "BRK.B", "JPM", "V", "MA", "BAC", "AXP",
+    "UNH", "LLY", "JNJ", "ABBV", "MRK", "TMO",
+    "PG", "KO", "PEP", "WMT", "COST", "HD", "MCD", "NKE",
+    "HON", "VZ", "O", "MAIN",
+}
+
+# WHITELIST POSITIVA de cíclicas estruturais US: ativos que DEVEM ser táticos (perdem o bônus
+# de "beta defensivo falso", crivo de qualidade = cíclica). Lista CURADA — não depende de corr/σ
+# (que é ruidoso p/ US contra ^GSPC). Só inclui cíclicas genuínas presentes no universo US/EUROPE:
+# energia integrada (XOM, CVX, SHEL, TTE), industriais cíclicas (CAT), mineração/materiais (RIO).
+# Esses tickers normalmente já vêm com bucket="TATICO" no universo; a whitelist é a rede de
+# segurança doutrinária (cobre overrides do usuário e torna a regra explícita/testável).
+_TATICO_US = {
+    "XOM", "CVX", "CAT", "SHEL", "TTE", "RIO",
 }
 
 
@@ -915,14 +935,25 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             else:
                 beta, beta_source = beta_reg, "reg1a" + _suf
 
-        # TÁTICO: cíclica descolada (corr baixa + σ alta) OU bucket curado, exceto whitelist.
-        # Auto-detecção limitada ao BRASIL por enquanto (whitelist é BR; americanas serão tratadas
-        # num bloco próprio com beta/dividendos da FMP). US/outros usam só o bucket curado.
+        # TÁTICO: cíclica descolada OU bucket curado OU cíclica US curada, exceto whitelist.
+        #
+        # BR: auto-detecção por dados (corr baixa + σ alta), protegida pela whitelist.
+        #
+        # US: corr/σ contra ^GSPC é RUIDOSO (o S&P é concentrado em tech, então defensivas
+        # parecem "descoladas" e cíclicas correlacionadas parecem "coladas"). Pelo mesmo motivo
+        # que o beta é lixo p/ US, corr/σ também é. Marcar um compounder (MSFT/AAPL/JNJ/KO) como
+        # tático por engano MATA o bônus de beta defensivo dele — prejuízo real. Por isso a
+        # auto-detecção corr/σ fica DESLIGADA para US: confiamos só na whitelist POSITIVA curada
+        # (_TATICO_US) de cíclicas estruturais conhecidas. Conservador: melhor um cíclico escapar
+        # do que punir um compounder. (Se um dia quisermos religar, usar limiares bem mais
+        # exigentes — ex corr<0.30 E σ>1.60 — e manter a proteção da _TATICO_WHITELIST.)
+        tku = tk.upper()
         auto_tatico = (is_br
                        and corr is not None and sigma_ratio is not None
                        and corr < _TATICO_CORR_MAX and sigma_ratio > _TATICO_SIGMA_MIN
-                       and tk.upper() not in _TATICO_WHITELIST)
-        is_tatico = (bucket == "TATICO") or auto_tatico
+                       and tku not in _TATICO_WHITELIST)
+        us_curated_tatico = (tku in _TATICO_US and tku not in _TATICO_WHITELIST)
+        is_tatico = (bucket == "TATICO") or auto_tatico or us_curated_tatico
 
         # Série SEMANAL de fechamentos (inclui a semana corrente) — usada em
         # desconto, reversão e RSI p/ ficar coerente com o gráfico semanal.

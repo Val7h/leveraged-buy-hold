@@ -51,3 +51,11 @@ jobs:
         # Stop de tese objetivo, trava de duração, choque de crédito, exposição
         # agregada. Posições/fundamentos sintéticos (sem rede).
         run: python -m pytest tests/test_portfolio_travas.py -q
+      - name: Tático US (detecção cíclica)
+        # Whitelist positiva de cíclicas US + proteção de compounders; auto corr/σ
+        # desligada p/ US (ruído do S&P tech). Predicado puro + constantes.
+        run: python -m pytest tests/test_tatico_us.py -q
+      - name: Europe ADR (universo)
+        # Tickers europeus de bolsa local trocados por ADR US líquido; carga do
+        # universo sem duplicados nem sufixo de bolsa local inesperado.
+        run: python -m pytest tests/test_europe_adr.py -q

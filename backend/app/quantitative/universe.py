@@ -73,8 +73,10 @@ UNIVERSE = {
         ("TTE","TATICO","TotalEnergies (FR)"), ("NVS","ANCORA","Novartis (CH)"),
         ("DEO","ANCORA","Diageo (UK)"), ("SNY","ANCORA","Sanofi (FR)"),
         ("BTI","GERADOR","British Am. Tobacco"), ("RIO","TATICO","Rio Tinto"),
-        ("MC.PA","ACELERADOR","LVMH (FR)"), ("NESN.SW","ANCORA","Nestlé (CH)"),
-        ("SIE.DE","ACELERADOR","Siemens (DE)"),
+        # ADRs US (OTC) — substituem bolsa local p/ disponibilidade Quantfury
+        ("LVMUY","ACELERADOR","LVMH (FR) ADR"),   # era MC.PA (Paris)
+        ("NSRGY","ANCORA","Nestlé (CH) ADR"),     # era NESN.SW (Suíça)
+        ("SIEGY","ACELERADOR","Siemens (DE) ADR"),# era SIE.DE (Frankfurt)
     ],
     "COMMODITY": [
         ("GLD","ANCORA","Ouro"), ("SLV","TATICO","Prata"),
