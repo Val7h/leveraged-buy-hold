@@ -651,8 +651,15 @@ MULT = {"CAPIT.EXTREMA": 5, "CAPITULACAO": 4, "NEUTRO": 3, "TOPO": 2}
 # #15b — financeiras/bancos: no crivo de qualidade, ROIC e FCF não fazem sentido e D/E alto é o
 # NEGÓCIO (não risco). Whitelist curada (honesta/barata/auditável — não há setor parseado das fontes).
 _FINANCEIRAS = {
-    "ITUB4.SA", "ITUB3.SA", "BBAS3.SA", "BBDC4.SA", "BBDC3.SA", "SANB11.SA", "B3SA3.SA",
+    # BR — bancos
+    "ITUB4.SA", "ITUB3.SA", "BBAS3.SA", "BBDC4.SA", "BBDC3.SA", "SANB11.SA",
     "BPAC11.SA", "ITSA4.SA", "ITSA3.SA",
+    # BR — bolsa / infraestrutura financeira
+    "B3SA3.SA",
+    # BR — seguradoras (ROE é o pilar; D/E alto e sem ROIC/FCF = mesmo padrão que banco)
+    "BBSE3.SA",   # BB Seguridade
+    "PSSA3.SA",   # Porto Seguro
+    # US — bancos, financeiras, pagamentos
     "JPM", "BAC", "WFC", "C", "GS", "MS", "USB", "PNC", "SCHW", "AXP", "V", "MA", "BRK-B", "BRK.B",
 }
 

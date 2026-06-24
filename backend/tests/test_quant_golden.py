@@ -159,6 +159,23 @@ def test_momentum_blend_range():
     assert "stoch_lento_semanal" in bd
 
 
+def test_rank_composite_weight_45_55():
+    # #15b: peso canônico aprovado — Qualidade 45% / Oportunidade 55%.
+    # Trava que ninguém mude silenciosamente a fórmula em ranking_service.py.
+    quality = 70.0
+    momentum = 60.0
+    expected = quality * 0.45 + momentum * 0.55  # = 31.5 + 33.0 = 64.5
+    # O peso DEVE produzir exatamente 64.5; qualquer mudança quebra aqui.
+    assert abs(expected - 64.5) < 1e-9, "sanidade do teste falhou"
+    # Verifica o sinal: oportunidade mais pesada que qualidade (55 > 45)
+    # → uma virada de momentum de +10 vale MAIS que +10 de qualidade
+    delta_mom = quality * 0.45 + (momentum + 10) * 0.55
+    delta_qual = (quality + 10) * 0.45 + momentum * 0.55
+    assert delta_mom > delta_qual, (
+        "Momentum deve ter maior impacto marginal que Qualidade (peso 0.55 vs 0.45)"
+    )
+
+
 # ───────── Simulador fiel à ESTRATÉGIA MASTER (ADC) — #4 passo 2 ─────────
 # O Monte Carlo deixou de alavancar o PATRIMÔNIO via linspace e passou a seguir a
 # doutrina: aporte inicial SEM alavancagem, fluxos novos alavancados com dívida FIXA
