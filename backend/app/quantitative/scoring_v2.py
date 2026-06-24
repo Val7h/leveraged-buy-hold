@@ -22,6 +22,7 @@ na Fase 2 — antes os dois rodavam no app vivo e se contradiziam):
 Indicadores (recuperação, consistência, distância do topo, reversão) ficam em indicators_v2.py.
 """
 from typing import Dict, Optional, Tuple
+import math
 import numpy as np
 
 # Piso de elegibilidade e piso para liberar 4x
@@ -1392,3 +1393,341 @@ def compute_crypto_score(volume_24h=None, market_cap_rank=None, btc_dominance=No
             "timing": tim_omits,
         },
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CAMADA 3 — APTIDÃO PRA ALAVANCAR (parte POR-ATIVO). Passo 2 do motor de 3 camadas.
+# ══════════════════════════════════════════════════════════════════════════════
+# A Camada 1 mede o NEGÓCIO (independente de preço). A Camada 3 recebe o RISCO DE PREÇO
+# (máxDD/σ/gap/beta/DY/recuperação) e responde: "quanto dá pra alavancar este ativo com
+# segurança — sobreviver ao PIOR tombo?". Mecânica Quantfury: CARRY ZERO; a liquidação
+# ocorre quando a perda ≈ equity → 2x liquida em −50%, 3x em −33%, 4x em −25%, 5x em −20%
+# (DESCONTO DE REALIDADE: usamos o ponto de liquidação real por alavancagem, NÃO o −97%
+# teórico). Esta camada NÃO faz os disjuntores de PORTFÓLIO (C.2/C.3) — isso é passo futuro.
+#
+# DUAS entregas:
+#   A) score_aptidao(...)  → nota 0-100 (MODULADOR, pesos travados) + teto de alavancagem
+#      pelo MIN de todos os tetos de sobrevivência (sobrevivência é MÍNIMO, nunca média).
+#   B) Em ativos SEM negócio (ETF/COMMODITY), o score de aptidão VIRA a "qualidade" do
+#      ranking (risco-perfil), porque a Camada 1 achata esses em 50 (JEPI = ETF lixo).
+#
+# REGRAS DE FERRO:
+#   • Sobrevivência = MÍNIMO. O score de aptidão NUNCA SOBE o teto definido pelos gates/MIN;
+#     só MODULA o tamanho do aporte (e, em ETF, a posição no rank). Teto = MIN dos tetos.
+#   • Arredonda alavancagem PRA BAIXO (floor). Caudas não se calibram com decimais.
+#   • NUNCA fabrica dado: fator ausente RENORMALIZA o score; teto ausente NÃO entra no MIN.
+
+# Pontos de liquidação por alavancagem (perda ≈ equity → liquida). DESCONTO DE REALIDADE.
+LIQUIDATION_PCT_BY_LEV = {1: 100.0, 2: 50.0, 3: 100.0 / 3.0, 4: 25.0, 5: 20.0}
+_LEV_TIERS = [1, 2, 3, 4, 5]
+
+# FOLGA sobre o máxDD (a liquidação tem de ficar ABAIXO do máxDD × folga). DECISÃO DO DONO
+# (fat tails, survival-first): PISO de 1,8× — "o pior tombo ainda não aconteceu" (quant de cauda).
+# Consequência: máxDD −50% → 1x ; máxDD −30% → 1,5x ; máxDD ≤−28% → 2x. História CURTA (<15a, não
+# testada em crise antiga) ou σ ALTO endurece p/ 2,5×. Não brigar por decimais: a ORDEM é robusta.
+_FOLGA_BASE = 1.8
+_FOLGA_DURA = 2.5
+
+
+def _floor_lev(lev: float) -> float:
+    """Arredonda alavancagem PRA BAIXO p/ o tier inteiro (conservador). Piso 1x, teto 5x."""
+    if lev is None:
+        return 1.0
+    return float(max(1, min(5, int(math.floor(lev + 1e-9)))))
+
+
+def aptidao_volatility_annualized(returns) -> Optional[float]:
+    """σ TOTAL anualizada (volatilidade própria) a partir dos retornos DIÁRIOS:
+    desvio-padrão × √252. `returns` = iterável de retornos diários (frações, ex 0.012).
+    Série curta/ausente (< 30 retornos) → None (renormaliza no score; teto não entra no MIN).
+    NUNCA fabrica."""
+    if returns is None:
+        return None
+    arr = np.asarray([r for r in returns if r is not None], dtype=float)
+    if arr.size < 30:
+        return None
+    sd = float(np.std(arr))
+    if not np.isfinite(sd) or sd <= 0:
+        return None
+    return float(sd * math.sqrt(252.0) * 100.0)   # em % anualizado
+
+
+def aptidao_gap(returns) -> Optional[float]:
+    """GAP / pior salto plausível = MAIOR |retorno diário| da série (proxy conservador do pior
+    movimento diário/overnight). Em %. Série ausente → None (renormaliza; teto não entra)."""
+    if returns is None:
+        return None
+    arr = np.asarray([abs(r) for r in returns if r is not None], dtype=float)
+    if arr.size < 5:
+        return None
+    g = float(np.max(arr))
+    if not np.isfinite(g) or g <= 0:
+        return None
+    return float(g * 100.0)   # em %
+
+
+# ─────────────────────────── sub-scores de APTIDÃO (0-100) ───────────────────────────
+def _apt_maxdd(max_dd_pct: Optional[float]) -> Optional[float]:
+    """Profundidade do máxDD histórico. Raso = apto (alto); fundo = inapto. None se ausente."""
+    if max_dd_pct is None:
+        return None
+    dd = abs(max_dd_pct)
+    if dd <= 10:
+        return 100.0
+    if dd >= 70:
+        return 0.0
+    return _clamp(100 - (dd - 10) / 60 * 100)
+
+
+def _apt_sigma(sigma_pct: Optional[float]) -> Optional[float]:
+    """σ total anualizada. Baixa vol = apto. <15%→100 · 25%→~60 · 35%→~25 · ≥55%→0. None ausente."""
+    if sigma_pct is None:
+        return None
+    s = abs(sigma_pct)
+    if s <= 15:
+        return 100.0
+    if s >= 55:
+        return 0.0
+    return _clamp(100 - (s - 15) / 40 * 100)
+
+
+def _apt_gap(gap_pct: Optional[float]) -> Optional[float]:
+    """Gap/pior salto diário. Salto pequeno = apto. ≤5%→100 · 12%→~50 · ≥25%→0. None ausente.
+    (Liquidez entra aqui SE houver volume; sem volume não veta — não fabrica.)"""
+    if gap_pct is None:
+        return None
+    g = abs(gap_pct)
+    if g <= 5:
+        return 100.0
+    if g >= 25:
+        return 0.0
+    return _clamp(100 - (g - 5) / 20 * 100)
+
+
+def _apt_dividend_saturated(dy: Optional[float]) -> Optional[float]:
+    """DY recorrente SATURADO: dividendo consistente é bom, mas yield ALTO (>6-7%) NÃO premia —
+    REBAIXA (suspeita de yield-trap / risco). 0%→50 · 3-5%→~85-100 (zona saudável) · 6%→~75 ·
+    7%→60 · ≥10%→~30. None se ausente (renormaliza)."""
+    if dy is None:
+        return None
+    if dy <= 0:
+        return 50.0
+    if dy <= 5:
+        return _clamp(55 + dy / 5 * 45)        # 0→55, 5→100 (zona saudável premia)
+    if dy <= 7:
+        return _clamp(100 - (dy - 5) / 2 * 40)  # 5→100, 7→60 (começa a desconfiar)
+    return _clamp(60 - (dy - 7) * 10)           # 7→60, 10→30 (trap → rebaixa)
+
+
+def _apt_recovery(recovered: Optional[bool], recovery_years: Optional[float],
+                  hist_curto: Optional[bool]) -> Optional[float]:
+    """Testado/recuperado em crise. Recuperou rápido = apto; nunca recuperou = inapto; história
+    curta (não testada) = neutro-baixo. None só se NADA disso veio."""
+    if recovered is None and recovery_years is None and hist_curto is None:
+        return None
+    if recovered is False:
+        return 20.0                              # caiu e NUNCA recuperou = impairment
+    if recovered is True:
+        if recovery_years is None:
+            return 75.0
+        if recovery_years <= 1:
+            return 100.0
+        if recovery_years >= 5:
+            return 40.0
+        return _clamp(100 - (recovery_years - 1) / 4 * 60)
+    # recovered None mas sabemos da história: curta = não testada (neutro-baixo), longa = neutro
+    return 45.0 if hist_curto else 60.0
+
+
+def _apt_beta(beta: Optional[float]) -> Optional[float]:
+    """Beta como aptidão: baixo = apto. <0.8→100 · 1.15→~70 · 1.45→~45 · ≥1.8→15. None ausente.
+    Beta NEGATIVO já é sanitizado no ranking_service (guard) — aqui trata |beta| conservador."""
+    if beta is None:
+        return None
+    b = abs(beta)
+    if b < 0.8:
+        return 100.0
+    if b >= 1.8:
+        return 15.0
+    return _clamp(100 - (b - 0.8) / 1.0 * 85)
+
+
+def score_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, dividend_yield=None,
+                  recovered=None, recovery_years=None, hist_curto=None, beta=None):
+    """
+    ENTREGA A — Score de APTIDÃO PRA ALAVANCAR (0-100). MODULADOR (nunca sobe teto).
+    Pesos TRAVADOS: máxDD 25% · σ total 25% · gap/liquidez 20% · DY saturado 12% ·
+    recuperação 8% · beta 10%. Fator ausente SAI e os pesos RENORMALIZAM (regra: não fabrica).
+    Retorna (nota 0-100, breakdown). Sem nenhum fator → (50.0, {}) neutro.
+    """
+    s_dd = _apt_maxdd(max_dd_pct)
+    s_sig = _apt_sigma(sigma_pct)
+    s_gap = _apt_gap(gap_pct)
+    s_div = _apt_dividend_saturated(dividend_yield)
+    s_rec = _apt_recovery(recovered, recovery_years, hist_curto)
+    s_beta = _apt_beta(beta)
+
+    fatores = [
+        (s_dd, 0.25, "maxdd"),
+        (s_sig, 0.25, "sigma_total"),
+        (s_gap, 0.20, "gap_liquidez"),
+        (s_div, 0.12, "dy_saturado"),
+        (s_rec, 0.08, "recuperacao"),
+        (s_beta, 0.10, "beta"),
+    ]
+    breakdown = {}
+    comps = []
+    for s, w, k in fatores:
+        if s is not None:
+            comps.append((s, w))
+            breakdown[k] = round(s)
+    wsum = sum(w for _, w in comps)
+    nota = (sum(s * w for s, w in comps) / wsum) if wsum > 0 else 50.0
+    return round(_clamp(nota), 1), breakdown
+
+
+# ─────────────────────────── TETOS de sobrevivência (cada um → leverage) ───────────────────────────
+def teto_maxdd(max_dd_pct: Optional[float], hist_curto: bool = False,
+               sigma_pct: Optional[float] = None) -> Optional[float]:
+    """A liquidação (100/lev) tem de ficar ABAIXO do máxDD × FOLGA. FOLGA: 1,6× base; 2,2× se
+    história curta (<15a) ou σ alto (>35%). Escolhe o MAIOR tier cuja liquidação ainda sobrevive
+    ao tombo exigido. None se máxDD ausente (não entra no MIN). Ex (ratificado): −50%→1x · −30%
+    longo→2x."""
+    if max_dd_pct is None:
+        return None
+    dd = abs(max_dd_pct)
+    if dd <= 0:
+        return 5.0
+    sigma_alto = sigma_pct is not None and sigma_pct > 35.0
+    folga = _FOLGA_DURA if (hist_curto or sigma_alto) else _FOLGA_BASE
+    required = dd * folga                                  # profundidade que precisa sobreviver
+    best = 1.0
+    for L in _LEV_TIERS:
+        if LIQUIDATION_PCT_BY_LEV[L] >= required:          # liquidação mais funda que o exigido
+            best = float(L)
+    return best
+
+
+def teto_sigma(sigma_pct: Optional[float]) -> Optional[float]:
+    """Tabela ratificada de σ TOTAL anualizada: σ<15%→4x · 15-25%→2x · 25-35%→1,5x · >35%→1x.
+    None se σ ausente (não entra no MIN)."""
+    if sigma_pct is None:
+        return None
+    s = abs(sigma_pct)
+    if s < 15:
+        return 4.0
+    if s <= 25:
+        return 2.0
+    if s <= 35:
+        return 1.5
+    return 1.0
+
+
+def teto_gap(gap_pct: Optional[float]) -> Optional[float]:
+    """Sobreviver ao PIOR gap plausível × 1,5× (desconto de realidade). A liquidação (100/lev)
+    tem de ficar abaixo do gap×1,5. Escolhe o maior tier que sobrevive. None se gap ausente."""
+    if gap_pct is None:
+        return None
+    g = abs(gap_pct)
+    if g <= 0:
+        return 5.0
+    required = g * 1.5
+    best = 1.0
+    for L in _LEV_TIERS:
+        if LIQUIDATION_PCT_BY_LEV[L] >= required:
+            best = float(L)
+    return best
+
+
+def teto_beta(beta: Optional[float]) -> Optional[float]:
+    """Beta → teto (já existe a trava ≥1,45→2x no ranking; aqui é a tabela completa):
+    |beta|<0,8 → SEM cap (None, não entra no MIN) · 0,8-1,15→4x · 1,15-1,45→3x · 1,45-1,8→2x ·
+    >1,8→1x. Beta ausente → None (não entra)."""
+    if beta is None:
+        return None
+    b = abs(beta)
+    if b < 0.8:
+        return None                  # beta baixo não impõe teto → fora do MIN
+    if b <= 1.15:
+        return 4.0
+    if b <= 1.45:
+        return 3.0
+    if b <= 1.8:
+        return 2.0
+    return 1.0
+
+
+def teto_kelly(mu_excess_annual: Optional[float], sigma_pct: Optional[float]) -> Optional[float]:
+    """¼·Kelly (conservador): 0,25 × (μ_excesso / σ²). μ_excesso e σ EM FRAÇÃO anual (σ% / 100).
+    Arredonda PRA BAIXO. None se faltar μ ou σ, ou se μ≤0 (sem edge → não justifica alavancar →
+    1x). Resultado mínimo 1x quando há edge fraco."""
+    if mu_excess_annual is None or sigma_pct is None:
+        return None
+    sig = abs(sigma_pct) / 100.0
+    if sig <= 0:
+        return None
+    if mu_excess_annual <= 0:
+        return 1.0                   # sem prêmio esperado → não alavanca
+    kelly = mu_excess_annual / (sig * sig)
+    quarter = 0.25 * kelly
+    return float(max(1.0, quarter))  # o floor final cuida do arredondamento pra baixo
+
+
+def gate_liquidez(volume: Optional[float], min_volume: float = 1_000_000.0) -> bool:
+    """GATE eliminatório de liquidez: volume MUITO baixo → True (zera a alavancagem → 1x à vista).
+    Sem dado de volume (None) → NÃO veta (não fabrica liquidez ruim). Conservador só com evidência."""
+    if volume is None:
+        return False
+    return volume < min_volume
+
+
+def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta=None,
+                             mult_regime=None, mu_excess_annual=None,
+                             hist_curto=False, volume=None,
+                             gap_risk_extremo: bool = False):
+    """
+    ENTREGA A — TETO de alavancagem POR-FLUXO = MIN dos tetos de risco FORWARD (sobrevivência é
+    MÍNIMO, nunca média). Tetos ausentes (dado faltando) NÃO entram no MIN. Arredonda PRA BAIXO.
+
+      lev = MIN( teto_σ, teto_gap, teto_beta, mult_regime )
+
+    NÃO inclui teto_máxDD NEM ¼·Kelly: ambos são travas de AGREGADO (C.3, portfolio_service),
+    NÃO por-fluxo. Pela doutrina (alavancagem sobre FLUXO, não posição), um fluxo a Nx NÃO precisa
+    sobreviver sozinho ao máxDD histórico do ativo nem carregar o Kelly de patrimônio-inteiro — o
+    cofre acumulado absorve, e a sobrevivência real é o cap de alavancagem efetiva AGREGADA.
+    Aplicados por-fluxo, AMBOS colapsavam a estratégia a 1x: folga 1,8× sobre o máxDD completo
+    capava TODA ação de qualidade (JNJ/KO −40% em 2008) a 1x; e ¼·Kelly de um ativo isolado
+    (excesso ~8%, σ ~20%) dá ~0,5x ("nem 100% investido"). Risco FORWARD por-fluxo = σ+gap+beta+regime
+    (σ é o governador: 20% vol → 2x). máxDD e Kelly vivem: (a) no SCORE de aptidão (risco relativo)
+    e (b) na trava de sobrevivência AGREGADA da carteira (C.3). teto_maxdd/teto_kelly seguem
+    existindo como funções p/ o agregado usar.
+
+    GATES eliminatórios → forçam 1x à vista: liquidez muito baixa (só se houver volume) ou
+    gap-risk extremo. Sem volume, NÃO veta por liquidez. Retorna (leverage_floor, detalhe_dict).
+    """
+    tetos = {
+        "sigma": teto_sigma(sigma_pct),
+        "gap": teto_gap(gap_pct),
+        "beta": teto_beta(beta),
+        "regime": (float(mult_regime) if mult_regime is not None else None),
+    }
+    presentes = {k: v for k, v in tetos.items() if v is not None}
+
+    # GATES eliminatórios (zeram → 1x). Liquidez só veta COM volume (não fabrica).
+    gate_liq = gate_liquidez(volume)
+    if gate_liq or gap_risk_extremo:
+        return 1.0, {"tetos": presentes, "binding": "GATE",
+                     "gate_liquidez": gate_liq, "gate_gap_extremo": bool(gap_risk_extremo),
+                     "leverage_raw": 1.0}
+
+    if presentes:
+        binding = min(presentes, key=lambda k: presentes[k])
+        lev_raw = presentes[binding]
+    else:
+        binding = None
+        lev_raw = 1.0                # sem nenhum teto disponível → conservador 1x
+
+    lev = _floor_lev(lev_raw)
+    return lev, {"tetos": presentes, "binding": binding,
+                 "gate_liquidez": gate_liq, "gate_gap_extremo": bool(gap_risk_extremo),
+                 "leverage_raw": round(lev_raw, 3)}

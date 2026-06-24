@@ -683,6 +683,19 @@ def _sharpe(a: np.ndarray) -> Optional[float]:
     return float(r.mean() / r.std() * math.sqrt(252)) if r.std() > 0 else None
 
 
+def _daily_log_returns(a: np.ndarray) -> Optional[np.ndarray]:
+    """Retornos log diários da janela disponível (Camada 3: σ/gap). None se série curta."""
+    if a is None or len(a) < 31:
+        return None
+    a = np.asarray(a, dtype=float)
+    if np.any(a <= 0):
+        a = a[a > 0]
+        if len(a) < 31:
+            return None
+    r = np.diff(np.log(a))
+    return r if r.size >= 30 else None
+
+
 def _max_dd(a: np.ndarray) -> Optional[float]:
     if a is None or len(a) == 0:
         return None
@@ -1161,6 +1174,27 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             fundamentals_apply=(cat not in ("ETF", "COMMODITY")),
         )
 
+        # ─────────────────── CAMADA 3 — APTIDÃO PRA ALAVANCAR (por-ativo) ───────────────────
+        # σ TOTAL anualizada e GAP (pior salto diário) calculados do df de preço já buscado
+        # (janela recente ~6a). Série curta → None → o termo renormaliza / o teto não entra no MIN.
+        _ret = _daily_log_returns(a)
+        sigma_total = S.aptidao_volatility_annualized(_ret) if _ret is not None else None
+        gap_pct = S.aptidao_gap(_ret) if _ret is not None else None
+
+        # Score de aptidão (0-100): risco-perfil do ativo (MODULADOR — nunca sobe teto).
+        aptidao, aptidao_bd = S.score_aptidao(
+            max_dd_pct=dd, sigma_pct=sigma_total, gap_pct=gap_pct, dividend_yield=dy,
+            recovered=recovered, recovery_years=recovery_years, hist_curto=hist_curto, beta=beta,
+        )
+
+        # ENTREGA B — ETF/COMMODITY não têm NEGÓCIO → a Camada 1 os achata em 50 (JEPI = ETF lixo).
+        # Para esses, a "qualidade" que entra no veredito/rank passa a ser o SCORE DE APTIDÃO
+        # (risco-perfil): baixo beta + queda rasa + dividendo consistente = JEPI alto; volátil/queda
+        # funda = baixo. AÇÕES mantêm a Camada 1 (negócio); aptidão só define a alavancagem.
+        if cat in ("ETF", "COMMODITY"):
+            quality = aptidao
+            qb = dict(aptidao_bd)
+
         # SELO DE CONFIANÇA (movido p/ ANTES do veredito — o crivo #15b precisa dele).
         # Dado faltando não pode parecer "mediano" 50: ALTA = fundamentos + beta publicado (ou
         # crypto/índice, onde preço/momentum bastam); BAIXA = sem fundamentos + beta de regressão.
@@ -1233,6 +1267,21 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # a alavancagem sugerida. Aplicado por ÚLTIMO p/ prevalecer sobre os tetos acima.
         if beta is not None and beta >= 1.45:
             leverage = min(leverage, 2.0)
+
+        # ─── CAMADA 3 — TETO DE SOBREVIVÊNCIA POR ATIVO (MIN de todos os tetos) ───
+        # "Quanto dá pra alavancar este ativo e SOBREVIVER ao pior tombo?" Sobrevivência = MÍNIMO.
+        # Integra (não duplica) a trava beta≥1,45→2x: teto_beta tem a tabela completa e o MIN abaixo
+        # capa de novo. mult_regime entra como mais um teto (o leverage do regime já foi aplicado
+        # acima). ¼·Kelly conservador com rf ~4,5% e μ = CAGR de preço (proxy). Arredonda PRA BAIXO.
+        _rf = 0.045
+        _mu_excess = (g5 / 100.0 - _rf) if g5 is not None else None
+        teto_lev, teto_det = S.teto_alavancagem_aptidao(
+            max_dd_pct=dd, sigma_pct=sigma_total, gap_pct=gap_pct, beta=beta,
+            mult_regime=leverage, mu_excess_annual=_mu_excess,
+            hist_curto=hist_curto, volume=None,   # sem volume confiável grátis p/ ações → não veta
+        )
+        leverage = min(leverage, teto_lev)   # MIN inviolável (sobrevivência nunca sobe o teto)
+
         # SHY = reserva: na Quantfury só dá p/ ter até US$10k de notional → "alavancagem" de SHY
         # é irrelevante. Não força leverage aqui; fica fora da medida na carteira.
         stops = S.staggered_stops(leverage)
@@ -1275,6 +1324,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "hist_curto": hist_curto,
             "is_tatico": is_tatico,
             "tsr_expected": _round_or_none(tsr, 1),
+            "aptidao": round(aptidao),
+            "aptidao_breakdown": aptidao_bd,
+            "sigma_total": _round_or_none(sigma_total, 1),
+            "gap_max": _round_or_none(gap_pct, 1),
+            "leverage_teto_camada3": teto_lev,
+            "leverage_teto_binding": teto_det.get("binding"),
             "leverage": round(leverage, 1),
             "regime": reg,
             "staggered_stops": {
