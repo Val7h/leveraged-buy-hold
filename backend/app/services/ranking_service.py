@@ -865,7 +865,9 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
             "max_dd_recent": _round_or_none(dd_recent, 0),
             "hist_years": hist_years,
             "is_tatico": False,
-            "leverage": round(leverage, 1),
+            # 2 casas: o teto por ativo é fracionário (ETH 1.75x, top10 1.25x) e é
+            # número de SOBREVIVÊNCIA — round(…,1) faria 1.75→1.8 (parecer furar o teto).
+            "leverage": round(leverage, 2),
             "regime": reg_display,
             "staggered_stops": {
                 "stop_1_pct": stops.get("stop_1_pct"),
