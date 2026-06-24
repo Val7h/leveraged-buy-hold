@@ -51,7 +51,15 @@ export default function HistoryPage() {
     setError("");
     try {
       const res = await portfolioApi.getHistory(portfolioId);
-      setHistory(res.data);
+      // BFF retorna { portfolio_id, events: [...], ... }. Versões antigas/legacy
+      // do FastAPI devolviam o array direto. Normaliza para sempre ter um array.
+      const data = res.data;
+      const events: TradeHistoryItem[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.events)
+          ? data.events
+          : [];
+      setHistory(events);
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Erro ao carregar histórico");
     } finally {

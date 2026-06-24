@@ -22,6 +22,7 @@ export default function WatchlistPage() {
   const router = useRouter();
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [scores, setScores] = useState<Record<string, AssetScore>>({});
+  const [failedTickers, setFailedTickers] = useState<Set<string>>(new Set());
   const [newTicker, setNewTicker] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [addLoading, setAddLoading] = useState(false);
@@ -33,12 +34,22 @@ export default function WatchlistPage() {
       const res = await watchlistApi.list();
       setItems(res.data);
       setLoadError("");
+      return res.data as WatchlistItem[];
     } catch {
       setLoadError("Não foi possível carregar a watchlist. Verifique sua conexão.");
+      return [];
     }
   };
 
-  useEffect(() => { fetchList(); }, []);
+  // Carrega a lista e já dispara a análise automaticamente, para que as linhas
+  // (inclusive BDRs .SA como ROXO34.SA) populem sem o usuário clicar em «Analisar».
+  useEffect(() => {
+    (async () => {
+      const list = await fetchList();
+      if (list.length > 0) analyzeTickers(list);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAdd = async () => {
     const t = newTicker.trim().toUpperCase();
@@ -48,7 +59,8 @@ export default function WatchlistPage() {
     try {
       await watchlistApi.add(t);
       setNewTicker("");
-      await fetchList();
+      const list = await fetchList();
+      analyzeTickers(list);
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Erro ao adicionar ticker");
     } finally {
@@ -67,18 +79,20 @@ export default function WatchlistPage() {
     await fetchList();
   };
 
-  const handleAnalyze = async () => {
-    if (items.length === 0) return;
+  const analyzeTickers = async (list: WatchlistItem[]) => {
+    if (list.length === 0) return;
     setAnalyzing(true);
     setError("");
     try {
-      const tickers = items.map((i) => i.ticker).join(",");
+      const tickers = list.map((i) => i.ticker).join(",");
       const res = await assetsApi.screen({ tickers, min_score: 0 });
       const map: Record<string, AssetScore> = {};
       (res.data.assets as AssetScore[]).forEach((a) => { map[a.ticker] = a; });
       setScores(map);
-      if (res.data.failed_tickers?.length) {
-        setError(`Análise parcial: ${res.data.failed_tickers.join(", ")} não retornou dados (Yahoo Finance pode estar com rate limit).`);
+      const failed: string[] = res.data.failed_tickers ?? [];
+      setFailedTickers(new Set(failed));
+      if (failed.length) {
+        setError(`Análise parcial: ${failed.join(", ")} não retornou dados (BDR/.SA com histórico fino ou Yahoo Finance com rate limit).`);
       }
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Erro ao analisar ativos");
@@ -86,6 +100,8 @@ export default function WatchlistPage() {
       setAnalyzing(false);
     }
   };
+
+  const handleAnalyze = () => analyzeTickers(items);
 
   const handleBought = (ticker: string, leverage: number) => {
     router.push(`/portfolio?add=${encodeURIComponent(ticker)}&leverage=${leverage.toFixed(2)}`);
@@ -221,8 +237,13 @@ export default function WatchlistPage() {
                     </>
                   ) : (
                     <div className="flex-1 flex items-center gap-2">
-                      <p className="text-xs text-text-muted italic">
-                        {analyzing ? "Analisando..." : "Clique em «Analisar» para ver o sinal"}
+                      <p className={`text-xs italic flex items-center gap-1 ${failedTickers.has(item.ticker) ? "text-warning" : "text-text-muted"}`}>
+                        {failedTickers.has(item.ticker) && !analyzing && <AlertCircle size={11} />}
+                        {analyzing
+                          ? "Analisando..."
+                          : failedTickers.has(item.ticker)
+                            ? "Dados de mercado indisponíveis (BDR/.SA com histórico fino ou rate limit). Tente novamente."
+                            : "Clique em «Analisar» para ver o sinal"}
                       </p>
                       {analyzing && <Loader2 size={11} className="animate-spin text-text-muted" />}
                       {/* Show buy button even without analysis */}

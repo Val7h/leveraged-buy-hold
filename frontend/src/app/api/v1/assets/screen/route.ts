@@ -15,6 +15,10 @@ export async function GET(request: Request) {
   // Fetch em paralelo
   const quotes = await Promise.all(tickers.map(getQuote));
 
+  // Tickers que o Yahoo não retornou (null) — ex.: BDRs .SA com histórico fino
+  // ou rate-limit. A UI usa failed_tickers p/ avisar em vez de sumir com a linha.
+  const failed_tickers = tickers.filter((_, i) => quotes[i] === null);
+
   const assets = quotes
     .filter((q) => q !== null)
     .map((q) => {
@@ -49,6 +53,8 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     assets,
+    failed_tickers,
+    attempted_count: tickers.length,
     market_state: { state: "NORMAL", multiplier: 1.5 },
     screening_date: new Date().toISOString(),
     screened_at: new Date().toISOString(), // alias — a UI lê screened_at
