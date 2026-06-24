@@ -56,6 +56,11 @@ init_sentry()
 from app.api.v1 import assets, backtest, simulator, analytics
 # Ranking de aporte (stateless-safe): rotas já trazem o prefixo /api completo
 from app.api.v1 import ranking
+# Portfólio: montado pela rota STATELESS POST /portfolio/analytics (inteligência da carteira:
+# rotação, aporte, travas Fase 2). As demais rotas do router são DB-dependentes e NÃO são usadas
+# pelo frontend (a BFF/Next as serve via Prisma) — ficam inertes, protegidas pelo token interno.
+# Regressão corrigida: o bundle inteiro foi comentado na limpeza 2d90a00, derrubando o analytics.
+from app.api.v1 import portfolio
 # TODO(sprint-2): FastAPI vira stateless. Routers DB-dependentes desativados.
 # auth.py, billing.py e news.py foram REMOVIDOS (código morto: billing era Stripe USD que
 # contradiz o /pricing Asaas/BRL; auth tinha rota dev insegura; news divergia do BFF). Se
@@ -198,6 +203,8 @@ app.include_router(simulator.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 # Ranking: rotas trazem /api completo → SEM prefixo aqui
 app.include_router(ranking.router)
+# Portfólio: restaura POST /api/v1/portfolio/analytics (rotação/aporte/travas) — ver import acima.
+app.include_router(portfolio.router, prefix="/api/v1")
 
 
 # Warm-up do cache do Ranking (NÃO-bloqueante): pré-popula em segundo plano para

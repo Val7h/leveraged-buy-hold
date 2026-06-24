@@ -388,11 +388,16 @@ class _AnalyticsBody(BaseModel):
 
 
 @router.post("/analytics")
-def post_portfolio_analytics(body: _AnalyticsBody, user: User = Depends(get_current_user)):
+def post_portfolio_analytics(body: _AnalyticsBody):
     """Inteligência da carteira (método adotado, modelo Quantfury): métricas por ativo, totais,
     estrutura ALVO×REAL, contribuição de risco (covariância), correlação normal/crise, e venda/
     rotação (histerese + cooldown + regime + destino descorrelacionado). Posições + equity +
-    cooldown vêm no corpo (estado vive no Prisma/Node)."""
+    cooldown vêm no corpo (estado vive no Prisma/Node).
+
+    STATELESS: NÃO usa get_current_user (a BFF/Node já autenticou o usuário e envia as posições
+    + X-Internal-Token). Protegida pelo middleware global de token interno, como as rotas de
+    ranking. Antes exigia get_current_user (JWT) que a BFF não manda → 401/404 → rotação e aporte
+    sumiam no frontend."""
     from app.services.portfolio_service import portfolio_analytics
     return portfolio_analytics([p.dict() for p in body.positions], equity=body.equity,
                                cooldown_tickers=body.cooldown_tickers)
