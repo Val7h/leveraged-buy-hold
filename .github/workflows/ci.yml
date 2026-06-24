@@ -63,3 +63,7 @@ jobs:
         # Exclusão de dividendo extraordinário (dy recorrente), guard de beta
         # negativo implausível e trava de alavancagem em beta>=1.45 (sobrevivência).
         run: python -m pytest tests/test_ranking_dividend_beta.py -q
+      - name: Camada 3 — aptidão p/ alavancar (por-ativo)
+        # Score de aptidão (máxDD/σ/gap/DY/recuperação/beta) + teto de alavancagem
+        # por-fluxo MIN(σ,gap,beta,regime); máxDD/Kelly são travas agregadas (C.3).
+        run: python -m pytest tests/test_camada3_aptidao.py -q
