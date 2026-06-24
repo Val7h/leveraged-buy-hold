@@ -84,19 +84,21 @@ def test_compounder_low_yield_dividend_guard():
 
 
 def test_quality_blend_compounder_not_demoted_by_low_yield():
-    # RADL3: ROE 17.6%, ROIC 22.8%, yield ~1% → qualidade ALTA, e o termo de dividendo SAI
-    # do breakdown (renormaliza), em vez de derrubar a nota.
+    # CAMADA 1: o DIVIDENDO (nível de DY) SAIU da qualidade (vai p/ Camada 3). RADL3 (compounder
+    # de yield baixo) tira nota ALTA pelos pilares de NEGÓCIO (ROIC 22.8%, FCF, safety) — e o
+    # dividendo nunca aparece no breakdown (não é mais um pilar da qualidade).
     q_radl, bd_radl = S.compute_quality_blend(
         beta=0.7, max_dd_pct=-25, dividend_yield=1.0, growth_5y=12,
         roe=0.176, roic=0.228, fcf_yield=0.04, sharpe=1.2, momentum=55)
-    assert "dividendos" not in bd_radl                    # compounder: dividendo renormalizado p/ fora
-    assert q_radl >= 70                                    # qualidade alta, não rebaixada
+    assert "dividendos" not in bd_radl                    # DY não é mais pilar de qualidade (Camada 3)
+    assert q_radl >= 70                                    # qualidade alta pelos pilares de negócio
 
-    # Controle: o MESMO ativo SE fosse não-compounder (ROIC baixo) MANTÉM o dividendo no blend.
+    # DOUTRINA TRAVADA: o dividendo NÃO está na qualidade p/ ninguém (nem não-compounder). Antes
+    # o termo "dividendos" entrava p/ pagador de renda; agora o NÍVEL de DY é Camada 3.
     _, bd_noncomp = S.compute_quality_blend(
         beta=0.7, max_dd_pct=-25, dividend_yield=1.0, growth_5y=12,
         roe=0.06, roic=0.07, fcf_yield=0.04, sharpe=1.2, momentum=55)
-    assert "dividendos" in bd_noncomp                     # não-compounder de yield baixo: termo fica
+    assert "dividendos" not in bd_noncomp                 # DY fora da qualidade p/ todos
 
 
 def test_quality_crivo_compounder_low_yield_not_demoted():
@@ -123,12 +125,12 @@ def test_quality_expensive_low_yield_mediocre_roic_not_top():
                                      debt_to_equity=1.5, dividend_yield=1.3, growth_5y=5)
     assert n_wmt is not None and n_wmt < 70               # fundamentos fracos → longe do topo
 
-    # WMT NÃO é compounder → o dividendo PERMANECE no blend (não ganha guard de compounder)
+    # CAMADA 1: WMT (ROIC ~10% = WACC, FCF 1.3% baixíssimo) fica ABAIXO de um compounder
+    # verdadeiro (RADL: ROIC 22.8%, FCF maior). Note: crescimento de WMT NÃO premia (ROIC≤WACC).
     q_wmt, bd_wmt = S.compute_quality_blend(
         beta=0.5, max_dd_pct=-15, dividend_yield=1.3, growth_5y=5,
         roe=0.08, roic=0.10, fcf_yield=0.013, sharpe=1.5, momentum=50)
-    assert "dividendos" in bd_wmt
-    # e fica abaixo de um compounder verdadeiro de qualidade
+    assert "dividendos" not in bd_wmt                     # DY fora da qualidade (Camada 3)
     q_radl, _ = S.compute_quality_blend(
         beta=0.7, max_dd_pct=-25, dividend_yield=1.0, growth_5y=12,
         roe=0.176, roic=0.228, fcf_yield=0.04, sharpe=1.2, momentum=55)
@@ -173,39 +175,96 @@ def test_discount_factor_conservative_floor():
     assert 0.85 <= P._discount_factor(-10) <= 1.0
 
 
-# ─────────────────── quality blend: faixa e composição ─────────────────────
-def test_quality_blend_range_and_keys():
+# ─────────────────── CAMADA 1: qualidade do NEGÓCIO (preço fora) ─────────────────────
+def test_quality_blend_camada1_keys_no_price_risk():
+    # DOUTRINA TRAVADA: beta/max_drawdown/sharpe/dividendos NÃO estão mais na qualidade (são risco
+    # de PREÇO/DY → Camada 3). O breakdown contém SÓ pilares de NEGÓCIO.
     q, bd = S.compute_quality_blend(beta=0.6, max_dd_pct=-20, dividend_yield=4,
                                     growth_5y=10, sharpe=1.0, cagr=10,
-                                    tsr_expected=12, momentum=60)
+                                    tsr_expected=12, momentum=60,
+                                    roic=0.18, debt_to_equity=0.4, fcf_yield=0.06)
     assert 0 <= q <= 100
-    assert {"beta", "max_drawdown", "dividendos", "fundamentos"}.issubset(bd.keys())
+    # pilares de negócio presentes (ROIC nível, safety, FCF, crescimento c/ ROIC>WACC):
+    assert {"roic_nivel", "safety", "fcf", "crescimento"}.issubset(bd.keys())
+    # risco de preço e DY NÃO entram na qualidade:
+    for k in ("beta", "max_drawdown", "sharpe", "dividendos"):
+        assert k not in bd
 
 
 def test_quality_blend_renormalizes_without_real_growth():
-    # #15a: a Qualidade usa crescimento REAL (receita/EPS, não preço). Ausente (BR/jovem) → o termo
-    # SAI e os pesos RENORMALIZAM (sem injetar "50 falso"); a chave crescimento_5a é omitida.
-    _, bd_with = S.compute_quality_blend(beta=0.6, max_dd_pct=-20, dividend_yield=4,
-                                         growth_5y=12, sharpe=1.0, roic=0.18, momentum=60)
-    q_wo, bd_wo = S.compute_quality_blend(beta=0.6, max_dd_pct=-20, dividend_yield=4,
-                                          growth_5y=None, sharpe=1.0, roic=0.18, momentum=60)
-    assert "crescimento_5a" in bd_with
-    assert "crescimento_5a" not in bd_wo
+    # Crescimento REAL (receita/EPS). Ausente (BR/jovem) → o termo SAI e os pesos RENORMALIZAM
+    # (sem injetar "50 falso"); a chave "crescimento" é omitida.
+    _, bd_with = S.compute_quality_blend(growth_5y=12, roic=0.18,
+                                         debt_to_equity=0.4, fcf_yield=0.06)
+    q_wo, bd_wo = S.compute_quality_blend(growth_5y=None, roic=0.18,
+                                          debt_to_equity=0.4, fcf_yield=0.06)
+    assert "crescimento" in bd_with
+    assert "crescimento" not in bd_wo
     assert 0 <= q_wo <= 100
 
 
-def test_quality_blend_etf_renormalizes_fundamentals_out():
-    # ETF/commodity NAO sao empresas -> fundamentals_apply=False: o termo "fundamentos" SAI do
-    # breakdown e os pesos RENORMALIZAM (nao ancora num 50 falso). Para um ativo com componentes
-    # altos, tirar o 50 falso SOBE a nota. Acao (apply=True) mantem o termo neutro.
+def test_quality_blend_etf_no_business_pillars():
+    # ETF/commodity NAO sao empresas -> fundamentals_apply=False: NENHUM pilar de negócio entra
+    # (não há ROIC/FCF/D-E). Sem termo presente → nota neutra 50 (avaliado por preço/momento fora).
     q_etf, bd_etf = S.compute_quality_blend(beta=0.55, max_dd_pct=-10, dividend_yield=8,
                                             sharpe=1.2, momentum=55, fundamentals_apply=False)
-    q_stock, bd_stock = S.compute_quality_blend(beta=0.55, max_dd_pct=-10, dividend_yield=8,
-                                                sharpe=1.2, momentum=55, fundamentals_apply=True)
-    assert "fundamentos" not in bd_etf      # ETF: termo removido
-    assert "fundamentos" in bd_stock        # acao: termo mantido (50 neutro)
-    assert q_etf > q_stock                  # sem a ancora 50 falsa, ETF bom sobe
-    assert 0 <= q_etf <= 100
+    assert bd_etf == {}                     # ETF: nenhum pilar de negócio
+    assert q_etf == 50.0                    # sem dado de negócio → neutro (não fabrica)
+
+
+# ─────────── CAMADA 1: golden tests da doutrina travada ───────────
+def test_camada1_adbe_like_high_roic_no_growth_data_scores_high():
+    # ADBE-like: ROIC excelente (36%), FCF 13.5%, balanço sano, SEM crescimento real (ausente).
+    # A nota deve ser ALTA — o negócio é excelente independente de preço (beta/maxDD irrelevantes).
+    q, bd = S.compute_quality_blend(
+        beta=1.46, max_dd_pct=-45, sharpe=-0.3,        # preço feio: NÃO deve derrubar a qualidade
+        roic=0.36, fcf_yield=0.135, debt_to_equity=0.3,
+        growth_5y=None, roe=0.62)
+    assert q >= 85
+    assert "roic_nivel" in bd and "fcf" in bd and "safety" in bd
+    assert "crescimento" not in bd                     # ausente → renormaliza (não vira 50)
+
+
+def test_camada1_low_roic_high_growth_not_high():
+    # Crescer DESTRUINDO capital não é qualidade. ROIC 6% (≤WACC) + crescimento 25% → o crescimento
+    # NÃO premia; a nota fica MODERADA, não alta.
+    q_destruidor, _ = S.compute_quality_blend(
+        roic=0.06, fcf_yield=0.02, debt_to_equity=1.0, growth_5y=25)
+    # mesma empresa SE o ROIC fosse alto (cria valor): crescimento premia → nota maior.
+    q_criador, _ = S.compute_quality_blend(
+        roic=0.20, fcf_yield=0.02, debt_to_equity=1.0, growth_5y=25)
+    assert q_destruidor < 65                           # não é "alta qualidade"
+    assert q_criador > q_destruidor                    # ROIC>WACC faz o crescimento valer
+
+
+def test_camada1_roic_dominates_roe_no_leverage_inflation():
+    # ROIC > ROE sempre. ROE alto (40%) inflado por D/E alto (3.0) NÃO deve dar nota alta de ROIC.
+    # Com ROIC presente, ele DOMINA (ROIC moderado → nota moderada, ignora o ROE alto).
+    q_roic_pilot, bd = S.compute_quality_blend(
+        roic=0.08, roe=0.40, debt_to_equity=3.0, fcf_yield=0.03)
+    # ROIC 8% → ~53 no pilar (não 100 que o ROE 40% sugeriria) → nota longe do topo.
+    assert bd["roic_nivel"] < 70
+
+    # SEM ROIC, ROE alto + D/E alto = alavancagem disfarçada → fallback de ROE é CORTADO (≤45).
+    _, bd_fallback = S.compute_quality_blend(
+        roic=None, roe=0.40, debt_to_equity=3.0, fcf_yield=0.03)
+    assert bd_fallback["roic_nivel"] <= 45             # não premia ROE alto com dívida alta
+
+
+def test_camada1_optional_pillars_renormalize_out_common_case():
+    # CASO COMUM: ROIIC e Moat AUSENTES → renormalizam p/ fora. A Camada 1 roda com
+    # ROIC+safety+FCF(+crescimento). As chaves opcionais não aparecem (não viram 50 falso).
+    q, bd = S.compute_quality_blend(
+        roic=0.20, fcf_yield=0.08, debt_to_equity=0.4, growth_5y=12)
+    assert "roiic" not in bd and "moat" not in bd
+    assert set(bd.keys()) == {"roic_nivel", "fcf", "safety", "crescimento"}
+    assert 0 <= q <= 100
+
+    # Pilar ausente NÃO vira 50: tirar o crescimento (ausente) NÃO ancora a nota num mediano.
+    q_no_growth, bd2 = S.compute_quality_blend(
+        roic=0.20, fcf_yield=0.08, debt_to_equity=0.4, growth_5y=None)
+    assert "crescimento" not in bd2
+    assert q_no_growth >= 90                            # 3 pilares fortes → segue alta, não puxada p/ 50
 
 
 def test_is_falling_knife_15c():

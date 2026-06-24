@@ -723,62 +723,153 @@ def score_slow_stoch_weekly(slow_k: Optional[float]) -> float:
     return _floor(10.0)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# CAMADA 1 — QUALIDADE DO NEGÓCIO (desenho TRAVADO por painel de especialistas + dono)
+# ══════════════════════════════════════════════════════════════════════════════
+# A Camada 1 mede SÓ o NEGÓCIO — independente de PREÇO/BETA/DRAWDOWN/SHARPE/ALAVANCAGEM.
+# Risco de PREÇO (beta/maxDD/Sharpe) SAIU da qualidade (vai p/ Camada 3 depois; por ora só
+# deixa de entrar aqui). Isso conserta o caso ADBE: negócio excelente (ROIC 36%) NÃO leva
+# nota baixa só porque o preço caiu.
+#
+# Pesos TRAVADOS (empresa "normal"):
+#   ROIC nível (>ROE sempre) ........ 22%
+#   ROIIC / alocação de capital ..... 16%  (geralmente AUSENTE → renormaliza p/ fora)
+#   Safety / saúde do balanço (D/E) . 18%
+#   FCF / conversão de caixa ........ 16%
+#   Moat / durabilidade ............. 16%  (geralmente AUSENTE → renormaliza p/ fora)
+#   Crescimento (só se ROIC>WACC) ... 12%
+#
+# REGRAS INVIOLÁVEIS:
+#  1) ROIC > ROE sempre. ROE = ROIC × alavancagem (inflado por dívida). Com ROIC presente,
+#     ele DOMINA o pilar; ROE só é fallback FRACO quando ROIC ausente, e NUNCA premia ROE
+#     alto com D/E alto (alavancagem disfarçada).
+#  2) Crescimento só pontua se ROIC > WACC (proxy ~10%). ROIC ≤ 10% → crescer destrói capital
+#     → crescimento NÃO pontua positivo (entra neutro-baixo). ROIC ausente → crescimento
+#     entra neutro-conservador.
+#  3) NUNCA fabricar dado. Pilar sem dado → o termo SAI e os pesos RENORMALIZAM (não injeta 50).
+#  4) ROIIC e Moat quase sempre faltam (precisam de histórico multi-ano que provedor grátis não
+#     dá) → termos OPCIONAIS que renormalizam p/ fora quando ausentes. Na prática a Camada 1 roda
+#     com ROIC+safety+FCF+crescimento renormalizados — e é honesto (≈ QMJ: profitability+safety+
+#     growth).
+#  5) Valuation (P/L, EV/FCF) NÃO entra na qualidade (não há, e não entra).
+#  6) DIVIDENDO (NÍVEL de DY) SAIU da qualidade (decisão travada → Camada 3 cuida do DY).
+
+_WACC_PROXY = 0.10   # proxy de custo de capital p/ a regra "crescimento só conta se ROIC>WACC"
+
+
+def _q_roic_level(roic: Optional[float], roe: Optional[float],
+                  debt_to_equity: Optional[float]) -> Optional[float]:
+    """Pilar ROIC NÍVEL (>ROE sempre). ROIC presente DOMINA; ROE só fallback FRACO se ROIC
+    ausente, e NUNCA premiando ROE alto com D/E alto (alavancagem disfarçada).
+    None se nem ROIC nem ROE existem (renormaliza)."""
+    if roic is not None:
+        return _q_roic(roic)
+    if roe is None:
+        return None
+    # Fallback FRACO por ROE (sem ROIC): teto 70 — ROE não é tão preditivo quanto ROIC e pode
+    # estar inflado por alavancagem. E NUNCA premiar ROE alto com D/E alto.
+    base = min(_q_roe(roe), 70.0)
+    if debt_to_equity is not None and debt_to_equity >= 1.5:
+        # ROE alto + dívida alta = alavancagem disfarçada → corta o "prêmio" do ROE.
+        base = min(base, 45.0)
+    return base
+
+
+def _q_safety(debt_to_equity: Optional[float]) -> Optional[float]:
+    """Pilar SAFETY / saúde do balanço = D/E. None se ausente (renormaliza)."""
+    return _q_debt(debt_to_equity)
+
+
+def _q_growth_conditional(growth_5y: Optional[float], roic: Optional[float]) -> Optional[float]:
+    """Pilar CRESCIMENTO REAL, condicionado a ROIC>WACC (regra 2).
+      - growth ausente → None (renormaliza; não injeta 50).
+      - ROIC > WACC (~10%) → crescimento pontua normal (score_growth_5y).
+      - ROIC ≤ WACC → crescer destruindo capital NÃO é qualidade → teto neutro-baixo (não premia).
+      - ROIC ausente → neutro-conservador (não sabemos se cria valor): teto 50."""
+    if growth_5y is None:
+        return None
+    g = score_growth_5y(growth_5y)
+    if roic is None:
+        return min(g, 50.0)            # sem ROIC: crescimento entra neutro-conservador
+    if roic > _WACC_PROXY:
+        return g                       # ROIC>WACC: crescimento cria valor → pontua cheio
+    return min(g, 40.0)                # ROIC≤WACC: crescer destrói capital → não premia
+
+
 def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
                           growth_5y=None, roe=None, debt_to_equity=None,
                           payout_ratio=None, roic=None, fcf_yield=None,
                           sharpe=None, cagr=None, tsr_expected=None,
                           momentum=None, is_tatico=False,
                           dy_avg10=None, dy_worst=None, dd_recovery_mult=1.0,
-                          fundamentals_apply=True):
+                          fundamentals_apply=True,
+                          roiic=None, roic_history=None, margin_stability=None):
     """
-    Qualidade (0-100) — pesos (nada exclui). Beta é CONTEXTUAL (amplificador):
-    oversold + beta alto = bônus; sobrecomprado + beta alto = penalidade (depende do momento).
-    is_tatico: mata o bônus de beta "defensivo falso" das cíclicas.
-    dy_avg10/dy_worst: dividendo por consistência (média 10a × pior ano); se ausente, usa trailing.
-    dd_recovery_mult: castiga a nota de máxDD quando o tombo é ANTIGO e nunca recuperou
-      (impairment permanente). Tombo recente não pune (está no fundo = oportunidade).
+    CAMADA 1 — QUALIDADE DO NEGÓCIO (0-100). Mede SÓ o NEGÓCIO, independente de preço.
+
+    Pilares (peso travado): ROIC nível 22% · ROIIC 16% · Safety/D-E 18% · FCF 16% ·
+    Moat/Durabilidade 16% · Crescimento (só se ROIC>WACC) 12%.
+
+    beta/max_dd_pct/sharpe/cagr/tsr_expected/dividend_yield/dy_avg10/dy_worst/momentum/
+    dd_recovery_mult ficam na ASSINATURA por COMPAT com o call-site, mas NÃO entram mais no
+    score nem no breakdown (risco de PREÇO e DY são Camada 3). Ver doutrina acima.
+
+    roiic / roic_history / margin_stability: pilares OPCIONAIS de histórico multi-ano. Os
+    provedores grátis quase nunca trazem → ausentes → o termo SAI e os pesos RENORMALIZAM.
+      - roiic: ΔNOPAT/ΔCapital (qualidade da alocação de capital). Quando vier, 0-100 esperado
+        OU fração (≥15% → 100). Honesto só com dado real; senão omite.
+      - roic_history: lista de ROIC anuais → proxy HONESTO de Moat/durabilidade (persistência:
+        média alta + baixa dispersão = fosso). Senão margin_stability; senão omite.
+      - margin_stability: 0-1 (estabilidade de margem) como proxy conservador de durabilidade.
+
+    fundamentals_apply=False (ETF/COMMODITY): não são empresas → TODOS os pilares de negócio
+    saem; sem termo presente a nota cai em 50 neutro (o ETF é avaliado por preço/momento alhures).
     """
-    s_beta = score_beta_contextual(beta, momentum, is_tatico=is_tatico)
-    s_dd = _clamp(score_maxdd_quality(max_dd_pct) * dd_recovery_mult)
-    s_sharpe = score_sharpe(sharpe)
-    # DE-DUPLICAÇÃO (#15 passo 1): antes cagr/crescimento/tsr eram TODOS o mesmo g5 de PREÇO
-    # (no ranking: cagr=g5, tsr=dy+g5) → preço-growth contava 3x e o dividendo 2x na Qualidade,
-    # confundindo "ação cara" com "empresa boa". Agora g5 conta UMA vez (crescimento) e o
-    # dividendo UMA vez (dividendos). cagr/tsr_expected ficam na assinatura por compat, mas
-    # NÃO entram mais no score.
-    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield, roe=roe, roic=roic)
-             if dy_avg10 is not None
-             else score_dividend_sustainable(None, None, dividend_yield, roe=roe, roic=roic))
-    s_fun = score_fundamental_health(payout_ratio, debt_to_equity, roe, roic, fcf_yield)
-    breakdown = {"beta": round(s_beta), "max_drawdown": round(s_dd),
-                 "sharpe": round(s_sharpe)}
-    # Componentes (score, peso). CRESCIMENTO (#15a) é REAL da empresa (receita/EPS, não preço) e só
-    # entra se houver dado — ausente (BR/jovem) o termo SAI e os pesos RENORMALIZAM (não injeta "50
-    # falso"; honestidade > falso mediano). Pesos somam 1.0 com crescimento; sem ele, renormaliza.
-    comps = [(s_beta, 0.13), (s_dd, 0.20), (s_sharpe, 0.13)]
-    # DIVIDENDO na QUALIDADE (#2 sep. QUALIDADE×VALUATION): para um COMPOUNDER de yield baixo
-    # (ROIC≥15%/ROE≥18% + yield <3%, ex RADL3/ADBE), o yield baixo é OPÇÃO de reinvestir — NÃO é
-    # sinal de baixa qualidade. O termo de dividendos SAI e os pesos RENORMALIZAM (mesma lógica do
-    # crescimento ausente/ETF), em vez de derrubar a nota. Pagador de renda (yield ≥3% ou não-
-    # compounder) MANTÉM o termo: dividendo consistente alto continua bom (TAEE11/BBSE3 não caem).
-    _div_yield = dividend_yield if dy_avg10 is None else dy_avg10
-    _compounder_low_yield = (_is_compounder(roe, roic) and _div_yield is not None
-                             and 0 <= _div_yield < _COMPOUNDER_LOW_YIELD)
-    if not _compounder_low_yield:
-        comps.append((s_div, 0.18))
-        breakdown["dividendos"] = round(s_div)
-    # FUNDAMENTOS: só entram p/ EMPRESAS. ETF/commodity NÃO são empresas (não têm ROE/ROIC/FCF) →
-    # o termo SAI e os pesos RENORMALIZAM (não ancora a nota num "50 falso"; mesma lógica do
-    # crescimento). fundamentals_apply=False vem do ranking p/ ETF/COMMODITY. Ação sem dado (BR)
-    # MANTÉM o termo neutro DE PROPÓSITO: é empresa (o fundamento existe, só falta o dado) — não
-    # julgar uma empresa só pelo preço.
+    # ── Pilares de NEGÓCIO (cada um None se sem dado → renormaliza, regra 3) ──
+    s_roic = _q_roic_level(roic, roe, debt_to_equity) if fundamentals_apply else None
+    s_safety = _q_safety(debt_to_equity) if fundamentals_apply else None
+    s_fcf = _q_fcf(fcf_yield) if fundamentals_apply else None
+    s_growth = _q_growth_conditional(growth_5y, roic) if fundamentals_apply else None
+
+    # ROIIC (qualidade da alocação) — OPCIONAL, quase sempre ausente.
+    s_roiic = None
+    if fundamentals_apply and roiic is not None:
+        # aceita fração (0.18) ou já-nota (0..100). Heurística: ≤1.5 trata como fração.
+        s_roiic = _q_roic(roiic) if abs(roiic) <= 1.5 else _clamp(roiic)
+
+    # MOAT / durabilidade — OPCIONAL. Proxy HONESTO só se houver histórico de ROIC (persistência)
+    # ou estabilidade de margem; senão OMITE (não fabrica).
+    s_moat = None
     if fundamentals_apply:
-        breakdown["fundamentos"] = round(s_fun)
-        comps.append((s_fun, 0.22))
-    if growth_5y is not None:
-        s_gro = score_growth_5y(growth_5y)
-        comps.append((s_gro, 0.14))
-        breakdown["crescimento_5a"] = round(s_gro)
+        if roic_history is not None and len(roic_history) >= 3:
+            hist = [h for h in roic_history if h is not None]
+            if len(hist) >= 3:
+                mean_roic = float(np.mean(hist))
+                disp = float(np.std(hist))
+                # fosso = ROIC médio alto (≥15%) E persistente (baixa dispersão).
+                lvl = _q_roic(mean_roic)
+                # dispersão de ROIC: 0 → ×1.0 ; ≥0.10 (10pp) → ×0.6 (errático = fosso fraco).
+                stab = _clamp(1.0 - min(disp / 0.10, 1.0) * 0.4, 0.6, 1.0)
+                s_moat = _clamp(lvl * stab)
+        elif margin_stability is not None:
+            s_moat = _clamp(margin_stability * 100.0)
+
+    breakdown = {}
+    comps = []
+    # (score, peso, chave). Termos None NÃO entram (regra 3) e renormalizam.
+    pilares = [
+        (s_roic, 0.22, "roic_nivel"),
+        (s_roiic, 0.16, "roiic"),
+        (s_safety, 0.18, "safety"),
+        (s_fcf, 0.16, "fcf"),
+        (s_moat, 0.16, "moat"),
+        (s_growth, 0.12, "crescimento"),
+    ]
+    for s, w, k in pilares:
+        if s is not None:
+            comps.append((s, w))
+            breakdown[k] = round(s)
+
     wsum = sum(w for _, w in comps)
     q = (sum(s * w for s, w in comps) / wsum) if wsum > 0 else 50.0
     return round(_clamp(q), 1), breakdown
