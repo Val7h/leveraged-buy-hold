@@ -396,19 +396,6 @@ def post_portfolio_analytics(body: _AnalyticsBody, user: User = Depends(get_curr
                                cooldown_tickers=body.cooldown_tickers)
 
 
-@router.get("/{portfolio_id}/rotation")
-def get_rotation(
-    portfolio_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Sinal de venda/rotação: ciclo ESTICADO → vender e girar; semente nunca vende."""
-    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id, Portfolio.user_id == user.id).first()
-    if not portfolio:
-        raise HTTPException(404, "Carteira não encontrada")
-    from app.services.portfolio_service import rotation_signals
-    return rotation_signals(portfolio_id, db)
-
 
 @router.get("/{portfolio_id}/suggestions", response_model=List[ContributionSuggestion])
 def get_suggestions(

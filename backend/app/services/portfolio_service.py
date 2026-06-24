@@ -568,15 +568,27 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
 
     held = {r["ticker"].upper() for r in rows}
     signals, n_sell = [], 0
+    HYST_WEEKS_TATICO = 1   # tático/ciclo: position trade, gira mais rápido (1 sem.)
     for r in rows:
         v = r.get("verdict")
         pp = r.get("pnl_pct")
         semanas = _esticado_semanas(r)
+        # is_tatico vem do ranking cache (campo "is_tatico" do asset); default False se ausente.
+        is_tatico = bool(rk.get(r["ticker"].upper(), {}).get("is_tatico", False))
+        is_cycle = bool(r.get("is_cycle"))
+        weeks_esticado = 0.0
         if r.get("is_seed"):
             action, reason = "MANTER", "Semente — âncora permanente, não rotaciona"
         elif capitulacao:
             action, reason = "MANTER", "Mercado em capitulação — segurar e comprar, não girar topo"
+        elif v == "ESTICADO" and (pp is None or pp >= 0) and (is_tatico or is_cycle) and semanas >= HYST_WEEKS_TATICO:
+            weeks_esticado = semanas
+            n = int(semanas)
+            action, reason, n_sell = "VENDER", f"Tático/ciclo esticado há {n} sem. — girar para próximo do ranking", n_sell + 1
+        elif v == "ESTICADO" and (pp is None or pp >= 0) and (is_tatico or is_cycle):
+            action, reason = "MANTER", f"Tático/ciclo esticado recente ({semanas:.0f} sem.) — aguardar confirmação (≥{HYST_WEEKS_TATICO} sem.)"
         elif v == "ESTICADO" and (pp is None or pp >= 0) and semanas >= HYST_WEEKS:
+            weeks_esticado = semanas
             action, reason, n_sell = "VENDER", f"Esticado há {semanas:.0f} sem. e no lucro — realizar e girar", n_sell + 1
         elif v == "ESTICADO" and (pp is None or pp >= 0):
             action, reason = "MANTER", f"Esticado recente ({semanas:.0f} sem.) — aguardar confirmação (≥{HYST_WEEKS} sem.)"
@@ -587,10 +599,12 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         else:
             action, reason = "MANTER", f"{v} — segue na carteira"
         signals.append({"ticker": r["ticker"], "verdict": v, "action": action,
-                        "reason": reason, "is_seed": r.get("is_seed")})
+                        "reason": reason, "is_seed": r.get("is_seed"),
+                        "weeks_esticado": round(weeks_esticado, 1)})
 
     # Destino: melhor do ranking não-possuído, FORA do cooldown e que NÃO ande colado (corr<0,8)
     # com o que você já tem (senão piora a diversificação que o painel mede).
+    # rotate_into é sempre calculado (n_sell=0 → mode="opportunity"; n_sell>0 → mode="sell").
     cd = {t.upper() for t in (cooldown_tickers or [])}
     held_series = (cov or {}).get("_series") or {}
     buyable = [a for a in rk.values()
@@ -610,7 +624,9 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
             "current_price": a.get("current_price"), "dividend_yield": a.get("dividend_yield"),
             "max_corr_held": mc,
         })
-    rotation = {"signals": signals, "rotate_into": rotate_into, "n_sell": n_sell}
+    rotate_into_mode = "sell" if n_sell > 0 else "opportunity"
+    rotation = {"signals": signals, "rotate_into": rotate_into, "n_sell": n_sell,
+                "rotate_into_mode": rotate_into_mode}
 
     # ── STOP DE SOBREVIVÊNCIA (pilar nº1 da doutrina) ─────────────────────────────
     # Caiu ≥10% do PM → vende 1/3 (escalonado: a cada -10% adicional, +1/3). Vale p/ TODAS
@@ -718,73 +734,6 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
     }
 
-
-def rotation_signals(portfolio_id: int, db: Session) -> Dict:
-    """
-    Sinal de VENDA / rotação (estratégia do usuário): SEMENTE nunca vende (âncora
-    permanente). Posição de CICLO que ficou ESTICADO no ranking → VENDER e girar o
-    capital pro melhor do ranking AGORA que ainda não está na carteira (opção 1).
-    Reaproveita o motor de ranking novo (compute_ranking, com cache stale-while-revalidate).
-    """
-    from app.services.ranking_service import compute_ranking
-
-    positions = db.query(Position).filter(
-        Position.portfolio_id == portfolio_id,
-        Position.is_active == True,
-    ).all()
-
-    ranking = compute_ranking() or {}
-    by_ticker: Dict[str, dict] = {}
-    all_assets: List[dict] = []
-    for cat, data in (ranking.get("categories") or {}).items():
-        for a in (data.get("assets") or []):
-            item = {**a, "category": cat}
-            by_ticker[a["ticker"].upper()] = item
-            all_assets.append(item)
-
-    held = {p.ticker.upper() for p in positions}
-    signals: List[dict] = []
-    n_sell = 0
-    for pos in positions:
-        asset = by_ticker.get(pos.ticker.upper())
-        verdict = asset.get("verdict") if asset else None
-        base = {
-            "position_id": pos.id, "ticker": pos.ticker,
-            "company_name": pos.company_name, "is_seed": pos.is_seed,
-            "is_cycle": pos.is_cycle, "verdict": verdict,
-            "rank": (asset or {}).get("rank"), "momentum": (asset or {}).get("momentum"),
-        }
-        if pos.is_seed:
-            base.update(action="MANTER", reason="Semente — âncora permanente, não rotaciona")
-        elif verdict == "ESTICADO":
-            base.update(action="VENDER", reason="Esticado — realizar e girar pro ranking")
-            n_sell += 1
-        elif verdict is None:
-            base.update(action="MANTER", reason="Fora do universo do ranking — avaliar manualmente")
-        else:
-            base.update(action="MANTER", reason=f"{verdict} — segue na carteira")
-        signals.append(base)
-
-    # Destino da rotação (opção 1): melhor do ranking AGORA que NÃO está na carteira.
-    buyable = [a for a in all_assets
-               if a.get("verdict") in ("COMPRAR FORTE", "COMPRAR")
-               and a["ticker"].upper() not in held]
-    buyable.sort(key=lambda x: -(x.get("rank") or 0))
-    rotate_into = [{
-        "ticker": a["ticker"], "name": a.get("name"), "category": a.get("category"),
-        "verdict": a.get("verdict"), "rank": a.get("rank"), "quality": a.get("quality"),
-        "momentum": a.get("momentum"), "leverage": a.get("leverage"),
-        "current_price": a.get("current_price"), "currency": a.get("currency"),
-        "dividend_yield": a.get("dividend_yield"),
-    } for a in buyable[:5]]
-
-    import datetime as _dt
-    return {
-        "signals": signals,
-        "rotate_into": rotate_into,
-        "n_sell": n_sell,
-        "generated_at": _dt.datetime.utcnow().isoformat() + "Z",
-    }
 
 
 def suggest_contributions(

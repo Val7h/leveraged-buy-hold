@@ -54,6 +54,10 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const rotation = analytics.rotation || {};
   const sells = (rotation.signals || []).filter((s: any) => s.action === "VENDER");
   const rotateInto = rotation.rotate_into || [];
+  const rotateIntoMode: string = rotation.rotate_into_mode || (sells.length > 0 ? "sell" : "opportunity");
+  const esticadoObservar = (rotation.signals || [])
+    .filter((s: any) => s.action === "MANTER" && s.verdict === "ESTICADO" && (s.weeks_esticado ?? 0) > 0)
+    .slice(0, 2);
   const stops = analytics.survival_stops || [];
   const risk = analytics.risk || {};
   const aporte = analytics.aporte || [];
@@ -143,6 +147,8 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
         <p className="text-[11px] text-text-muted mb-3">
           Semente nunca vende. Posição de ciclo que ficou <b>ESTICADO</b> → realizar e girar pro melhor do ranking que você ainda não tem.
         </p>
+
+        {/* Chips de VENDER */}
         {sells.length === 0 ? (
           <div className="text-[12px] text-success mb-2">Nenhuma venda sugerida agora — nenhuma posição de ciclo esticada. 🟢</div>
         ) : (
@@ -156,16 +162,52 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
             ))}
           </div>
         )}
-        {sells.length > 0 && rotateInto.length > 0 && (
+
+        {/* Em observação: MANTER mas ESTICADO com histerese */}
+        {esticadoObservar.length > 0 && (
+          <div className="mb-3">
+            <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5">Em observação</div>
+            <div className="space-y-1.5">
+              {esticadoObservar.map((s: any) => {
+                const progress = Math.min((s.weeks_esticado ?? 0) / 2, 1) * 100;
+                return (
+                  <div key={s.ticker} className="flex items-center gap-2 text-xs">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-400 font-semibold text-[10px]">ESTICADO</span>
+                    <span className="font-semibold text-text-primary">{s.ticker}</span>
+                    <span className="text-text-muted">há {Number(s.weeks_esticado).toFixed(1)} sem.</span>
+                    <div className="flex-1 max-w-[80px] h-1.5 bg-surface-2 rounded overflow-hidden">
+                      <div className="h-full bg-amber-500/70 rounded" style={{ width: `${progress}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* rotate_into — sempre visível se houver candidatos */}
+        {rotateInto.length > 0 && (
           <div>
-            <div className="text-[11px] text-text-secondary mb-1">Girar o capital para (melhores do ranking que você não tem):</div>
+            {sells.length > 0 || rotateIntoMode === "sell" ? (
+              <div className="text-[11px] text-text-secondary mb-1">Girar para:</div>
+            ) : (
+              <div className="mb-1">
+                <div className="text-[11px] text-text-secondary font-medium">Melhores oportunidades agora</div>
+                <div className="text-[10px] text-text-muted">nenhuma venda sugerida, mas estas lideram o ranking</div>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {rotateInto.map((t: any) => (
-                <div key={t.ticker} className="text-[11px] bg-success/10 border border-success/30 rounded px-2 py-1">
+                <div key={t.ticker} className="text-[11px] bg-success/10 border border-success/30 rounded px-2 py-1 flex items-center gap-1">
                   <span className="font-semibold text-text-primary">{t.ticker}</span>
-                  <span className="text-success ml-1">{t.verdict}</span>
-                  <span className="text-text-muted ml-1">rank {fmt(t.rank, "", 0)}</span>
-                  {t.max_corr_held != null && <span className="text-text-muted ml-1">· corr {fmt(t.max_corr_held, "", 2)}</span>}
+                  {t.verdict === "COMPRAR FORTE" && (
+                    <span className="px-1 py-0 rounded bg-success/20 border border-success/50 text-success font-semibold text-[9px]">FORTE</span>
+                  )}
+                  {t.verdict === "COMPRAR" && (
+                    <span className="px-1 py-0 rounded bg-primary/20 border border-primary/50 text-primary font-semibold text-[9px]">COMPRAR</span>
+                  )}
+                  <span className="text-text-muted ml-0.5">rank {fmt(t.rank, "", 0)}</span>
+                  {t.max_corr_held != null && <span className="text-text-muted">· corr {fmt(t.max_corr_held, "", 2)}</span>}
                 </div>
               ))}
             </div>
