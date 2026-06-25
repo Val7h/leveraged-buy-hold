@@ -81,20 +81,46 @@ def get_price_history(
     ticker: str,
     period: str = Query("1y", description="1mo, 3mo, 6mo, 1y, 2y, 5y, 10y"),
 ):
-    from app.services.market_data import fetch_price_history
+    # FIX (mesma praga do Simulador): fetch_price_history usa yfinance, BLOQUEADO no Render →
+    # retornava None → 404 → gráfico vazio. Usa _chart_api_df (Yahoo chart API via urllib, funciona
+    # em prod); yfinance só como último fallback. Só Close (médias/RSI derivam dele).
+    from app.services.ranking_service import _chart_api_df
     ticker = ticker.upper()
-    df = fetch_price_history(ticker, period=period)
-    if df is None:
+    _days = {"1mo": 31, "3mo": 93, "6mo": 186, "1y": 366, "2y": 732,
+             "5y": 1830, "10y": 3660}.get(period, 366)
+
+    df = None
+    try:
+        res = _chart_api_df(ticker, _days, want_div=False)
+        cand = res[0] if isinstance(res, tuple) else res
+        if cand is not None and len(cand) >= 2:
+            df = cand
+    except Exception:
+        df = None
+
+    if df is None:   # fallback yfinance (não funciona em prod, mas inócuo)
+        try:
+            from app.services.market_data import fetch_price_history
+            df = fetch_price_history(ticker, period=period)
+        except Exception:
+            df = None
+
+    if df is None or "Close" not in getattr(df, "columns", []):
         raise HTTPException(status_code=404, detail=f"Dados não encontrados para {ticker}")
 
-    return [
-        {
-            "date": str(idx)[:10],
-            "open": round(float(row["Open"]), 4),
-            "high": round(float(row["High"]), 4),
-            "low": round(float(row["Low"]), 4),
-            "close": round(float(row["Close"]), 4),
-            "volume": int(row["Volume"]),
-        }
-        for idx, row in df.iterrows()
-    ]
+    out = []
+    for idx, row in df.iterrows():
+        try:
+            c = round(float(row["Close"]), 4)
+        except Exception:
+            continue
+        # OHLC do _chart_api_df = só Close; preenche o-h-l com close (o gráfico plota Close+médias).
+        o = round(float(row["Open"]), 4) if "Open" in df.columns else c
+        h = round(float(row["High"]), 4) if "High" in df.columns else c
+        lo = round(float(row["Low"]), 4) if "Low" in df.columns else c
+        v = int(row["Volume"]) if "Volume" in df.columns else 0
+        out.append({"date": str(idx)[:10], "open": o, "high": h, "low": lo,
+                    "close": c, "volume": v})
+    if not out:
+        raise HTTPException(status_code=404, detail=f"Sem série p/ {ticker}")
+    return out

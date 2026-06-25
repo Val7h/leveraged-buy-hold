@@ -52,16 +52,26 @@ export default function AssetChartModal({ ticker, onClose }: AssetChartModalProp
   const [period, setPeriod] = useState<string>("1y");
   const [rawData, setRawData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string>("");
   const [assetInfo, setAssetInfo] = useState<any>(null);
 
   const load = async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const [histRes] = await Promise.all([
         assetsApi.getHistory(ticker, period),
       ]);
-      setRawData(histRes.data);
-    } catch { /* silent */ }
+      const data = Array.isArray(histRes.data) ? histRes.data : [];
+      setRawData(data);
+      if (data.length === 0) setLoadError("Sem dados de preço para este ativo no período.");
+    } catch (e: any) {
+      // Não é mais silencioso: mostra o motivo (antes o gráfico ficava vazio sem aviso).
+      setRawData([]);
+      setLoadError(e?.response?.status === 404
+        ? "Sem dados de preço para este ativo."
+        : "Não foi possível carregar o gráfico. Tente de novo.");
+    }
     finally { setLoading(false); }
   };
 
@@ -144,6 +154,11 @@ export default function AssetChartModal({ ticker, onClose }: AssetChartModalProp
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <RefreshCw size={20} className="animate-spin text-primary" />
+            </div>
+          ) : (loadError || rawData.length === 0) ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-2 text-center">
+              <p className="text-sm text-text-secondary">{loadError || "Sem dados para exibir."}</p>
+              <button onClick={load} className="btn-ghost text-sm">Tentar de novo</button>
             </div>
           ) : (
             <>
