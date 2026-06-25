@@ -12,6 +12,28 @@ const RISK_PROFILES = [
   { value: "aggressive", label: "Agressivo" },
 ];
 
+// O Prisma persiste o perfil em PT ("conservador"/"moderado"/"agressivo"),
+// mas as <option> do select usam values em EN. Sem normalizar, o select nao
+// acha o value e cai no default (Conservador) — mostrando errado mesmo apos
+// salvar "Agressivo". Mapeia PT (e variantes) -> value EN canonico do select.
+function normalizeRiskProfile(raw: string | null | undefined): string {
+  const v = (raw ?? "").trim().toLowerCase();
+  switch (v) {
+    case "conservador":
+    case "conservative":
+      return "conservative";
+    case "moderado":
+    case "moderate":
+    case "balanced":
+      return "moderate";
+    case "agressivo":
+    case "aggressive":
+      return "aggressive";
+    default:
+      return "moderate";
+  }
+}
+
 interface ProfileForm {
   fullName: string;
   riskProfile: string;
@@ -38,7 +60,7 @@ export default function PerfilPage() {
       if (user) {
         setForm({
           fullName: user.fullName ?? "",
-          riskProfile: user.riskProfile ?? "moderate",
+          riskProfile: normalizeRiskProfile(user.riskProfile),
           email: user.email,
         });
         setLoading(false);
@@ -60,7 +82,7 @@ export default function PerfilPage() {
         if (cancelled) return;
         setForm({
           fullName: data.fullName ?? "",
-          riskProfile: data.riskProfile ?? "moderate",
+          riskProfile: normalizeRiskProfile(data.riskProfile),
           email: data.email ?? "",
         });
         // Atualiza store em paralelo (sem bloquear)

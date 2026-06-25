@@ -91,7 +91,7 @@ export default function PrivacidadePage() {
               </tr>
               <tr>
                 <td className="p-2 border border-border">Dados de pagamento</td>
-                <td className="p-2 border border-border">Processamento via gateway (Stripe/Asaas)</td>
+                <td className="p-2 border border-border">Processamento via gateway (Asaas)</td>
                 <td className="p-2 border border-border">V — Execucao de contrato</td>
                 <td className="p-2 border border-border">Conforme legislacao fiscal (5 anos)</td>
               </tr>

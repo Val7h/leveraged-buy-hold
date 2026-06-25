@@ -69,6 +69,7 @@ export default function DashboardPage() {
   const { activePortfolioId, metrics, positions, portfolios, fetchPortfolios, fetchMetrics, fetchPositions } = usePortfolioStore();
   const { opportunities, avoid, awaiting, opportunityCount, checkedAt, loading: signalLoading, setSignals, setLoading } = useSignalStore();
   const [creatingPortfolio, setCreatingPortfolio] = useState(false);
+  const [signalError, setSignalError] = useState(false);
 
   useEffect(() => { fetchPortfolios(); }, []);
   useEffect(() => {
@@ -80,10 +81,21 @@ export default function DashboardPage() {
 
   const fetchSignals = useCallback(async () => {
     setLoading(true);
+    setSignalError(false);
     try {
       const res = await watchlistApi.getSignals();
       setSignals(res.data);
-    } catch { /* watchlist vazia ou erro */ }
+    } catch (e) {
+      // Watchlist vazia (404/204) é estado normal — o setSignals trata como
+      // "sem sinais". Qualquer outra falha é erro de verdade: sinaliza pra UI
+      // mostrar aviso discreto em vez de sumir mudo.
+      const status = (e as any)?.response?.status;
+      if (status === 404 || status === 204) {
+        setSignals({ signals: [] });
+      } else {
+        setSignalError(true);
+      }
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -190,8 +202,27 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* ── Falha ao carregar sinais (aviso discreto, não some mudo) ── */}
+        {!signalLoading && signalError && (
+          <div className="card mb-5 flex items-center gap-3 py-3 border-warning/20">
+            <div className="w-9 h-9 rounded-full bg-warning/10 border border-warning/20 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle size={16} className="text-warning" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text-primary">Oportunidades indisponíveis</p>
+              <p className="text-xs text-text-muted">Não foi possível carregar oportunidades agora.</p>
+            </div>
+            <button
+              onClick={fetchSignals}
+              className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline flex-shrink-0"
+            >
+              <RefreshCw size={11} /> Tentar de novo
+            </button>
+          </div>
+        )}
+
         {/* ── Sem oportunidades mas watchlist tem dados ─────── */}
-        {!signalLoading && opportunities.length === 0 && (awaiting.length > 0 || avoid.length > 0) && (
+        {!signalLoading && !signalError && opportunities.length === 0 && (awaiting.length > 0 || avoid.length > 0) && (
           <div className="card mb-5 flex items-center gap-3 py-4">
             <div className="w-9 h-9 rounded-full bg-warning/10 border border-warning/20 flex items-center justify-center flex-shrink-0">
               <Bell size={16} className="text-warning" />

@@ -41,21 +41,36 @@ def screen(
 
 @router.get("/{ticker}/price")
 def get_current_price(ticker: str):
-    """Retorna apenas o preço atual do ativo — endpoint leve, sem análise completa."""
-    from app.services.market_data import fetch_price_history
-    import yfinance as yf
+    """Retorna apenas o preço atual do ativo — endpoint leve, sem análise completa.
+
+    FIX: usava yf.Ticker().fast_info (yfinance, BLOQUEADO no Render) → /price falhava
+    em prod → o SWEEP DE ALERTAS não pegava preço → alertas não disparavam. Agora usa
+    _chart_api_df (Yahoo chart API via urllib, funciona em prod); yfinance só como
+    último fallback. NÃO fabrica preço (None/404 se tudo falhar).
+    """
+    from app.services.ranking_service import _chart_api_df
     ticker = ticker.upper()
     price = None
-    company_name = None
+
+    # Fonte primária: Yahoo chart API (funciona no Render).
     try:
-        info = yf.Ticker(ticker).fast_info
-        price = float(info.last_price) if info.last_price else None
-    except Exception:
-        pass
-    if not price:
-        df = fetch_price_history(ticker, "5d")
-        if df is not None and not df.empty:
+        res = _chart_api_df(ticker, 10, want_div=False)
+        df = res[0] if isinstance(res, tuple) else res
+        if df is not None and "Close" in getattr(df, "columns", []) and len(df) >= 1:
             price = round(float(df["Close"].iloc[-1]), 4)
+    except Exception:
+        price = None
+
+    # Último fallback: yfinance (não funciona em prod, mas inócuo localmente).
+    if not price:
+        try:
+            import yfinance as yf
+            info = yf.Ticker(ticker).fast_info
+            if info.last_price:
+                price = round(float(info.last_price), 4)
+        except Exception:
+            price = None
+
     if not price:
         raise HTTPException(404, f"Preço não encontrado para {ticker}")
     return {"ticker": ticker, "price": round(price, 4)}

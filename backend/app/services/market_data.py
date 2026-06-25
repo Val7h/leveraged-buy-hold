@@ -255,6 +255,58 @@ def _synthetic_price_history(ticker: str, period: str) -> pd.DataFrame:
     return df
 
 
+# period → dias corridos (p/ o chart API, que pede janela em dias, não "period")
+_PERIOD_DAYS: dict = {
+    "1mo": 31, "3mo": 93, "6mo": 186,
+    "1y": 366, "2y": 732, "5y": 1830, "10y": 3660, "max": 9000,
+}
+
+
+def _chart_api_history(ticker: str, period: str) -> Optional[pd.DataFrame]:
+    """
+    Fallback robusto via Yahoo chart API (urllib) — FUNCIONA no Render, ao contrário
+    do yfinance (bloqueado lá). Reaproveita ranking_service._chart_api_df, que já é a
+    cura usada no Simulador/Gráfico. Import LAZY p/ evitar import circular
+    (ranking_service importa market_data).
+
+    _chart_api_df devolve (DataFrame[index=datetime, Close/High/Low], dy). Aqui montamos
+    um DataFrame OHLCV compatível com TODOS os consumidores (get_market_state lê Close,
+    backtest/sharpe leem Close/Low, assets lê Open/Low/Volume):
+      - Close: real
+      - High/Low: reais quando o chart API trouxe (margin-call intraday do backtest
+        preserva o Low real); barra quebrada já cai p/ close dentro do _chart_api_df
+      - Open: preenchido = Close (chart API não expõe Open aqui → conservador, não fabrica
+        candle; consumidores que leem Open já têm guarda "Open in columns")
+      - Volume: 0 (chart API guarda ADV em df.attrs, não por linha → 0 é honesto, não inventa)
+    NÃO fabrica preço: se o chart API também falhar, retorna None.
+    """
+    try:
+        from app.services.ranking_service import _chart_api_df  # lazy → sem circular
+    except Exception as e:
+        logger.warning(f"[CHART-API] import _chart_api_df falhou para {ticker}: {e}")
+        return None
+    try:
+        days = _PERIOD_DAYS.get(period, 1830)
+        res = _chart_api_df(ticker, days, want_div=False)
+        df = res[0] if res else None
+        if df is None or df.empty or len(df) < 50:
+            logger.warning(f"[CHART-API] {ticker} ({period}) — sem dados suficientes → None")
+            return None
+        out = pd.DataFrame(index=df.index)
+        close = df["Close"].astype(float)
+        out["Open"] = close                       # chart API não traz Open aqui → = Close
+        out["High"] = df["High"].astype(float) if "High" in df.columns else close
+        out["Low"] = df["Low"].astype(float) if "Low" in df.columns else close
+        out["Close"] = close
+        out["Volume"] = 0                         # não fabrica volume por linha
+        out.sort_index(inplace=True)
+        logger.info(f"[CHART-API] {ticker} ({period}) — {len(out)} dias reais (fallback yfinance)")
+        return out
+    except Exception as e:
+        logger.warning(f"[CHART-API] Erro ao buscar {ticker} ({period}): {e}")
+        return None
+
+
 def fetch_price_history(
     ticker: str,
     period: str = "5y",
@@ -299,6 +351,11 @@ def fetch_price_history(
             tk = yf.Ticker(ticker, session=_session)
             df = tk.history(period=period, interval=interval, auto_adjust=True)
             if df.empty or len(df) < 50:
+                # 1ª opção de fallback: chart API (real, funciona no Render)
+                chart_df = _chart_api_history(ticker, period)
+                if chart_df is not None:
+                    redis_cache.cache_set_df(cache_key, chart_df)
+                    return chart_df
                 if not _ALLOW_SYNTH:
                     logger.warning(f"Empty/insufficient data for {ticker} ({period}) — sintético desligado → None")
                     return None
@@ -313,6 +370,11 @@ def fetch_price_history(
             err_str = str(e)
             logger.warning(f"Failed to fetch {ticker} (attempt {attempt+1}): {e}")
             if "RateLimit" in type(e).__name__ or "Too Many Requests" in err_str:
+                # yfinance bloqueado/limitado → vai DIRETO ao chart API (real, sem espera)
+                chart_df = _chart_api_history(ticker, period)
+                if chart_df is not None:
+                    redis_cache.cache_set_df(cache_key, chart_df)
+                    return chart_df
                 if not _ALLOW_SYNTH:
                     logger.warning(f"Rate-limit em {ticker} — sintético desligado → None (sem dados)")
                     return None
@@ -321,8 +383,13 @@ def fetch_price_history(
                 wait = 15 + attempt * 15   # 15s, 30s
                 logger.info(f"Aguardando {wait}s antes de retentar {ticker}...")
                 time.sleep(wait)
-    # Esgotou as tentativas. No app vivo NÃO fabrica: retorna None (consumidores degradam
-    # p/ "sem dados"). Sintético só com ALLOW_SYNTHETIC_PRICES=1 (backtests offline).
+    # Esgotou as tentativas no yfinance. Última cartada REAL: chart API (Render-safe).
+    chart_df = _chart_api_history(ticker, period)
+    if chart_df is not None:
+        redis_cache.cache_set_df(cache_key, chart_df)
+        return chart_df
+    # No app vivo NÃO fabrica: retorna None (consumidores degradam p/ "sem dados").
+    # Sintético só com ALLOW_SYNTHETIC_PRICES=1 (backtests offline).
     if not _ALLOW_SYNTH:
         logger.warning(f"All fetch attempts failed for {ticker} ({period}) — sintético desligado → None")
         return None
@@ -526,10 +593,13 @@ def fetch_multiple_price_history(
     tickers: List[str],
     period: str = "10y",
 ) -> Dict[str, pd.DataFrame]:
+    # ANTES: time.sleep(3) por ticker (throttle do yfinance) → Sharpe com 20 tickers
+    # estourava o timeout do Render. O caminho primário agora é o chart API (urllib),
+    # que aguenta cadência alta → sleep mínimo (0.1s) só por educação com o provedor.
     result = {}
     for i, ticker in enumerate(tickers):
         if i > 0:
-            time.sleep(3)
+            time.sleep(0.1)
         df = fetch_price_history(ticker, period=period)
         if df is not None:
             result[ticker] = df

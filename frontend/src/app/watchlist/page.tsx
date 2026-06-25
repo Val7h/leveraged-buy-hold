@@ -228,7 +228,7 @@ export default function WatchlistPage() {
 
                       {/* CTA */}
                       <button
-                        onClick={() => handleBought(item.ticker, score.entry_leverage || 1)}
+                        onClick={() => handleBought(item.ticker, score.entry_leverage ?? score.recommended_leverage ?? 1)}
                         className="flex items-center gap-1.5 text-xs font-semibold text-success bg-success/10 border border-success/20 hover:bg-success/20 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
                         title="Registrar posição na carteira simulada">
                         Adicionar à carteira

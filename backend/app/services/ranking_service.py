@@ -1696,6 +1696,133 @@ def _recompute_ranking_inner() -> dict:
     return result
 
 
+# ─────────────────────────── SCREENING / WATCHLIST (motor REAL) ───────────────────────────
+# Screening e Watchlist pediam sinais a uma HEURÍSTICA no Node (lib/yfinance) — divergente do
+# motor REAL de 3 camadas (Qualidade/Momento/Aptidão) da aba Ranking. analyze_tickers roda o
+# MESMO motor para uma lista arbitrária de tickers, garantindo que os números BATAM com o Ranking:
+#   • ticker DENTRO do universo → reaproveita o resultado de compute_ranking() (cache) → MESMOS
+#     números (quality/momentum/verdict/leverage/rank etc.) que a aba Ranking mostra.
+#   • ticker FORA do universo → roda _analyze com categoria inferida (.SA→BR, -USD/USDT→CRYPTO,
+#     senão US), bucket default "ACELERADOR" e o regime do índice da categoria. Sem dado → failed.
+# NUNCA fabrica: ticker sem dado entra em failed_tickers (a UI avisa em vez de inventar).
+
+def _infer_category(ticker: str) -> str:
+    """Categoria de um ticker FORA do universo (p/ rodar o motor real com o índice certo)."""
+    t = (ticker or "").upper().strip()
+    if t.endswith(".SA"):
+        return "BR"
+    if t.endswith("-USD") or t.endswith("USDT") or t.endswith("USD"):
+        return "CRYPTO"
+    if "." in t and not t.endswith(".SA"):  # ex: SAN.PA, ASML.AS → bolsa europeia
+        return "EUROPE"
+    return "US"
+
+
+def _index_universe() -> Dict[str, Tuple[str, dict]]:
+    """{TICKER_UPPER: (categoria, row)} do universo curado+overrides — lookup O(1) por ticker."""
+    idx: Dict[str, Tuple[str, dict]] = {}
+    for cat, rows in get_universe().items():
+        for r in rows:
+            idx[r["ticker"].upper()] = (cat, r)
+    return idx
+
+
+def _find_in_ranking(ticker: str, ranking: dict) -> Optional[dict]:
+    """Acha o ativo já calculado no resultado de compute_ranking() (MESMOS números do Ranking)."""
+    tku = (ticker or "").upper()
+    try:
+        for cat in ranking.get("categories", {}).values():
+            for a in cat.get("assets", []):
+                if (a.get("ticker") or "").upper() == tku:
+                    out = dict(a)
+                    out.setdefault("regime", cat.get("regime"))  # regime fica no nível da categoria
+                    return out
+    except Exception:
+        pass
+    return None
+
+
+def analyze_tickers(tickers: List[str]) -> List[dict]:
+    """Roda o MOTOR REAL de 3 camadas para os tickers pedidos.
+
+    Universo (cache do Ranking) p/ os conhecidos; _analyze ao vivo p/ o resto. Cada item é o MESMO
+    dict que a aba Ranking produz (quality/momentum/verdict/leverage/rank...) + 'failed': bool quando
+    o ticker não retornou dado (NUNCA fabrica). Resultado na ORDEM dos tickers pedidos."""
+    out: List[dict] = []
+    if not tickers:
+        return out
+
+    # 1) Ranking já calculado (cache) → mesmos números da aba Ranking p/ tickers do universo.
+    try:
+        ranking = compute_ranking()
+    except Exception as e:
+        logger.warning(f"[SCREEN] compute_ranking falhou (segue só com _analyze ao vivo): {e}")
+        ranking = {"categories": {}}
+
+    uni = _index_universe()
+
+    # 2) Tickers fora do universo: precisam de _analyze ao vivo → busca os índices UMA vez só.
+    fora = [t for t in tickers if t.upper() not in uni or _find_in_ranking(t, ranking) is None]
+    idxc = idxdm = None
+    equity_regime = "NEUTRO"
+    if fora:
+        try:
+            idxc, idxdm, equity_regime = _fetch_indices()
+        except Exception as e:
+            logger.warning(f"[SCREEN] _fetch_indices falhou: {e}")
+            idxc, idxdm = {}, {}
+
+    for tk in tickers:
+        tku = tk.upper()
+        # a) no universo E já no ranking → reaproveita (mesmos números).
+        res = _find_in_ranking(tk, ranking) if tku in uni else None
+        if res is not None:
+            res["failed"] = False
+            out.append(res)
+            continue
+        # b) fora do universo (ou ainda não no ranking) → _analyze ao vivo.
+        cat, row = uni.get(tku, (_infer_category(tk), None))
+        bucket = (row or {}).get("bucket", "ACELERADOR")
+        name = (row or {}).get("name", tk)
+        try:
+            res = _analyze(tk, bucket, name, cat, idxc or {}, idxdm or {}, equity_regime)
+        except Exception as e:
+            logger.warning(f"[SCREEN] _analyze {tk} falhou: {e}")
+            res = None
+        if res is None:
+            out.append({"ticker": tk, "failed": True})  # sem dado → flag (não fabrica)
+        else:
+            res["failed"] = False
+            res.setdefault("category", cat)
+            out.append(res)
+    return out
+
+
+def screen_assets(tickers: List[str]) -> dict:
+    """Endpoint helper: {assets:[...], market_state:{...}, failed_tickers:[...]} com o motor REAL.
+    market_state vem do REAL (regime do S&P via compute_market_bar/regime), NÃO hardcoded."""
+    analyzed = analyze_tickers(tickers or [])
+    assets = [a for a in analyzed if not a.get("failed")]
+    failed = [a["ticker"] for a in analyzed if a.get("failed")]
+
+    # market_state REAL: regime do S&P 500 (^GSPC) — mesma fonte/regra do Ranking. NÃO hardcoded.
+    state, mult = "NEUTRO", 3
+    try:
+        idxc, _, _ = _fetch_indices()
+        state = regime(idxc.get("^GSPC")) or "NEUTRO"
+        mult = MULT.get(state, 3)
+    except Exception as e:
+        logger.warning(f"[SCREEN] market_state real falhou: {e}")
+
+    return {
+        "assets": assets,
+        "failed_tickers": failed,
+        "attempted_count": len(tickers or []),
+        "market_state": {"state": state, "multiplier": mult},
+        "generated_at": dt.datetime.utcnow().isoformat() + "Z",
+    }
+
+
 # ─────────────────────────── MARKET BAR ───────────────────────────
 _MARKET_BAR_SPEC = [
     ("VIX", "VIX", "^VIX"),

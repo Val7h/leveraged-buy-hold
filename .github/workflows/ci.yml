@@ -76,3 +76,7 @@ jobs:
         # relativo/osciladores+divergência/momentum relativo/estrutura) + gate de
         # reversão (sem quique→teto JUSTO) + tendência→capa alavancagem.
         run: python -m pytest tests/test_camada2_momento.py -q
+      - name: Praga yfinance — fallback chart API no data source
+        # fetch_price_history cai p/ _chart_api_df (Yahoo via urllib) quando yfinance
+        # falha (bloqueado no Render); conserta market-state/Sharpe/Backtest.
+        run: python -m pytest tests/test_market_data_chartapi.py -q

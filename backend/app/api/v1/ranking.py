@@ -11,6 +11,7 @@ Rotas (montadas SEM o prefixo /v1, conforme contrato com o frontend):
 Tudo blindado: qualquer erro vira JSON limpo, NUNCA derruba o app.
 """
 import logging
+from typing import List
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
@@ -28,6 +29,24 @@ def get_ranking(force: bool = Query(False, description="Ignora o cache e recalcu
     except Exception as e:
         logger.exception("Erro ao computar ranking")
         return {"error": str(e), "categories": {}}
+
+
+class ScreenBody(BaseModel):
+    tickers: List[str] = []
+
+
+@router.post("/api/ranking/screen")
+def screen(body: ScreenBody):
+    """Roda o MOTOR REAL de 3 camadas p/ os tickers pedidos (Screening/Watchlist).
+    Mesmos números da aba Ranking p/ tickers do universo; _analyze ao vivo p/ o resto.
+    market_state vem do REAL (regime do S&P), NUNCA hardcoded."""
+    try:
+        tickers = [t.strip() for t in (body.tickers or []) if t and t.strip()][:60]
+        return R.screen_assets(tickers)
+    except Exception as e:
+        logger.exception("Erro ao rodar screen do ranking")
+        return {"error": str(e), "assets": [], "failed_tickers": [],
+                "market_state": {"state": "NEUTRO", "multiplier": 3}}
 
 
 @router.get("/api/market-bar")

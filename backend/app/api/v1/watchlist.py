@@ -63,7 +63,10 @@ def get_watchlist_signals(
         }
 
     tickers = [i.ticker for i in items]
-    results, _ = screen_assets(tickers, min_score=0)
+    # FIX: screen_assets retorna 3 valores (sorted_results, market_state, failed).
+    # O unpacking de 2 lançava ValueError → /watchlist/signals dava 500 → Dashboard
+    # engolia em silêncio e "Oportunidades de Entrada" sumia.
+    results, _market, _failed = screen_assets(tickers, min_score=0)
 
     signals, opportunities, awaiting, avoid = [], [], [], []
 
