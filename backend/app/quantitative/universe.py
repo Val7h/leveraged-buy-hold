@@ -8,28 +8,50 @@ na conta Quantfury. Símbolos compatíveis com Yahoo (para o ranking ao vivo).
 
 UNIVERSE = {
     "BR": [
-        # Financeiro
+        # Financeiro / seguros
         ("ITUB4.SA","ANCORA","Itaú"), ("BBDC4.SA","ANCORA","Bradesco"),
+        ("BBDC3.SA","ANCORA","Bradesco ON"),
         ("BBAS3.SA","ANCORA","Banco do Brasil"), ("BPAC11.SA","ACELERADOR","BTG Pactual"),
         ("SANB11.SA","GERADOR","Santander BR"), ("ITSA4.SA","ACELERADOR","Itaúsa"),
         ("B3SA3.SA","ACELERADOR","B3"), ("BBSE3.SA","GERADOR","BB Seguridade"),
-        ("PSSA3.SA","GERADOR","Porto Seguro"),
-        # Utilities / energia elétrica
+        ("PSSA3.SA","GERADOR","Porto Seguro"), ("CXSE3.SA","GERADOR","Caixa Seguridade"),
+        ("ABCB4.SA","GERADOR","ABC Brasil"), ("BRSR6.SA","GERADOR","Banrisul"),
+        # Utilities / energia elétrica / saneamento
         ("TAEE11.SA","ANCORA","Taesa"), ("EGIE3.SA","ANCORA","Engie"),
         ("CMIG4.SA","GERADOR","Cemig"), ("CPLE6.SA","ANCORA","Copel"),
         ("EQTL3.SA","ANCORA","Equatorial"), ("ELET3.SA","ACELERADOR","Eletrobras"),
         ("SBSP3.SA","ANCORA","Sabesp"), ("SAPR11.SA","ANCORA","Sanepar"),
-        ("ENEV3.SA","ACELERADOR","Eneva"),
-        # Materiais / commodities (TATICO = cíclica)
+        ("ENEV3.SA","ACELERADOR","Eneva"), ("CPFE3.SA","ANCORA","CPFL Energia"),
+        ("NEOE3.SA","ANCORA","Neoenergia"), ("AURE3.SA","GERADOR","Auren"),
+        ("ALUP11.SA","ANCORA","Alupar"), ("CSMG3.SA","GERADOR","Copasa"),
+        ("ENGI11.SA","GERADOR","Energisa"),
+        # Materiais / mineração / siderurgia / papel (TATICO = cíclica)
         ("VALE3.SA","TATICO","Vale"), ("PETR4.SA","TATICO","Petrobras"),
         ("PRIO3.SA","TATICO","PRIO"), ("SUZB3.SA","TATICO","Suzano"),
         ("GGBR4.SA","TATICO","Gerdau"), ("KLBN11.SA","GERADOR","Klabin"),
+        ("CSNA3.SA","TATICO","CSN"), ("USIM5.SA","TATICO","Usiminas"),
+        ("CMIN3.SA","TATICO","CSN Mineração"), ("BRAP4.SA","TATICO","Bradespar"),
+        ("DXCO3.SA","TATICO","Dexco"),
         # Consumo / varejo / saúde / indústria / telecom
         ("ABEV3.SA","ANCORA","Ambev"), ("WEGE3.SA","ACELERADOR","WEG"),
         ("RADL3.SA","ACELERADOR","RaiaDrogasil"), ("RENT3.SA","ACELERADOR","Localiza"),
         ("LREN3.SA","ACELERADOR","Lojas Renner"), ("VIVT3.SA","GERADOR","Vivo"),
         ("TOTS3.SA","ACELERADOR","Totvs"), ("EMBR3.SA","ACELERADOR","Embraer"),
         ("RDOR3.SA","ACELERADOR","Rede D'Or"), ("ASAI3.SA","TATICO","Assaí"),
+        ("NTCO3.SA","ACELERADOR","Natura"), ("HYPE3.SA","ACELERADOR","Hypera"),
+        ("FLRY3.SA","GERADOR","Fleury"), ("SMTO3.SA","ACELERADOR","São Martinho"),
+        ("CRFB3.SA","GERADOR","Carrefour BR"), ("TIMS3.SA","GERADOR","TIM"),
+        ("UGPA3.SA","GERADOR","Ultrapar"), ("VBBR3.SA","GERADOR","Vibra"),
+        ("RAIZ4.SA","TATICO","Raízen"), ("GMAT3.SA","ACELERADOR","Grupo Mateus"),
+        ("PETZ3.SA","ACELERADOR","Petz"), ("LWSA3.SA","ACELERADOR","Locaweb"),
+        # Alimentos / agro (cíclicas)
+        ("JBSS3.SA","TATICO","JBS"), ("BRFS3.SA","TATICO","BRF"),
+        ("MRFG3.SA","TATICO","Marfrig"), ("SLCE3.SA","TATICO","SLC Agrícola"),
+        # Transporte / infraestrutura / construção
+        ("RAIL3.SA","ACELERADOR","Rumo"), ("CCRO3.SA","GERADOR","CCR"),
+        ("POMO4.SA","ACELERADOR","Marcopolo"), ("CYRE3.SA","ACELERADOR","Cyrela"),
+        ("MRVE3.SA","ACELERADOR","MRV"), ("MULT3.SA","GERADOR","Multiplan"),
+        ("DIRR3.SA","ACELERADOR","Direcional"),
     ],
     "US": [
         # Tech / comunicação
@@ -38,24 +60,50 @@ UNIVERSE = {
         ("NVDA","ACELERADOR","Nvidia"), ("META","ACELERADOR","Meta"),
         ("AVGO","ACELERADOR","Broadcom"), ("ORCL","ACELERADOR","Oracle"),
         ("ADBE","ACELERADOR","Adobe"), ("CSCO","GERADOR","Cisco"),
+        ("CRM","ACELERADOR","Salesforce"), ("ACN","ACELERADOR","Accenture"),
+        ("AMD","ACELERADOR","AMD"), ("QCOM","GERADOR","Qualcomm"),
+        ("TXN","GERADOR","Texas Instruments"), ("INTU","ACELERADOR","Intuit"),
+        ("NOW","ACELERADOR","ServiceNow"), ("IBM","GERADOR","IBM"),
+        ("AMAT","ACELERADOR","Applied Materials"), ("NFLX","ACELERADOR","Netflix"),
+        ("DIS","ACELERADOR","Disney"), ("CMCSA","GERADOR","Comcast"),
+        ("TMUS","ACELERADOR","T-Mobile"),
         # Financeiro
         ("BRK-B","ANCORA","Berkshire"), ("JPM","GERADOR","JPMorgan"),
         ("V","ACELERADOR","Visa"), ("MA","ACELERADOR","Mastercard"),
         ("BAC","GERADOR","Bank of America"), ("AXP","ACELERADOR","Amex"),
+        ("WFC","GERADOR","Wells Fargo"), ("GS","ACELERADOR","Goldman Sachs"),
+        ("MS","ACELERADOR","Morgan Stanley"), ("BLK","ACELERADOR","BlackRock"),
+        ("SPGI","ACELERADOR","S&P Global"), ("SCHW","GERADOR","Schwab"),
+        ("CB","GERADOR","Chubb"), ("PGR","ACELERADOR","Progressive"),
         # Saúde
         ("UNH","ACELERADOR","UnitedHealth"), ("LLY","ACELERADOR","Eli Lilly"),
         ("JNJ","ANCORA","J&J"), ("ABBV","GERADOR","AbbVie"),
         ("MRK","ANCORA","Merck"), ("TMO","ACELERADOR","Thermo Fisher"),
+        ("ABT","ANCORA","Abbott"), ("DHR","ACELERADOR","Danaher"),
+        ("PFE","GERADOR","Pfizer"), ("BMY","GERADOR","Bristol Myers"),
+        ("AMGN","GERADOR","Amgen"), ("MDT","GERADOR","Medtronic"),
+        ("ISRG","ACELERADOR","Intuitive Surgical"), ("ELV","ACELERADOR","Elevance"),
         # Consumo
         ("PG","ANCORA","P&G"), ("KO","ANCORA","Coca-Cola"),
         ("PEP","ANCORA","PepsiCo"), ("WMT","ANCORA","Walmart"),
         ("COST","ACELERADOR","Costco"), ("HD","ACELERADOR","Home Depot"),
         ("MCD","ANCORA","McDonald's"), ("NKE","ACELERADOR","Nike"),
-        # Energia / indústria / telecom / renda
+        ("PM","ANCORA","Philip Morris"), ("MO","GERADOR","Altria"),
+        ("MDLZ","ANCORA","Mondelez"), ("CL","ANCORA","Colgate"),
+        ("KMB","ANCORA","Kimberly-Clark"), ("TGT","GERADOR","Target"),
+        ("LOW","ACELERADOR","Lowe's"), ("SBUX","ACELERADOR","Starbucks"),
+        ("BKNG","ACELERADOR","Booking"),
+        # Energia / indústria / utilities / renda
         ("XOM","TATICO","Exxon"), ("CVX","TATICO","Chevron"),
-        ("CAT","TATICO","Caterpillar"), ("HON","ACELERADOR","Honeywell"),
+        ("COP","TATICO","ConocoPhillips"), ("SLB","TATICO","Schlumberger"),
+        ("CAT","TATICO","Caterpillar"), ("DE","TATICO","Deere"),
+        ("HON","ACELERADOR","Honeywell"), ("GE","ACELERADOR","GE Aerospace"),
+        ("LMT","GERADOR","Lockheed"), ("RTX","GERADOR","Raytheon"),
+        ("UNP","ACELERADOR","Union Pacific"), ("UPS","GERADOR","UPS"),
+        ("ETN","ACELERADOR","Eaton"), ("MMM","GERADOR","3M"),
         ("VZ","GERADOR","Verizon"), ("O","GERADOR","Realty Income"),
-        ("MAIN","GERADOR","Main Street"),
+        ("MAIN","GERADOR","Main Street"), ("NEE","ANCORA","NextEra"),
+        ("DUK","ANCORA","Duke Energy"), ("SO","ANCORA","Southern Co"),
     ],
     "ETF": [
         ("SPY","ANCORA","S&P 500"), ("VOO","ANCORA","S&P 500 Vanguard"),
@@ -67,16 +115,27 @@ UNIVERSE = {
         ("IEF","RESERVA","Treasury 7-10a"), ("TLT","TATICO","Treasury 20a+"),
     ],
     "EUROPE": [
+        # US-listed (NYSE/NASDAQ) — diretos
         ("ASML","ACELERADOR","ASML (NL)"), ("NVO","ACELERADOR","Novo Nordisk (DK)"),
         ("SAP","ACELERADOR","SAP (DE)"), ("SHEL","TATICO","Shell (UK)"),
         ("AZN","ANCORA","AstraZeneca (UK)"), ("UL","ANCORA","Unilever (UK)"),
         ("TTE","TATICO","TotalEnergies (FR)"), ("NVS","ANCORA","Novartis (CH)"),
         ("DEO","ANCORA","Diageo (UK)"), ("SNY","ANCORA","Sanofi (FR)"),
         ("BTI","GERADOR","British Am. Tobacco"), ("RIO","TATICO","Rio Tinto"),
+        ("BUD","ANCORA","AB InBev (BE)"), ("BP","TATICO","BP (UK)"),
+        ("GSK","GERADOR","GSK (UK)"), ("HSBC","GERADOR","HSBC (UK)"),
+        ("SAN","GERADOR","Banco Santander (ES)"), ("BBVA","GERADOR","BBVA (ES)"),
+        ("UBS","GERADOR","UBS (CH)"), ("ING","GERADOR","ING (NL)"),
+        ("STLA","TATICO","Stellantis"), ("SPOT","ACELERADOR","Spotify (SE)"),
+        ("ERIC","GERADOR","Ericsson (SE)"), ("NOK","GERADOR","Nokia (FI)"),
+        ("VOD","GERADOR","Vodafone (UK)"), ("PHG","ACELERADOR","Philips (NL)"),
+        ("EQNR","TATICO","Equinor (NO)"), ("SNN","ACELERADOR","Smith & Nephew (UK)"),
+        ("E","TATICO","Eni (IT)"), ("FMS","GERADOR","Fresenius Medical (DE)"),
         # ADRs US (OTC) — substituem bolsa local p/ disponibilidade Quantfury
         ("LVMUY","ACELERADOR","LVMH (FR) ADR"),   # era MC.PA (Paris)
         ("NSRGY","ANCORA","Nestlé (CH) ADR"),     # era NESN.SW (Suíça)
         ("SIEGY","ACELERADOR","Siemens (DE) ADR"),# era SIE.DE (Frankfurt)
+        ("RHHBY","ANCORA","Roche (CH) ADR"),
     ],
     "COMMODITY": [
         ("GLD","ANCORA","Ouro"), ("SLV","TATICO","Prata"),

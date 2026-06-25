@@ -808,14 +808,18 @@ MULT = {"CAPIT.EXTREMA": 5, "CAPITULACAO": 4, "NEUTRO": 3, "TOPO": 2}
 _FINANCEIRAS = {
     # BR — bancos
     "ITUB4.SA", "ITUB3.SA", "BBAS3.SA", "BBDC4.SA", "BBDC3.SA", "SANB11.SA",
-    "BPAC11.SA", "ITSA4.SA", "ITSA3.SA",
+    "BPAC11.SA", "ITSA4.SA", "ITSA3.SA", "ABCB4.SA", "BRSR6.SA",
     # BR — bolsa / infraestrutura financeira
     "B3SA3.SA",
     # BR — seguradoras (ROE é o pilar; D/E alto e sem ROIC/FCF = mesmo padrão que banco)
     "BBSE3.SA",   # BB Seguridade
     "PSSA3.SA",   # Porto Seguro
-    # US — bancos, financeiras, pagamentos
+    "CXSE3.SA",   # Caixa Seguridade
+    # US — bancos, financeiras, pagamentos, seguros, gestoras
     "JPM", "BAC", "WFC", "C", "GS", "MS", "USB", "PNC", "SCHW", "AXP", "V", "MA", "BRK-B", "BRK.B",
+    "BLK", "SPGI", "CB", "PGR",
+    # EUROPA — bancos
+    "HSBC", "SAN", "BBVA", "UBS", "ING",
 }
 
 
