@@ -966,14 +966,16 @@ def is_falling_knife(growth_5y_real, recent_growth, price_cagr, is_tatico=False)
         (anti-faca clássico). Queda recente de receita numa cíclica é o CICLO (a compra), não rot.
       - NÃO-cíclica: faca = negócio encolhendo de VERDADE — crescimento real de 5a < 0 (estrutural),
         OU crescimento RECENTE (TTM) muito negativo (< -8% = boa empresa apodrecendo agora, que a
-        média de 6a esconde). Preço de 6a só como FALLBACK quando não há dado real (BR/jovem)."""
+        média de 6a esconde).
+      - SEM dado real de crescimento (BR/jovem): NÃO marca faca pelo PREÇO. Punia empresa BOA que
+        só caiu de preço (ex RADL3 q100 virava ESPECULATIVO). Faca é NEGÓCIO encolhendo, não preço
+        caindo; sem dado, dá o benefício da dúvida — o CRIVO de qualidade + a confiança já cuidam do
+        BR. (O preço só vale p/ CÍCLICA — is_tatico — onde crescimento real é fase de ciclo.)"""
     if is_tatico:
         return price_cagr is not None and price_cagr <= 0
     if growth_5y_real is not None and growth_5y_real < 0:
         return True
     if recent_growth is not None and recent_growth < _KNIFE_RECENT_PCT:
-        return True
-    if growth_5y_real is None and recent_growth is None and price_cagr is not None and price_cagr <= 0:
         return True
     return False
 
@@ -1640,18 +1642,21 @@ def teto_maxdd(max_dd_pct: Optional[float], hist_curto: bool = False,
 
 
 def teto_sigma(sigma_pct: Optional[float]) -> Optional[float]:
-    """Tabela ratificada de σ TOTAL anualizada: σ<15%→4x · 15-25%→2x · 25-35%→1,5x · >35%→1x.
-    None se σ ausente (não entra no MIN)."""
+    """σ TOTAL anualizada — capa SÓ OS EXTREMOS. A DOUTRINA DO DONO manda no resto (alavancagem do
+    REGIME 2/3/4/5x); a rede de sobrevivência é o CAP AGREGADO C.3 (carteira), não o por-fluxo
+    apertado. A tabela antiga (σ<15→4x · 15-25→2x · 25-35→1,5x) colapsava ação normal (MSFT σ27→1x)
+    = conservador demais. Agora: σ<35%→SEM cap (regime/beta governam) · 35-50%→3x · 50-65%→2x ·
+    ≥65%→1x. None = não entra no MIN (deixa o regime decidir)."""
     if sigma_pct is None:
         return None
     s = abs(sigma_pct)
-    if s < 15:
-        return 4.0
-    if s <= 25:
+    if s < 35:
+        return None              # vol normal → doutrina/regime manda (não capa)
+    if s <= 50:
+        return 3.0
+    if s <= 65:
         return 2.0
-    if s <= 35:
-        return 1.5
-    return 1.0
+    return 1.0                   # σ ≥ 65% (cripto-like/alavancado) → só à vista
 
 
 def teto_gap(gap_pct: Optional[float]) -> Optional[float]:

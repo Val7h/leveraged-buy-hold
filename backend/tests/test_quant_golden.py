@@ -277,9 +277,12 @@ def test_is_falling_knife_15c():
     # CÍCLICA: queda recente é o CICLO (não rot) → ignora real, usa só o preço de 6a
     assert S.is_falling_knife(-3.0, -20.0, 6.0, is_tatico=True) is False
     assert S.is_falling_knife(10.0, 5.0, -2.0, is_tatico=True) is True
-    # sem dado real (BR): fallback no CAGR de preço de 6a
-    assert S.is_falling_knife(None, None, -1.0) is True
+    # SEM dado real (BR), NÃO-cíclica: preço caído NÃO marca faca (punia empresa boa tipo RADL3 q100).
+    # Faca = negócio encolhendo, não preço caindo; sem dado, benefício da dúvida (crivo cuida).
+    assert S.is_falling_knife(None, None, -1.0) is False
     assert S.is_falling_knife(None, None, 5.0) is False
+    # mas CÍCLICA sem dado real ainda usa o preço (ciclo): preço caído = espera reversão.
+    assert S.is_falling_knife(None, None, -1.0, is_tatico=True) is True
 
 
 def test_momentum_blend_range():

@@ -53,17 +53,22 @@ def test_teto_maxdd_ausente_nao_opina():
     assert S.teto_maxdd(None) is None
 
 
-# ─────────────────────────── TETO σ total (tabela) ───────────────────────────
+# ─────────────────────────── TETO σ total (só extremos; doutrina manda no resto) ─────────────
 def test_teto_sigma_tabela():
-    assert S.teto_sigma(10) == 4.0     # σ<15% → 4x
-    assert S.teto_sigma(20) == 2.0     # 15-25% → 2x
-    assert S.teto_sigma(30) == 1.5     # 25-35% → 1,5x
-    assert S.teto_sigma(40) == 1.0     # >35% → 1x
+    # σ<35% → SEM cap (None): a doutrina/regime governa (não colapsa ação normal tipo MSFT σ27).
+    assert S.teto_sigma(10) is None
+    assert S.teto_sigma(27) is None    # MSFT-like → regime decide, não 1x
+    assert S.teto_sigma(34) is None
+    # extremos capam: 35-50→3x · 50-65→2x · ≥65→1x
+    assert S.teto_sigma(40) == 3.0
+    assert S.teto_sigma(55) == 2.0
+    assert S.teto_sigma(70) == 1.0
 
 
-def test_teto_sigma_maior_35_da_1x():
-    assert S.teto_sigma(36) == 1.0
+def test_teto_sigma_extremo_da_1x():
+    assert S.teto_sigma(70) == 1.0       # σ≥65% → só à vista
     assert S.teto_sigma(120) == 1.0
+    assert S.teto_sigma(36) == 3.0       # 35-50% → 3x (não mais 1x; doutrina menos conservadora)
 
 
 def test_teto_sigma_ausente_nao_opina():
@@ -131,24 +136,31 @@ def test_kelly_ausente_nao_opina():
 
 # ─────────────────────────── MIN pega o MENOR (sobrevivência) ───────────────────────────
 def test_min_pega_o_menor_teto():
-    # σ 40% (>35% → 1x) + beta 1.0 (4x) + regime 4x → MIN = 1x (σ binding). máxDD/Kelly fora do MIN.
+    # σ 70% (extremo → 1x) + beta 1.0 (4x) + regime 4x → MIN = 1x (σ binding). máxDD/Kelly fora do MIN.
     lev, det = S.teto_alavancagem_aptidao(
-        max_dd_pct=-30, sigma_pct=40, gap_pct=8, beta=1.0, mult_regime=4,
+        max_dd_pct=-30, sigma_pct=70, gap_pct=8, beta=1.0, mult_regime=4,
         mu_excess_annual=0.10, hist_curto=False)
     assert lev == 1.0
     assert det["binding"] == "sigma"
     assert "maxdd" not in det["tetos"] and "kelly" not in det["tetos"]
 
 
+def test_sigma_normal_nao_capa_regime_governa():
+    # σ 27% (MSFT-like, normal) → SEM cap de σ → o regime 3x governa (doutrina, não 1x apertado).
+    lev, det = S.teto_alavancagem_aptidao(
+        max_dd_pct=-40, sigma_pct=27, gap_pct=8, beta=0.9, mult_regime=3)
+    assert lev == 3.0 and det["binding"] == "regime"
+    assert "sigma" not in det["tetos"]   # σ normal não entra no MIN
+
+
 def test_aptidao_nunca_sobe_o_teto():
     # Aptidão é só MODULADOR: o teto vem dos gates/MIN, não da nota. Ativo de aptidão ALTA
-    # mas σ alto continua capado em 1x (a nota não destrava alavancagem).
-    apt, _ = S.score_aptidao(max_dd_pct=-12, sigma_pct=40, gap_pct=4, dividend_yield=4,
+    # mas σ EXTREMO (70%) continua capado em 1x (a nota não destrava alavancagem).
+    apt, _ = S.score_aptidao(max_dd_pct=-12, sigma_pct=70, gap_pct=4, dividend_yield=4,
                              recovered=True, recovery_years=0.5, beta=0.6)
-    lev, _ = S.teto_alavancagem_aptidao(max_dd_pct=-12, sigma_pct=40, gap_pct=4, beta=0.6,
+    lev, _ = S.teto_alavancagem_aptidao(max_dd_pct=-12, sigma_pct=70, gap_pct=4, beta=0.6,
                                         mult_regime=4)
-    assert apt >= 60          # nota razoável
-    assert lev == 1.0         # σ>35% capa em 1x INDEPENDENTE da nota
+    assert lev == 1.0         # σ≥65% capa em 1x INDEPENDENTE da nota
 
 
 def test_regime_entra_no_min():
