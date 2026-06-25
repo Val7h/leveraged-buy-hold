@@ -876,6 +876,36 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
     return round(_clamp(q), 1), breakdown
 
 
+def score_etf_vehicle_quality(dy_avg10=None, dy_worst=None, dividend_yield=None,
+                              max_dd_pct=None, dd_recovery_mult=1.0, sharpe=None):
+    """QUALIDADE DO VEÍCULO (0-100) — para ETF/COMMODITY, que NÃO têm negócio (sem ROIC/FCF).
+    Responde "é um bom lugar pra parar o dinheiro?" — LEVERAGE-INDEPENDENTE (≠ aptidão/Camada 3,
+    que pergunta "alavancar isso me liquida?"). Os insumos se sobrepõem (ambos olham queda), mas a
+    PERGUNTA é outra: aqui é mérito do veículo como renda/defensivo; lá é sobrevivência alavancado.
+
+    Pilares (renormalizam quando ausente — nunca fabrica):
+      • Dividendo consistente 40% (a função do veículo numa estratégia de renda)
+      • Resiliência de queda 30% (máxDD raso + recuperou = bom porto)
+      • Retorno risco-ajustado 30% (Sharpe — p/ veículo, o preço É o mérito; não há negócio atrás)
+    Sem nenhum pilar → 50 neutro (honesto). Ex: JEPI (dividendo alto consistente + queda rasa +
+    Sharpe ok) → alto; ETF lixo (sem dividendo + queda funda + Sharpe ruim) → baixo."""
+    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield)
+             if (dy_avg10 is not None or dividend_yield is not None) else None)
+    s_dd = (_clamp(score_maxdd_quality(max_dd_pct) * dd_recovery_mult)
+            if max_dd_pct is not None else None)
+    s_shp = score_sharpe(sharpe) if sharpe is not None else None
+    comps = []
+    bd = {}
+    for s, w, k in ((s_div, 0.40, "dividendos"), (s_dd, 0.30, "resiliencia_queda"),
+                    (s_shp, 0.30, "risco_ajustado")):
+        if s is not None:
+            comps.append((s, w))
+            bd[k] = round(s)
+    wsum = sum(w for _, w in comps)
+    q = (sum(s * w for s, w in comps) / wsum) if wsum > 0 else 50.0
+    return round(_clamp(q), 1), bd
+
+
 def compute_momentum(slow_stoch_weekly=None, discount_from_top=None,
                      reversal_confirmation=None, distance_ma200=None):
     """Momento de entrada (0-100): Stoch LENTO semanal (principal) + desconto×reversão + MM200."""

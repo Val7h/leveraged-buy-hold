@@ -233,3 +233,53 @@ def test_daily_log_returns_ok():
     a = np.cumprod(1 + np.full(60, 0.001)) * 100
     r = R._daily_log_returns(a)
     assert r is not None and r.size == 59
+
+
+# ─────────────────── QUALIDADE DO VEÍCULO (ETF/commodity) + RANK DUPLO ───────────────────
+def test_vehicle_quality_jepi_maior_que_lixo():
+    # JEPI-like: dividendo alto consistente + queda rasa + Sharpe ok → alto.
+    q_jepi, bd = S.score_etf_vehicle_quality(dy_avg10=8.0, dy_worst=7.0, dividend_yield=8,
+                                             max_dd_pct=-12, sharpe=1.1)
+    # ETF lixo: sem dividendo + queda funda + Sharpe ruim → baixo.
+    q_lixo, _ = S.score_etf_vehicle_quality(dy_avg10=None, dy_worst=None, dividend_yield=0,
+                                            max_dd_pct=-65, sharpe=0.1)
+    assert q_jepi > q_lixo
+    assert q_jepi >= 65 and q_lixo <= 45
+    assert "dividendos" in bd and "resiliencia_queda" in bd and "risco_ajustado" in bd
+
+
+def test_vehicle_quality_leverage_independente():
+    # A função NÃO recebe alavancagem/σ/gap — é mérito do veículo, não aptidão. (assinatura prova)
+    import inspect
+    params = set(inspect.signature(S.score_etf_vehicle_quality).parameters)
+    assert "sigma_pct" not in params and "leverage" not in params and "gap_pct" not in params
+
+
+def test_vehicle_quality_renormaliza_sem_dado():
+    # Commodity sem dividendo: renormaliza sobre queda+Sharpe (não fabrica), nota válida.
+    q, bd = S.score_etf_vehicle_quality(dividend_yield=None, dy_avg10=None,
+                                        max_dd_pct=-20, sharpe=0.8)
+    assert "dividendos" not in bd and 0 <= q <= 100
+    # Sem NENHUM pilar → 50 neutro honesto.
+    q0, bd0 = S.score_etf_vehicle_quality()
+    assert q0 == 50.0 and bd0 == {}
+
+
+def _rank_alavancado(rank, leverage):
+    # Réplica fiel da fórmula de ranking_service (rank duplo v1).
+    return round(rank * (1.0 + 0.25 * (leverage - 1.0)), 1)
+
+
+def test_rank_duplo_lev1_igual_base():
+    # Sem alavancagem (1x): rank alavancado == rank base (a decisão não muda).
+    assert _rank_alavancado(80.0, 1.0) == 80.0
+
+
+def test_rank_duplo_alavancavel_sobe():
+    # Mesmo mérito base: o alavancável 3x sobe acima do que só faz 1x → ranking RE-ORDENA.
+    base_otimo_1x = _rank_alavancado(82.0, 1.0)     # ótimo mas σ-alto → 1x
+    base_bom_3x = _rank_alavancado(72.0, 3.0)       # bom e seguro → 3x
+    assert base_bom_3x > base_otimo_1x              # com lev ligada, o 3x lidera
+    # mas o mérito ainda importa: junk (rank baixo) não ultrapassa por alavancagem
+    junk_4x = _rank_alavancado(30.0, 4.0)
+    assert junk_4x < base_otimo_1x

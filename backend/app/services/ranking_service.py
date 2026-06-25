@@ -938,6 +938,7 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
         leverage = min(leverage, lev_cap)   # teto por ativo é inviolável
 
         rank = quality * 0.45 + momentum * 0.55
+        rank_alavancado = round(rank * (1.0 + 0.25 * (leverage - 1.0)), 1)  # rank duplo (ver _analyze)
         stops = S.staggered_stops(leverage)
 
         return {
@@ -952,6 +953,7 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
             "quality": round(quality),
             "momentum": round(momentum),
             "rank": round(rank, 1),
+            "rank_alavancado": rank_alavancado,
             "quality_breakdown": score["quality_breakdown"],
             "momentum_breakdown": score["momentum_breakdown"],
             "is_crypto": True,
@@ -1187,13 +1189,16 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             recovered=recovered, recovery_years=recovery_years, hist_curto=hist_curto, beta=beta,
         )
 
-        # ENTREGA B — ETF/COMMODITY não têm NEGÓCIO → a Camada 1 os achata em 50 (JEPI = ETF lixo).
-        # Para esses, a "qualidade" que entra no veredito/rank passa a ser o SCORE DE APTIDÃO
-        # (risco-perfil): baixo beta + queda rasa + dividendo consistente = JEPI alto; volátil/queda
-        # funda = baixo. AÇÕES mantêm a Camada 1 (negócio); aptidão só define a alavancagem.
+        # ETF/COMMODITY não têm NEGÓCIO → a Camada 1 os achata em 50. Para esses, a "qualidade" que
+        # entra no veredito/rank é a QUALIDADE DO VEÍCULO (LEVERAGE-INDEPENDENTE): dividendo
+        # consistente + queda rasa + retorno risco-ajustado = "bom porto pra renda". É DIFERENTE da
+        # aptidão (Camada 3, que pergunta "alavancar isso me liquida?"). Assim a indicação de
+        # compra/venda do ETF NÃO depende da Camada 3 (que é só o overlay de alavancagem). AÇÕES
+        # mantêm a Camada 1 (negócio); a aptidão de TODOS só define a alavancagem.
         if cat in ("ETF", "COMMODITY"):
-            quality = aptidao
-            qb = dict(aptidao_bd)
+            quality, qb = S.score_etf_vehicle_quality(
+                dy_avg10=dy_avg10, dy_worst=dy_worst, dividend_yield=dy,
+                max_dd_pct=dd, dd_recovery_mult=dd_recovery_mult, sharpe=shp)
 
         # SELO DE CONFIANÇA (movido p/ ANTES do veredito — o crivo #15b precisa dele).
         # Dado faltando não pode parecer "mediano" 50: ALTA = fundamentos + beta publicado (ou
@@ -1282,6 +1287,15 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         )
         leverage = min(leverage, teto_lev)   # MIN inviolável (sobrevivência nunca sobe o teto)
 
+        # RANK DUPLO (decisão do dono): a indicação de compra/venda (rank base + veredito) depende
+        # SÓ de Qualidade + Momento — leverage-independente. A Camada 3 é um OVERLAY opcional (botão):
+        #   • rank (base, SEM alavancagem) = mérito de compra puro → ordena o ranking padrão.
+        #   • rank_alavancado (COM alavancagem) = mérito × quanto dá p/ alavancar com segurança →
+        #     re-ordena quando o usuário liga a Camada 3. Ativo ótimo alavancável 3x sobe; ótimo mas
+        #     σ-alto (só 1x) desce. Amplificação MODERADA (mérito domina; não promove faca, que já
+        #     tem rank baixo E leverage capada). v1 p/ revisão dos especialistas da Camada 3.
+        rank_alavancado = round(rank * (1.0 + 0.25 * (leverage - 1.0)), 1)
+
         # SHY = reserva: na Quantfury só dá p/ ter até US$10k de notional → "alavancagem" de SHY
         # é irrelevante. Não força leverage aqui; fica fora da medida na carteira.
         stops = S.staggered_stops(leverage)
@@ -1298,6 +1312,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "quality": round(quality),
             "momentum": round(momentum),
             "rank": round(rank, 1),
+            "rank_alavancado": rank_alavancado,
             "quality_breakdown": qb,
             "momentum_breakdown": mb,
             "slow_stoch_weekly": _round_or_none(sstoch, 0),
