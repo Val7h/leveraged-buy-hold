@@ -29,6 +29,7 @@ import {
   X,
   ShoppingCart,
   CheckCircle2,
+  Zap,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 // Lazy: o gráfico (recharts, pesado) só carrega quando o usuário clica num logo.
@@ -91,6 +92,26 @@ const MOMENTUM_LABELS = {
   stoch_lento_semanal: "Stoch lento sem.",
   desconto_x_reversao: "Desconto × reversão",
   distancia_ma200: "Distância MM200",
+};
+// Camada 3 (alavancagem): fatores do score de aptidão pra alavancar.
+const APTIDAO_LABELS = {
+  max_dd: "Máx queda",
+  maxdd: "Máx queda",
+  sigma: "Volatilidade σ",
+  gap: "Gap p/ teto",
+  dy: "Dividendos",
+  recuperacao: "Recuperação",
+  recovery: "Recuperação",
+  beta: "Beta",
+};
+// Rótulo legível do teto que limitou a alavancagem (leverage_teto_binding).
+const TETO_BINDING_LABELS = {
+  sigma: "volatilidade σ",
+  regime: "regime de mercado",
+  beta: "beta",
+  gap: "gap p/ topo",
+  GATE: "gate de aptidão",
+  gate: "gate de aptidão",
 };
 // Crypto usa framework SEPARADO (Pal/Hayes/Woo): sobrevivência (qualidade) +
 // regime/timing (momento). Rótulos próprios — fundamentos/dividendo/beta não se aplicam.
@@ -464,10 +485,14 @@ function momentumRaw(a) {
 /* Linha do ranking                                                    */
 /* ------------------------------------------------------------------ */
 
-function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy }) {
+function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy, showLeverage }) {
   const verdictCls = VERDICT_STYLE[asset.verdict] || "text-text-secondary bg-surface-2 border-border";
   const dotCls = VERDICT_DOT[asset.verdict] || "bg-text-muted";
   const stops = asset.staggered_stops || {};
+  // Camada 3 ligada: ordena/exibe pelo rank alavancado (fallback p/ rank base).
+  const displayRank = showLeverage
+    ? asset.rank_alavancado ?? asset.rank
+    : asset.rank;
 
   return (
     <div className={`border-b border-border/70 last:border-b-0 ${expanded ? "bg-surface-2/30" : ""}`}>
@@ -576,9 +601,20 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy })
         </div>
 
         <div className="col-span-3 sm:col-span-3 lg:col-span-1 flex items-center justify-end gap-2 sm:gap-3">
+          {showLeverage && asset.leverage != null && (
+            <div className="text-right">
+              <div className="text-[9px] uppercase tracking-wide text-text-muted leading-none">alav.</div>
+              <div className="text-base font-mono font-bold text-[#C084FC] leading-tight flex items-center justify-end gap-0.5">
+                <Zap size={12} className="text-[#C084FC]" />
+                {fmtNum(asset.leverage, 1)}x
+              </div>
+            </div>
+          )}
           <div className="text-right">
-            <div className="text-[9px] uppercase tracking-wide text-text-muted leading-none">rank</div>
-            <div className="text-base font-mono font-bold text-primary leading-tight">{fmtNum(asset.rank, 1)}</div>
+            <div className="text-[9px] uppercase tracking-wide text-text-muted leading-none">
+              {showLeverage ? "rank alav." : "rank"}
+            </div>
+            <div className="text-base font-mono font-bold text-primary leading-tight">{fmtNum(displayRank, 1)}</div>
           </div>
           <span className="text-text-muted">
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -717,6 +753,49 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy })
               <Stat label="Liquidação" value={fmtPct(-stops.liquidation_pct)} accent="text-danger" />
             </div>
           </div>
+
+          {/* Camada 3 ligada: detalhe da aptidão pra alavancar */}
+          {showLeverage && (
+            <div className="rounded-xl border border-[#C084FC]/30 bg-[#C084FC]/[0.04] p-3 space-y-3">
+              <div className="text-[10px] uppercase tracking-wider text-[#C084FC] mb-1 flex items-center gap-1.5">
+                <Zap size={12} /> Aptidão pra alavancar (Camada 3)
+                {asset.aptidao != null && (
+                  <span className="ml-auto text-text-primary font-semibold normal-case tracking-normal">
+                    {Math.round(asset.aptidao)} / 100
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <Stat
+                  label="Alavancagem sug."
+                  value={asset.leverage != null ? `${fmtNum(asset.leverage, 1)}x` : "—"}
+                  accent="text-[#C084FC]"
+                />
+                <Stat
+                  label="Volatilidade σ"
+                  value={asset.sigma_total != null ? `${fmtNum(asset.sigma_total, 0)}%` : "—"}
+                />
+                <Stat
+                  label="Gap máx"
+                  value={asset.gap_max != null ? fmtPct(asset.gap_max, 0) : "—"}
+                />
+                <Stat
+                  label="Limitado por"
+                  value={
+                    asset.leverage_teto_binding
+                      ? TETO_BINDING_LABELS[asset.leverage_teto_binding] || asset.leverage_teto_binding
+                      : "—"
+                  }
+                  accent="text-warning"
+                />
+              </div>
+
+              {asset.aptidao_breakdown && Object.keys(asset.aptidao_breakdown).length > 0 && (
+                <FactorGrid data={asset.aptidao_breakdown} labels={APTIDAO_LABELS} />
+              )}
+            </div>
+          )}
 
           <div className="flex justify-between items-center">
             <button
@@ -992,6 +1071,10 @@ export default function RankingPage() {
   const [addError, setAddError] = useState("");
   const [portfolios, setPortfolios] = useState([]); // carteiras do usuário (destino do "Comprei")
   const [buyAsset, setBuyAsset] = useState(null);    // ativo escolhido para registrar compra
+  // Camada 3 (alavancagem): overlay opcional. DESLIGADO por padrão — compra/venda
+  // e ordem dependem só de qualidade+momento (rank base). Ligado, reordena pelo
+  // melhor pick alavancável (rank_alavancado).
+  const [showLeverage, setShowLeverage] = useState(false);
 
   const fetchRanking = useCallback(async () => {
     setRankLoading(true);
@@ -1074,6 +1157,13 @@ export default function RankingPage() {
 
   const toggle = (ticker) => setExpanded((cur) => (cur === ticker ? null : ticker));
 
+  // Chave de rank conforme o modo: base (qualidade+momento) ou alavancado.
+  // Fallback p/ rank base se rank_alavancado não vier (retrocompat).
+  const rankKey = useCallback(
+    (a) => (showLeverage ? a?.rank_alavancado ?? a?.rank ?? 0 : a?.rank ?? 0),
+    [showLeverage]
+  );
+
   // Melhores aportes agora — top compráveis de TODAS as categorias.
   const bestBuys = useMemo(() => {
     const cats = ranking?.categories || {};
@@ -1082,12 +1172,19 @@ export default function RankingPage() {
     );
     return all
       .filter((a) => BUYABLE.has(a.verdict))
-      .sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))
+      .sort((a, b) => rankKey(b) - rankKey(a))
       .slice(0, 4);
-  }, [ranking]);
+  }, [ranking, rankKey]);
 
   const cat = ranking?.categories?.[activeCat];
-  const assets = cat?.assets || [];
+  // Ordenação condicional: modo OFF mantém a ordem do backend (rank base, foco no
+  // veredito). Modo ON reordena pelo rank_alavancado — a alavancagem reordena
+  // cross-veredito (um COMPRAR alavancável 3x pode subir acima de um COMPRAR FORTE 1x).
+  const assets = useMemo(() => {
+    const list = cat?.assets || [];
+    if (!showLeverage) return list;
+    return [...list].sort((a, b) => rankKey(b) - rankKey(a));
+  }, [cat, showLeverage, rankKey]);
 
   return (
     <div className="flex flex-col h-full bg-background text-text-primary">
@@ -1103,10 +1200,48 @@ export default function RankingPage() {
             <p className="text-sm text-text-secondary mt-1">
               Onde colocar o próximo aporte — qualidade × momento, por categoria.
             </p>
+            {showLeverage && (
+              <p className="text-xs text-[#C084FC] mt-1 flex items-center gap-1.5">
+                <Zap size={11} /> ranking reordenado pelo melhor pick alavancável
+              </p>
+            )}
           </div>
-          <button onClick={fetchRanking} disabled={rankLoading} className="btn-ghost flex items-center gap-2 text-sm">
-            <RefreshCw size={14} className={rankLoading ? "animate-spin" : ""} /> Recalcular
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Toggle Camada 3 (alavancagem) — overlay opcional, OFF por padrão. */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showLeverage}
+              onClick={() => setShowLeverage((s) => !s)}
+              title={
+                showLeverage
+                  ? "Alavancagem ligada — ranking reordenado pelo melhor pick alavancável"
+                  : "Compra/venda e ordem dependem só de qualidade × momento. Ligue p/ reordenar pela alavancagem."
+              }
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border transition-all ${
+                showLeverage
+                  ? "bg-[#C084FC]/15 text-[#C084FC] border-[#C084FC]/50 shadow-[0_0_16px_rgba(192,132,252,0.25)] font-semibold"
+                  : "bg-surface-2 text-text-secondary border-border hover:text-text-primary hover:border-border-light"
+              }`}
+            >
+              <Zap size={14} className={showLeverage ? "text-[#C084FC]" : "text-text-muted"} />
+              <span className="whitespace-nowrap">Alavancagem (Camada 3)</span>
+              <span
+                className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
+                  showLeverage ? "bg-[#C084FC]" : "bg-surface-3"
+                }`}
+              >
+                <span
+                  className={`inline-block h-3 w-3 transform rounded-full bg-background transition-transform ${
+                    showLeverage ? "translate-x-3.5" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
+            </button>
+            <button onClick={fetchRanking} disabled={rankLoading} className="btn-ghost flex items-center gap-2 text-sm">
+              <RefreshCw size={14} className={rankLoading ? "animate-spin" : ""} /> Recalcular
+            </button>
+          </div>
         </div>
 
         {/* Melhores aportes */}
@@ -1209,6 +1344,7 @@ export default function RankingPage() {
                 onRemove={handleRemove}
                 onLogoClick={setChartTicker}
                 onBuy={setBuyAsset}
+                showLeverage={showLeverage}
               />
             ))}
           </div>
