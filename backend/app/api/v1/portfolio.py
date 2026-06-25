@@ -379,6 +379,9 @@ class _AnalyticsPos(BaseModel):
     verdict_since: Optional[str] = None
     # Data de abertura da posição (Prisma) — usada pela TRAVA DE DURAÇÃO (>24m + esticado).
     openedAt: Optional[str] = None
+    # C.2 — nº de aportes (COMPRA) consecutivos recentes no MESMO ativo (Prisma PositionEvent),
+    # usado pelo DISJUNTOR DE FLUXOS CONSECUTIVOS. Sem histórico → 0 → não degrada.
+    aportes_recentes: Optional[int] = 0
 
 
 class _AnalyticsBody(BaseModel):

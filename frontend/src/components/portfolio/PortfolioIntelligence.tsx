@@ -23,6 +23,8 @@ type Analytics = {
   duration_warnings?: any[];
   credit_shock?: any;
   exposure_caps?: any;
+  // C.3 — cap agregado de alavancagem:
+  leverage_agregado?: any;
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -74,9 +76,103 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const creditShock = analytics.credit_shock || null;
   const exposureCaps = analytics.exposure_caps || null;
   const exposureAlerts = (exposureCaps && exposureCaps.alerts) || [];
+  // C.3 — cap agregado de alavancagem (survival-crítico):
+  const levAgg = analytics.leverage_agregado || null;
+  const levRegime = analytics.aporte_regime?.mult ?? analytics.aporte_regime?.multiplicador ?? null;
+
+  const levStatus: string = levAgg?.status || "ok";
+  const levStatusCls =
+    levStatus === "estourado" ? "text-danger"
+    : levStatus === "alerta" ? "text-amber-400"
+    : "text-success";
+  const levSectionCls =
+    levStatus === "estourado" ? "bg-danger/5 border-danger/40"
+    : levStatus === "alerta" ? "bg-amber-500/5 border-amber-500/40"
+    : "bg-surface border-border";
+  const levCapLimiting = levAgg && levRegime != null && levAgg.max_lev_novo_fluxo != null
+    && Number(levAgg.max_lev_novo_fluxo) < Number(levRegime);
 
   return (
     <div className="space-y-4">
+      {/* C.3 — CAP AGREGADO DE ALAVANCAGEM (survival-crítico) */}
+      {levAgg && (
+        <section className={`rounded-xl border p-4 ${levSectionCls}`}>
+          <h3 className="text-sm font-semibold text-text-primary mb-1">Cap agregado de alavancagem</h3>
+          <p className="text-[11px] text-text-muted mb-3">
+            Teto da alavancagem efetiva da carteira inteira (notional de risco ÷ equity). Clusters colados contam mais — controla o risco que a soma das posições esconde.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="bg-surface-2 rounded-lg px-3 py-2 border border-border/50">
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">Alav. efetiva</div>
+              <div className={`text-base font-bold leading-tight ${levStatusCls}`}>{fmt(levAgg.effective_leverage, "x", 2)}</div>
+              {levAgg.effective_leverage_corr != null && (
+                <div className="text-[10px] text-text-secondary">{fmt(levAgg.effective_leverage_corr, "x", 2)} ajustada por correlação</div>
+              )}
+            </div>
+            <Stat
+              label="Teto"
+              value={fmt(levAgg.cap, "x", 1)}
+              hint={`alerta em ${fmt(levAgg.alerta, "x", 1)}`}
+            />
+            <div className="bg-surface-2 rounded-lg px-3 py-2 border border-primary/40">
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">Próximo aporte até</div>
+              <div className="text-base font-bold text-primary leading-tight">{fmt(levAgg.max_lev_novo_fluxo, "x", 2)}</div>
+              <div className="text-[10px] text-text-secondary">alav. máx. sem furar o cap</div>
+            </div>
+            <Stat
+              label="Status"
+              value={levStatus === "estourado" ? "Estourado" : levStatus === "alerta" ? "Alerta" : "OK"}
+            />
+          </div>
+
+          {/* Barra: efetiva vs teto */}
+          {levAgg.cap != null && levAgg.effective_leverage != null && (
+            <div className="mt-3 flex items-center gap-3">
+              <div className="flex-1 h-2.5 bg-surface-2 rounded relative overflow-hidden">
+                <div
+                  className={`absolute inset-y-0 left-0 ${levStatus === "estourado" ? "bg-danger/70" : levStatus === "alerta" ? "bg-amber-500/70" : "bg-success/70"}`}
+                  style={{ width: `${Math.min((Number(levAgg.effective_leverage) / Number(levAgg.cap)) * 100, 100)}%` }}
+                />
+                {levAgg.alerta != null && (
+                  <div className="absolute inset-y-0 w-0.5 bg-text-primary/70" style={{ left: `${Math.min((Number(levAgg.alerta) / Number(levAgg.cap)) * 100, 100)}%` }} title={`alerta ${fmt(levAgg.alerta, "x", 1)}`} />
+                )}
+              </div>
+              <div className="text-[10px] text-text-muted shrink-0 font-mono">teto {fmt(levAgg.cap, "x", 1)}</div>
+            </div>
+          )}
+
+          {/* Aviso de estourado */}
+          {levStatus === "estourado" && (
+            <div className="mt-2 text-[11px] text-danger">
+              ⚠ Carteira acima do teto de segurança — novos aportes forçados a 1x até desalavancar.
+            </div>
+          )}
+
+          {/* Cap limitando o próximo aporte */}
+          {levStatus !== "estourado" && levCapLimiting && (
+            <div className="mt-2 text-[11px] text-amber-400">
+              ⚠ O cap agregado está limitando seu próximo aporte ({fmt(levAgg.max_lev_novo_fluxo, "x", 2)} &lt; {fmt(levRegime, "x", 1)} do regime).
+            </div>
+          )}
+
+          {/* Qual teto mordeu (discreto) */}
+          {(levAgg.caps_aplicados || levAgg.headroom_notional != null) && (
+            <div className="mt-2 text-[10px] text-text-muted italic">
+              {levAgg.caps_aplicados && Object.keys(levAgg.caps_aplicados).length > 0 && (
+                <span>
+                  Teto que mordeu: {Object.entries(levAgg.caps_aplicados).map(([k, v]: any, i: number) => (
+                    <span key={k} className="font-mono">{i > 0 ? " · " : ""}{k}: {typeof v === "number" ? fmt(v, "", 2) : String(v)}</span>
+                  ))}
+                </span>
+              )}
+              {levAgg.headroom_notional != null && (
+                <span>{levAgg.caps_aplicados ? " · " : ""}folga de notional: US$ {fmt(levAgg.headroom_notional, "", 0)}</span>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* TRAVA 3. Choque de crédito — desalavanca TUDO (vermelho quando triggered) */}
       {creditShock && creditShock.triggered && (
         <section className="bg-danger/5 rounded-xl border border-danger/40 p-4">

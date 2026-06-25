@@ -958,6 +958,86 @@ def _aggregate_leverage_cap(rows: List[dict], equity: Optional[float],
     return out
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# C.2 — DISJUNTOR DE FLUXOS CONSECUTIVOS (a trava que o CRO exigiu).
+#
+# Doutrina: empilhar aportes ALAVANCADOS no MESMO ativo enquanto ele CAI =
+# averaging-down alavancado (primo do martingale) → liquida ANTES da recuperação.
+# Regra: o 1º fluxo entra no multiplicador cheio do regime; cada aporte CONSECUTIVO
+# num ativo CAINDO (abaixo da MM200 / em drawdown / verdict ruim / capitulação)
+# DEGRADA o multiplicador um degrau, com PISO 1x (à vista). Ativo SUBINDO/recuperado
+# → sem degradação (aporte normal). Survival-first: o disjuntor só DEGRADA, nunca sobe.
+# Sem histórico (aportes_recentes=0) → não degrada (NÃO fabrica).
+#
+# Ladder: mult_efetivo = max(1, mult_regime − aportes_recentes). Ex (mult_regime=5):
+#   1 aporte consecutivo → 4x ; 2 → 3x ; 3 → 2x ; 4+ → 1x (à vista). Zera após N≈mult_regime.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _esta_caindo(r: dict, capitulacao: bool) -> bool:
+    """Ativo CAINDO p/ fins do disjuntor (reaproveita o que já existe, sem rede nova):
+      • verdict ESPECULATIVO/JUSTO/ESTICADO (sem upside / esticado = topo arriscado), OU
+      • distance_ma200 < 0 (abaixo da MM200), OU
+      • pnl_pct < 0 (em drawdown vs PM), OU
+      • regime de capitulação (mercado despencando).
+    Survival: na dúvida (verdict ruim) considera caindo — preferimos falso positivo."""
+    if capitulacao:
+        return True
+    v = r.get("verdict")
+    if v in ("ESPECULATIVO", "JUSTO", "ESTICADO"):
+        return True
+    dma = r.get("distance_ma200")
+    if dma is not None and dma < 0:
+        return True
+    pp = r.get("pnl_pct")
+    if pp is not None and pp < 0:
+        return True
+    return False
+
+
+def _disjuntor_fluxos(rows: List[dict], mult_regime: int, capitulacao: bool) -> Dict:
+    """C.2 — computa a degradação por ativo a partir de aportes_recentes (PositionEvent).
+    Retorna o bloco `disjuntor_fluxos` (implementado:true) com os ativos AFETADOS.
+
+    Para cada ativo CAINDO com aportes_recentes>=1: mult_degradado = max(1, mult_regime −
+    aportes_recentes). is_seed NÃO é imune (reforçar âncora em queda é o risco). Ativo
+    subindo/recuperado ou sem aporte recente → não entra (aporte normal)."""
+    afetados = []
+    for r in rows:
+        if r.get("is_shy"):
+            continue
+        n = int(r.get("aportes_recentes") or 0)
+        if n < 1:
+            continue                      # sem histórico de aporte consecutivo → não degrada
+        if not _esta_caindo(r, capitulacao):
+            continue                      # subindo/recuperado → aporte normal, não degrada
+        mult_degradado = max(1, mult_regime - n)
+        if mult_degradado >= mult_regime:
+            continue                      # nada a degradar
+        afetados.append({
+            "ticker": r["ticker"],
+            "aportes_recentes": n,
+            "mult_original": mult_regime,
+            "mult_degradado": mult_degradado,
+            "is_seed": bool(r.get("is_seed")),
+            "verdict": r.get("verdict"),
+            "distance_ma200": r.get("distance_ma200"),
+            "pnl_pct": r.get("pnl_pct"),
+            "motivo": (f"{n} aporte(s) consecutivo(s) num ativo em queda — averaging-down "
+                       f"alavancado: degrada {mult_regime}x → {mult_degradado}x"
+                       + (" (piso 1x à vista)" if mult_degradado <= 1 else "")),
+        })
+    afetados.sort(key=lambda x: (x["mult_degradado"], -x["aportes_recentes"]))
+    return {
+        "implementado": True,
+        "ladder": "mult_efetivo = max(1, mult_regime − aportes_consecutivos) · piso 1x",
+        "regra_caindo": ("verdict ESPECULATIVO/JUSTO/ESTICADO, OU distance_ma200<0 (abaixo da MM200), "
+                         "OU pnl_pct<0 (drawdown vs PM), OU regime de capitulação"),
+        "mult_regime": mult_regime,
+        "afetados": afetados,
+        "n_afetados": len(afetados),
+    }
+
+
 def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                         cooldown_tickers: Optional[List[str]] = None) -> Dict:
     """
@@ -1000,6 +1080,9 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
             "notional": round(notional, 2), "is_shy": is_shy,
             "is_seed": bool(p.get("is_seed")), "is_cycle": bool(p.get("is_cycle")),
             "last_verdict": p.get("last_verdict"), "verdict_since": p.get("verdict_since"),
+            # C.2 — nº de aportes (COMPRA) consecutivos recentes no MESMO ativo (vem da BFF/Prisma
+            # PositionEvent). Sem histórico → 0 → disjuntor não degrada (não fabrica).
+            "aportes_recentes": int(p.get("aportes_recentes") or 0),
         })
 
     # Pesos por valor de mercado.
@@ -1235,6 +1318,20 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
     # Multiplicador dinâmico do regime (doutrina: alavanca o FLUXO NOVO conforme o mercado).
     _MULT = {"CAPIT.EXTREMA": 5, "CAPITULACAO": 4, "NEUTRO": 3, "TOPO": 2}
     mult_aporte = _MULT.get(equity_regime, 3)
+
+    # ── C.2 — DISJUNTOR DE FLUXOS CONSECUTIVOS (a trava do CRO) ───────────────────
+    # Calcula a degradação por ativo (aportes consecutivos no MESMO ativo em queda).
+    # Reforçar uma posição já em carteira que está caindo derruba o multiplicador.
+    try:
+        disjuntor_fluxos = _disjuntor_fluxos(rows, mult_aporte, capitulacao)
+    except Exception as e:
+        logger.warning(f"[C.2] disjuntor_fluxos falhou: {e}")
+        disjuntor_fluxos = {"implementado": True, "afetados": [], "n_afetados": 0,
+                            "mult_regime": mult_aporte}
+    # Mapa ticker(upper) → mult degradado (o piso que o disjuntor impõe naquele ativo).
+    _degrade_by_tk = {a["ticker"].upper(): a["mult_degradado"]
+                      for a in disjuntor_fluxos.get("afetados", [])}
+
     aporte = []
     under = sorted([b for b in buckets if b.get("drift") is not None and b["drift"] < -5],
                    key=lambda b: b["drift"])  # mais abaixo do alvo primeiro
@@ -1256,11 +1353,20 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                 mult_a = mult_regime_a
             mult_a = max(1, mult_a)
             capped = cap_novo_fluxo is not None and mult_a < mult_regime_a
+            # DISJUNTOR C.2: se este ativo já está sendo reforçado consecutivamente em queda,
+            # o disjuntor impõe um piso degradado (MIN com o que já temos). Só DEGRADA.
+            disj_floor = _degrade_by_tk.get(a["ticker"].upper())
+            disjuntado = disj_floor is not None and disj_floor < mult_a
+            if disjuntado:
+                mult_a = max(1, disj_floor)
             rationale = (f"{b['bucket']} {abs(b['drift']):.0f}% abaixo do alvo — "
                          f"alavanca o aporte {mult_a}x ({reg_a.lower()})")
             if capped:
                 rationale += (f" · CAP AGREGADO limitou de {mult_regime_a}x → {mult_a}x "
                               f"(alavancagem efetiva da carteira)")
+            if disjuntado:
+                rationale += (f" · DISJUNTOR DE FLUXOS limitou a {mult_a}x "
+                              f"(aportes consecutivos em ativo caindo)")
             aporte.append({
                 "bucket": b["bucket"], "drift": b["drift"],
                 "ticker": a["ticker"], "name": a.get("name"), "verdict": a.get("verdict"),
@@ -1268,6 +1374,7 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                 "leverage_sugg": mult_a,
                 "leverage_regime": mult_regime_a,
                 "capped_by_aggregate": capped,
+                "degraded_by_disjuntor": disjuntado,
                 "rationale": rationale,
             })
     # Multiplicador EFETIVO do regime = MIN(regime, cap agregado C.3). O agregado tem VETO.
@@ -1277,18 +1384,30 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
     else:
         mult_aporte_efetivo = mult_aporte
     regime_capped = mult_aporte_efetivo < mult_regime_headline
+    # DISJUNTOR C.2 no headline: o piso mais profundo entre os ativos afetados puxa o
+    # multiplicador do aporte pra baixo (averaging-down alavancado num ativo em queda).
+    mult_pos_disjuntor = mult_aporte_efetivo
+    if _degrade_by_tk:
+        disj_floor_headline = min(_degrade_by_tk.values())
+        mult_pos_disjuntor = max(1, min(mult_aporte_efetivo, disj_floor_headline))
+    regime_disjuntado = mult_pos_disjuntor < mult_aporte_efetivo
+    mult_final = mult_pos_disjuntor
     aporte_regime = {
         "regime": equity_regime,
-        "multiplier": mult_aporte_efetivo,            # já com o veto do agregado aplicado
+        "multiplier": mult_final,                     # já com veto do agregado E disjuntor
         "multiplier_regime": mult_regime_headline,    # o que o regime sozinho pediria
+        "multiplier_pre_disjuntor": mult_aporte_efetivo,  # após cap agregado, antes do disjuntor
         "capped_by_aggregate": regime_capped,
+        "degraded_by_disjuntor": regime_disjuntado,
         "deploy_shy": capitulacao,
         "shy_available": round(shy_notional, 2),
-        "nota": (("CAPITULAÇÃO: venda o SHY e deploye o fluxo a %dx nos descontados" % mult_aporte_efetivo)
+        "nota": (("CAPITULAÇÃO: venda o SHY e deploye o fluxo a %dx nos descontados" % mult_final)
                  if capitulacao else
-                 ("Reinvista dividendos/aportes a %dx no bucket sub-alvo" % mult_aporte_efetivo))
+                 ("Reinvista dividendos/aportes a %dx no bucket sub-alvo" % mult_final))
                 + (f" · CAP AGREGADO segurou {mult_regime_headline}x→{mult_aporte_efetivo}x (carteira já alavancada)"
-                   if regime_capped else ""),
+                   if regime_capped else "")
+                + (f" · DISJUNTOR DE FLUXOS segurou {mult_aporte_efetivo}x→{mult_final}x (aportes consecutivos em ativo caindo)"
+                   if regime_disjuntado else ""),
     }
 
     # STRESS TEST (item 5/sênior): replay de 2008/2020/2022 na carteira atual alavancada.
@@ -1329,6 +1448,13 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         logger.warning(f"[TRAVAS] exposure_caps falhou: {e}")
         exposure_caps = {"alerts": [], "clusters": [], "bucket_breaches": []}
 
+    # C.2 — o disjuntor real (computado dos PositionEvent) SUBSTITUI o stub flagado-como-falso
+    # que _aggregate_leverage_cap deixa quando não há dados de aporte. implementado:true.
+    try:
+        leverage_agregado["disjuntor_fluxos"] = disjuntor_fluxos
+    except Exception:
+        pass
+
     import datetime as _dt
     totals.pop("_sigma_basket_pct", None)        # interno (alimentou Kelly/máxDD) — não vaza
     return {
@@ -1337,6 +1463,8 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         "survival_stops": survival_stops, "risk": risk,
         "aporte": aporte, "aporte_regime": aporte_regime,
         "stress": stress, "deleverage": deleverage,
+        # C.2 — DISJUNTOR DE FLUXOS CONSECUTIVOS (a trava do CRO):
+        "disjuntor_fluxos": disjuntor_fluxos,
         # C.3 — CAP AGREGADO DE ALAVANCAGEM (o bloqueante que FORÇA):
         "leverage_agregado": leverage_agregado,
         # Travas Fase 2:

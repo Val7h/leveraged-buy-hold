@@ -35,6 +35,39 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
   });
   if (!portfolio) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
+  // C.2 — DISJUNTOR DE FLUXOS CONSECUTIVOS: conta os aportes (COMPRA) consecutivos recentes
+  // por ativo via PositionEvent. "Consecutivos" = sequência de COMPRAs (últimos ~6 meses) SEM
+  // uma VENDA no meio (uma venda zera a contagem — recuperação/realização quebra a cadeia).
+  // BLINDADO: se a tabela ainda não existir (migração pendente), aportes_recentes=0, não quebra.
+  const aportesByTicker = new Map<string, number>();
+  try {
+    const eventCutoff = new Date(Date.now() - 183 * 24 * 3600 * 1000); // ~6 meses
+    const events = await prisma.positionEvent.findMany({
+      where: {
+        portfolioId: id,
+        action: { in: ["COMPRA", "VENDA"] },
+        executedAt: { gte: eventCutoff },
+      },
+      orderBy: { executedAt: "desc" },
+      select: { ticker: true, action: true },
+    });
+    // events vem do mais recente p/ o mais antigo. Por ativo, conta COMPRAs até bater numa VENDA.
+    const stopped = new Set<string>();
+    for (const ev of events) {
+      const tk = ev.ticker.toUpperCase();
+      if (stopped.has(tk)) continue;
+      if (ev.action === "VENDA") {
+        stopped.add(tk); // venda quebra a cadeia consecutiva
+        continue;
+      }
+      if (ev.action === "COMPRA") {
+        aportesByTicker.set(tk, (aportesByTicker.get(tk) ?? 0) + 1);
+      }
+    }
+  } catch {
+    // Tabela PositionEvent ausente/erro → sem degradação (não fabrica).
+  }
+
   const positions = portfolio.positions.map((p) => ({
     ticker: p.ticker,
     shares: Number(p.quantity),
@@ -45,6 +78,8 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
     verdict_since: p.verdictSince ? p.verdictSince.toISOString() : null,
     // Data de abertura (Prisma) → TRAVA DE DURAÇÃO no backend (>24m + esticado).
     openedAt: p.openedAt ? p.openedAt.toISOString() : null,
+    // C.2 — nº de aportes consecutivos recentes → DISJUNTOR DE FLUXOS no backend.
+    aportes_recentes: aportesByTicker.get(p.ticker.toUpperCase()) ?? 0,
   }));
   const equity = portfolio.currentEquity != null ? Number(portfolio.currentEquity) : null;
 
