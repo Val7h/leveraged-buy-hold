@@ -399,8 +399,18 @@ def post_portfolio_analytics(body: _AnalyticsBody):
     ranking. Antes exigia get_current_user (JWT) que a BFF não manda → 401/404 → rotação e aporte
     sumiam no frontend."""
     from app.services.portfolio_service import portfolio_analytics
-    return portfolio_analytics([p.dict() for p in body.positions], equity=body.equity,
-                               cooldown_tickers=body.cooldown_tickers)
+    try:
+        return portfolio_analytics([p.dict() for p in body.positions], equity=body.equity,
+                                   cooldown_tickers=body.cooldown_tickers)
+    except Exception as e:
+        # BLINDAGEM: a inteligência é pesada (ranking 228 ativos + correlação + agregado C.3). Se
+        # algum bloco estourar, NÃO derruba a aba inteira com 502 — devolve estrutura mínima + erro,
+        # pra o frontend mostrar "tentar de novo" em vez de a rotação sumir em silêncio.
+        import logging
+        logging.getLogger(__name__).warning(f"[ANALYTICS] falhou, retornando mínimo: {e}")
+        return {"assets": [], "totals": {}, "buckets": [], "correlation": {},
+                "rotation": {"signals": [], "rotate_into": [], "n_sell": 0},
+                "error": "analytics_partial", "detail": str(e)[:200]}
 
 
 

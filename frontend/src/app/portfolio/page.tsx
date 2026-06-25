@@ -14,7 +14,7 @@ import type { ContributionSuggestion } from "@/types";
 
 function PortfolioPageInner() {
   const searchParams = useSearchParams();
-  const { activePortfolioId, portfolios, metrics, positions, analytics, fetchPortfolios, fetchMetrics, fetchPositions, fetchAnalytics, addPosition, updatePosition, removePosition, toggleSeed, toggleCycle } = usePortfolioStore();
+  const { activePortfolioId, portfolios, metrics, positions, analytics, analyticsLoading, analyticsError, fetchPortfolios, fetchMetrics, fetchPositions, fetchAnalytics, addPosition, updatePosition, removePosition, toggleSeed, toggleCycle } = usePortfolioStore();
   const [suggestions, setSuggestions] = useState<ContributionSuggestion[]>([]);
   const [capital, setCapital] = useState(1000);
   const [equityCurve, setEquityCurve] = useState<any>(null);
@@ -288,10 +288,27 @@ function PortfolioPageInner() {
           <SectorBreakdownWidget positions={positions} />
         )}
 
-        {/* Inteligência da carteira: estrutura alvo×real, risco, correlação */}
-        {positions.length > 0 && analytics && (
+        {/* Inteligência da carteira: ROTAÇÃO, estrutura alvo×real, risco, correlação.
+            Não some em silêncio quando o analytics falha/carrega — mostra estado + retry,
+            senão o usuário acha que a rotação "sumiu". */}
+        {positions.length > 0 && (
           <div className="mb-6">
-            <PortfolioIntelligence analytics={analytics} />
+            {analytics ? (
+              <PortfolioIntelligence analytics={analytics} />
+            ) : analyticsLoading ? (
+              <div className="bg-surface rounded-xl border border-border p-6 flex items-center justify-center gap-2 text-sm text-text-secondary">
+                <RefreshCw size={16} className="animate-spin" />
+                Carregando inteligência da carteira (rotação, risco)…
+              </div>
+            ) : analyticsError ? (
+              <div className="bg-surface rounded-xl border border-warning/40 p-6 text-center">
+                <p className="text-sm text-text-secondary mb-2">{analyticsError}</p>
+                <button onClick={() => activePortfolioId && fetchAnalytics(activePortfolioId)}
+                  className="btn-ghost text-sm inline-flex items-center gap-2">
+                  <RefreshCw size={14} /> Tentar de novo
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
 

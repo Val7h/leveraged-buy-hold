@@ -8,6 +8,8 @@ interface PortfolioState {
   metrics: PortfolioMetrics | null;
   positions: Position[];
   analytics: any | null;
+  analyticsLoading: boolean;
+  analyticsError: string | null;
   isLoading: boolean;
   error: string | null;
   fetchPortfolios: () => Promise<void>;
@@ -28,6 +30,8 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
   metrics: null,
   positions: [],
   analytics: null,
+  analyticsLoading: false,
+  analyticsError: null,
   isLoading: false,
   error: null,
 
@@ -47,15 +51,30 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
   },
 
   setActivePortfolio: (id) => {
-    set({ activePortfolioId: id, metrics: null, positions: [], analytics: null });
+    set({ activePortfolioId: id, metrics: null, positions: [], analytics: null, analyticsError: null });
   },
 
   fetchAnalytics: async (id) => {
+    set({ analyticsLoading: true, analyticsError: null });
     try {
       const res = await portfolioApi.getAnalytics(id);
-      set({ analytics: res.data });
-    } catch {
-      set({ analytics: null });
+      // A inteligência (rotação, risco, agregado) é pesada: ranking de 228 ativos + correlação.
+      // Se vier vazio/erro, não some em silêncio — sinaliza pra UI mostrar "carregando/erro + retry".
+      if (res?.data && (res.data.assets || res.data.rotation || res.data.totals)) {
+        set({ analytics: res.data, analyticsError: null });
+      } else {
+        set({ analytics: null, analyticsError: "A inteligência da carteira voltou vazia. Tente recarregar." });
+      }
+    } catch (e: any) {
+      const st = e?.response?.status;
+      set({
+        analytics: null,
+        analyticsError: st === 502 || st === 504
+          ? "A inteligência da carteira demorou demais (ranking pesado esquentando). Tente de novo em alguns segundos."
+          : "Não foi possível carregar a inteligência da carteira (rotação, risco). Tente de novo.",
+      });
+    } finally {
+      set({ analyticsLoading: false });
     }
   },
 
