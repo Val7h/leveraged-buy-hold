@@ -845,6 +845,31 @@ def _round_or_none(v, ndigits=1):
     return round(v, ndigits) if v is not None else None
 
 
+def _verdict_from_momentum(momentum: float, st: dict, cat: str) -> str:
+    """Re-deriva o veredito a partir de um NOVO momento (2º passo do momentum relativo da Camada 2),
+    reaplicando os mesmos ajustadores momento-INDEPENDENTES já decididos no 1º passo (anti-faca,
+    crivo, confiança-BAIXA, regra do ouro). Espelha a cadeia de _analyze sem refazer fetch."""
+    if st.get("bucket") == "RESERVA":
+        return "RESERVA"
+    quality = st.get("quality", 50.0)
+    if cat == "CRYPTO":
+        verdict = _crypto_verdict(momentum, quality)
+    else:
+        verdict = S.aporte_verdict(momentum, quality)
+    if verdict in ("COMPRAR FORTE", "COMPRAR") and st.get("knife"):
+        verdict = "ESPECULATIVO"
+    if st.get("crivo_rebaixa"):
+        if verdict == "COMPRAR FORTE":
+            verdict = "COMPRAR"
+        elif verdict == "COMPRAR":
+            verdict = "JUSTO"
+    if st.get("conf_baixa") and verdict == "COMPRAR FORTE":
+        verdict = "COMPRAR"
+    if st.get("gold_override"):
+        verdict = "COMPRAR FORTE"
+    return verdict
+
+
 # ─────────────────────────── RANKING ───────────────────────────
 def _fetch_indices() -> Tuple[Dict[str, Optional[np.ndarray]], Dict[str, Optional[dict]], str]:
     idxc: Dict[str, Optional[np.ndarray]] = {}
@@ -881,6 +906,87 @@ def _ma200_slope(a: np.ndarray, lookback: int = 40) -> Optional[float]:
         return None
     base = ma[-1 - lookback]
     return float((ma[-1] / base - 1) * 100) if base else None
+
+
+def _ma200_slope_weekly(df, lookback_weeks: int = 13) -> Optional[float]:
+    """Inclinação da MM200 SEMANAL (≈4 anos): variação % da média de 200 semanas vs ~3 meses
+    atrás (13 semanas). >0 = uptrend secular saudável; <0 = deterioração estrutural (faca).
+    Camada 2 — tendência primária. None se série semanal curta (renormaliza; nunca fabrica)."""
+    try:
+        _, _, C = _weekly_ohlc(df)
+        if C is None or len(C) < 200 + lookback_weeks:
+            return None
+        ma = np.convolve(C, np.ones(200) / 200, mode="valid")   # MM200 semanal ao longo do tempo
+        if len(ma) < lookback_weeks + 1:
+            return None
+        base = ma[-1 - lookback_weeks]
+        return float((ma[-1] / base - 1) * 100) if base else None
+    except Exception:
+        return None
+
+
+def _divergence_bullish(closes: np.ndarray, stoch_k: Optional[float],
+                        stoch_d: Optional[float], rsi: Optional[float]) -> Optional[float]:
+    """Divergência ALTISTA (0-1): preço fez NOVA MÍNIMA recente MAS o oscilador NÃO acompanhou,
+    OU o oscilador VIROU pra cima. Camada 2 — a sobrevenda só conta com isto. None se sem dado.
+      • preço em nova mínima (mín das últimas ~6 barras ≈ mín das ~12) + stoch/rsi já saindo do
+        fundo (não cravado no piso) = divergência clássica (oscilador não confirma o fundo).
+      • OU stoch %K > %D (linha rápida cruzou a lenta p/ cima) = virada do oscilador.
+    Conservador: combina os sinais disponíveis, satura em 1.0."""
+    try:
+        if closes is None or len(closes) < 12:
+            return None
+        score = 0.0
+        seen = False
+        recent = closes[-6:]
+        prior = closes[-12:-6]
+        preco_nova_min = float(np.min(recent)) <= float(np.min(prior))
+        # Divergência clássica: preço em nova mínima MAS oscilador acima do extremo de sobrevenda.
+        osc = stoch_d if stoch_d is not None else stoch_k
+        if osc is not None:
+            seen = True
+            if preco_nova_min and osc > 25:
+                score += 0.6        # nova mínima de preço sem nova mínima do oscilador
+        if rsi is not None:
+            seen = True
+            if preco_nova_min and rsi > 32:
+                score += 0.3        # RSI não confirma o fundo
+        # Virada do oscilador: %K cruzou %D p/ cima (momentum de curtíssimo virando).
+        if stoch_k is not None and stoch_d is not None:
+            seen = True
+            if stoch_k > stoch_d:
+                score += 0.4
+        if not seen:
+            return None
+        return float(max(0.0, min(1.0, score)))
+    except Exception:
+        return None
+
+
+def _estrutura_reversao(closes: np.ndarray) -> Optional[float]:
+    """Estrutura de reversão / suporte (0-1): Camada 2.
+      • higher-low: mínimas RECENTES ascendentes (mín das ~6 últimas > mín das ~6 anteriores) 0.45
+      • fechamento > máxima da janela anterior (rompeu resistência de curto prazo)            0.35
+      • suporte recuperado: preço voltou acima da média de ~10 barras                          0.20
+    None se série curta (renormaliza; nunca fabrica)."""
+    try:
+        if closes is None or len(closes) < 12:
+            return None
+        vals = np.asarray(closes, dtype=float)
+        score = 0.0
+        recent_low = float(np.min(vals[-6:]))
+        prior_low = float(np.min(vals[-12:-6]))
+        if recent_low > prior_low:
+            score += 0.45
+        prior_high = float(np.max(vals[-12:-1]))   # máxima da janela anterior (exclui a atual)
+        if vals[-1] >= prior_high:
+            score += 0.35
+        ma10 = float(np.mean(vals[-10:]))
+        if vals[-1] > ma10:
+            score += 0.20
+        return float(max(0.0, min(1.0, score)))
+    except Exception:
+        return None
 
 
 def _crypto_verdict(momentum: float, quality: float) -> str:
@@ -1190,10 +1296,31 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         reg = regime(idxc.get(INDEX_BY_CAT.get(cat)))
         mult = MULT.get(reg, 3)
 
+        # ─────────────────── CAMADA 2 — MOMENTO DE ENTRADA (inputs) ───────────────────
+        # Tendência primária: inclinação da MM200 SEMANAL (≈3 meses) — uptrend secular = promoção.
+        ma200_slope_wk = _ma200_slope_weekly(df)
+        # Divergência altista (preço nova mínima sem nova mínima do oscilador / virada do stoch).
+        _mom_series = wclose if use_wk else a
+        divergence = _divergence_bullish(_mom_series, stoch_k, stoch_d, rsi)
+        # Estrutura de reversão / suporte (higher-low / rompeu máxima anterior / recuperou suporte).
+        estrutura = _estrutura_reversao(_mom_series)
+        # Retorno 6-12m (proxy ~252 pregões) p/ o MOMENTUM RELATIVO cross-sectional (2º passo:
+        # percentila DENTRO da categoria após o loop, em _recompute_ranking_inner). Guardado cru aqui.
+        rel_return_raw = None
+        try:
+            if a is not None and len(a) >= 252 and a[-252]:
+                rel_return_raw = float((a[-1] / a[-252] - 1) * 100)
+        except Exception:
+            rel_return_raw = None
+
         # MOMENTO primeiro: o beta da Qualidade é AMPLIFICADOR e depende do momento.
+        # momentum_relativo entra None aqui (renormaliza) e é re-injetado pós-loop (cross-sectional).
         momentum, mb = S.compute_momentum(
             slow_stoch_weekly=sstoch, discount_from_top=disc,
             reversal_confirmation=rev, distance_ma200=dma,
+            rsi=rsi, ma200_slope_weekly=ma200_slope_wk, dy=dy, dy_avg10=dy_avg10,
+            divergence=divergence, rel_momentum_percentile=None,
+            estrutura=estrutura,
         )
         quality, qb = S.compute_quality_blend(
             beta=beta, max_dd_pct=dd, dividend_yield=dy, growth_5y=fund_growth,
@@ -1245,6 +1372,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         else:
             confidence = "BAIXA"
 
+        _knife = False
+        _crivo_rebaixa = False
         if bucket == "RESERVA":
             verdict = "RESERVA"
         else:
@@ -1254,8 +1383,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             # TTM apodrecendo), não só preço barato. Carry ZERO (Quantfury) → sem custo de carrego a
             # vencer. Preço de 6a (cagr) só como FALLBACK sem dado real (BR). Cíclica: queda recente
             # é o CICLO (a compra), não rot → usa só o preço.
-            if verdict in ("COMPRAR FORTE", "COMPRAR") and S.is_falling_knife(
-                    fund_growth, recent_growth, cagr, is_tatico=is_tatico):
+            _knife = S.is_falling_knife(fund_growth, recent_growth, cagr, is_tatico=is_tatico)
+            if verdict in ("COMPRAR FORTE", "COMPRAR") and _knife:
                 verdict = "ESPECULATIVO"
 
             # CRIVO DE QUALIDADE-REAL POR TIPO (#15b): porteira de fundamentos da EMPRESA (não preço).
@@ -1268,7 +1397,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 fcf_yield=fund.get("fcf_yield"), debt_to_equity=fund.get("debt_to_equity"),
                 dy_avg10=dy_avg10, dy_worst=dy_worst, dividend_yield=dy,
                 growth_5y=fund_growth, confidence=confidence)
-            if crivo_nota is not None and crivo_nota < S.crivo_piso(confidence):
+            _crivo_rebaixa = (crivo_nota is not None and crivo_nota < S.crivo_piso(confidence))
+            if _crivo_rebaixa:
                 if verdict == "COMPRAR FORTE":
                     verdict = "COMPRAR"
                 elif verdict == "COMPRAR":
@@ -1279,7 +1409,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 verdict = "COMPRAR"
 
         # REGRA DO OURO: ouro em capitulação do mercado de ações → hedge → COMPRAR FORTE (override).
-        if tk.upper() in ("GLD", "GC=F") and equity_regime in ("CAPITULACAO", "CAPIT.EXTREMA"):
+        _gold_override = (tk.upper() in ("GLD", "GC=F")
+                          and equity_regime in ("CAPITULACAO", "CAPIT.EXTREMA"))
+        if _gold_override:
             verdict = "COMPRAR FORTE"
 
         rank = quality * 0.45 + momentum * 0.55  # #15b: oportunidade decide o desempate (comprar bem)
@@ -1304,6 +1436,16 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # a alavancagem sugerida. Aplicado por ÚLTIMO p/ prevalecer sobre os tetos acima.
         if beta is not None and beta >= 1.45:
             leverage = min(leverage, 2.0)
+
+        # GATE DE TENDÊNCIA (Camada 2) → CAPA A ALAVANCAGEM, não a compra. Downtrend primário
+        # FORTE (preço << MM200 longa E MM200 SEMANAL caindo) = "pegar faca alavancado é
+        # catastrófico" → teto 2x. NÃO veta a compra (segue descontado no ranking); só capa a
+        # leverage do fluxo, integrando com os tetos da Camada 3 via MIN. Conservador: dado
+        # ausente NÃO capa (não fabrica downtrend).
+        _teto_trend = S.teto_leverage_tendencia(dma, ma200_slope_wk)
+        teto_lev_tendencia = _teto_trend
+        if _teto_trend is not None:
+            leverage = min(leverage, _teto_trend)
 
         # ─── CAMADA 3 — TETO DE SOBREVIVÊNCIA POR ATIVO (MIN de todos os tetos) ───
         # "Quanto dá pra alavancar este ativo e SOBREVIVER ao pior tombo?" Sobrevivência = MÍNIMO.
@@ -1360,6 +1502,24 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "rank_alavancado": rank_alavancado,
             "quality_breakdown": qb,
             "momentum_breakdown": mb,
+            "ma200_slope_weekly": _round_or_none(ma200_slope_wk, 1),
+            "leverage_teto_tendencia": teto_lev_tendencia,
+            # ── Camada 2 — insumos p/ o 2º passo do MOMENTUM RELATIVO (cross-sectional).
+            # Recomputa momento+veredito+rank pós-loop quando o percentil de força da categoria
+            # estiver pronto. Os flags abaixo deixam re-derivar o veredito sem refazer fetch/fundamentos.
+            "_rel_return_raw": rel_return_raw,
+            "_mom_inputs": {
+                "slow_stoch_weekly": sstoch, "discount_from_top": disc,
+                "reversal_confirmation": rev, "distance_ma200": dma, "rsi": rsi,
+                "ma200_slope_weekly": ma200_slope_wk, "dy": dy, "dy_avg10": dy_avg10,
+                "divergence": divergence, "estrutura": estrutura,
+            },
+            "_verdict_state": {
+                "bucket": bucket, "quality": quality, "knife": _knife,
+                "crivo_rebaixa": _crivo_rebaixa, "conf_baixa": (confidence == "BAIXA"),
+                "gold_override": _gold_override, "sigma_total": sigma_total,
+                "leverage": leverage,
+            },
             "slow_stoch_weekly": _round_or_none(sstoch, 0),
             "stoch_k": _round_or_none(stoch_k, 1),
             "stoch_d": _round_or_none(stoch_d, 1),
@@ -1479,6 +1639,37 @@ def _recompute_ranking_inner() -> dict:
                     by_cat[cat].append(res)
             except Exception as e:
                 logger.warning(f"[RANKING] análise paralela falhou: {e}")
+
+    # ── CAMADA 2 — 2º PASSO do MOMENTUM RELATIVO (cross-sectional, best-effort) ──
+    # Agora que TODOS os ativos da categoria foram analisados, percentila a força (retorno 6-12m)
+    # DENTRO da categoria e re-injeta no momento (peso 10%), recomputando veredito+rank. Ativos sem
+    # retorno (série curta) ficam de fora do percentil → momentum_relativo renormaliza (não fabrica).
+    for cat, assets in by_cat.items():
+        rets = [(a, a.get("_rel_return_raw")) for a in assets]
+        valid = [(a, r) for a, r in rets if r is not None]
+        if len(valid) >= 3:                       # percentil só faz sentido com amostra mínima
+            ordered = sorted(valid, key=lambda x: x[1])
+            n = len(ordered)
+            for rank_i, (a, _r) in enumerate(ordered):
+                pct = rank_i / (n - 1) if n > 1 else 0.5      # 0..1 (mais forte = maior)
+                st = a.get("_verdict_state") or {}
+                mi = a.get("_mom_inputs") or {}
+                try:
+                    new_m, new_bd = S.compute_momentum(
+                        rel_momentum_percentile=pct, **mi)
+                except Exception:
+                    continue
+                a["momentum"] = round(new_m)
+                a["momentum_breakdown"] = new_bd
+                a["verdict"] = _verdict_from_momentum(new_m, st, cat)
+                a["rank"] = round(st.get("quality", 50.0) * 0.45 + new_m * 0.55, 1)
+                a["rank_alavancado"] = _rank_alavancado_v2(
+                    a["rank"], st.get("leverage", 1.0), st.get("sigma_total"))
+        # limpa as chaves de rascunho (não vão no contrato da API)
+        for a in assets:
+            a.pop("_rel_return_raw", None)
+            a.pop("_mom_inputs", None)
+            a.pop("_verdict_state", None)
 
     categories: Dict[str, dict] = {}
     for cat in universe.keys():

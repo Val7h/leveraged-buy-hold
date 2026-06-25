@@ -906,18 +906,214 @@ def score_etf_vehicle_quality(dy_avg10=None, dy_worst=None, dividend_yield=None,
     return round(_clamp(q), 1), bd
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# CAMADA 2 — MOMENTO DE ENTRADA (desenho TRAVADO por painel: entrada-tática ×
+#            trend-follower × contrarian + dono).
+# ══════════════════════════════════════════════════════════════════════════════
+# Princípio do dono: "COMPRE O DESCONTO, ALAVANQUE NO QUIQUE". O desconto manda na
+# COMPRA (veredito); a tendência FREIA a alavancagem (Camada 3), não a compra.
+#
+# Pesos TRAVADOS (somam 100%):
+#   Desconto × reversão CONFIRMADA .. 28%  (barato + virou; anti-faca; coração da tese)
+#   Tendência primária de LP ........ 22%  (MM200 semanal + preço vs médias longas)
+#   Valuation relativo .............. 18%  (yield atual vs banda histórica dy_avg10)
+#   Osciladores (sobrevenda+DIVERG) . 14%  (stoch/RSI sobrevendido SÓ com divergência/virada)
+#   Momentum relativo ............... 10%  (força cross-sectional vs universo; best-effort)
+#   Estrutura de reversão / suporte .  8%  (higher-low / fechou > máxima anterior / suporte)
+#
+# GATE DE REVERSÃO (o mais importante): SEM reversão confirmada, o momento tem TETO=JUSTO
+# (≤ _GATE_REVERSAO_TETO=50), INDEPENDENTE do desconto. Desconto profundo sem reversão =
+# faca = nunca chega a COMPRAR. É um GATE (teto), não soma ponderada. Deliberadamente covarde:
+# pro alavancado, pegar faca é catastrófico; chegar tarde é só ruído.
+#
+# Termo SEM dado renormaliza (sai do breakdown), nunca injeta "50 falso".
+
+_GATE_REVERSAO_TETO = 50.0     # teto JUSTO quando NÃO há reversão confirmada
+_REVERSAO_MIN_CONF = 0.5       # reversal_confirmation ≥ isto = "virou" (libera o teto)
+_DESCONTO_GATE_MIN = 8.0       # só faz sentido falar de "faca/reversão" com desconto ≥ isto
+
+
+def score_valuation_relativo(dy: Optional[float], dy_avg10: Optional[float]) -> Optional[float]:
+    """Valuation RELATIVO à PRÓPRIA história: yield atual vs banda histórica (dy_avg10).
+    Quanto mais o yield atual supera a média de 10a, mais BARATO vs si mesmo (preço caiu →
+    yield subiu). yield << média = ESTICADO. P/L histórico não temos; yield-banda é o viável.
+      ratio = dy / dy_avg10 :  ≤0.7 → ~25 (caro vs si) · 1.0 → 60 (na média) · ≥1.6 → 100 (barato).
+    None se sem dado real (renormaliza). Yield ~0 (growth/não-pagador) → None (não opina:
+    valuation-por-yield não se aplica a quem não paga; outros termos carregam)."""
+    if dy is None or dy_avg10 is None or dy_avg10 <= 0 or dy <= 0:
+        return None
+    ratio = dy / dy_avg10
+    if ratio <= 0.7:
+        return _clamp(25.0)
+    if ratio <= 1.0:
+        return _clamp(25 + (ratio - 0.7) / 0.3 * 35)      # 0.7→25, 1.0→60
+    if ratio <= 1.6:
+        return _clamp(60 + (ratio - 1.0) / 0.6 * 40)      # 1.0→60, 1.6→100
+    return 100.0
+
+
+def score_tendencia_primaria(ma200_slope_weekly: Optional[float],
+                             distance_ma200: Optional[float]) -> Optional[float]:
+    """Tendência primária de LP (uptrend secular = promoção; downtrend = faca).
+      • inclinação da MM200 SEMANAL (ma200_slope_weekly, %): >0 sobe (saudável), <0 cai (deteriora).
+      • posição preço vs MM200 longa (distance_ma200, %): ACIMA da média longa = estrutura de alta.
+    Combina (slope 60% — a inclinação é a tendência; posição 40%). Renormaliza se um faltar.
+    None se ambos ausentes."""
+    s_slope = None
+    if ma200_slope_weekly is not None:
+        sl = ma200_slope_weekly
+        if sl >= 3.0:
+            s_slope = 100.0
+        elif sl <= -3.0:
+            s_slope = 10.0
+        else:
+            s_slope = _clamp(10 + (sl + 3.0) / 6.0 * 90)   # -3→10, 0→55, +3→100
+    s_pos = None
+    if distance_ma200 is not None:
+        d = distance_ma200
+        if d >= 15:
+            s_pos = 100.0                                  # bem acima da média longa = alta firme
+        elif d <= -25:
+            s_pos = 10.0                                   # bem abaixo = tendência de baixa
+        else:
+            s_pos = _clamp(10 + (d + 25) / 40 * 90)        # -25→10, +15→100
+    comps = []
+    if s_slope is not None:
+        comps.append((s_slope, 0.60))
+    if s_pos is not None:
+        comps.append((s_pos, 0.40))
+    if not comps:
+        return None
+    wsum = sum(w for _, w in comps)
+    return _clamp(sum(s * w for s, w in comps) / wsum)
+
+
+def score_osciladores(stoch_k: Optional[float], rsi: Optional[float],
+                      divergence: Optional[float] = None) -> Optional[float]:
+    """Osciladores (sobrevenda) que SÓ contam com DIVERGÊNCIA/virada — não nível cru.
+    Decisão travada: stoch/RSI sobrevendido sem divergência é só "barato e seguindo barato".
+    O sinal real é: preço fez nova MÍNIMA mas o oscilador NÃO (divergência altista), ou o
+    oscilador VIROU pra cima.
+      • base = quão sobrevendido (stoch 60% + rsi 40%, renormaliza).
+      • divergence (0-1): sem ela, a sobrevenda é DESCONTADA (×0.4..1.0 conforme divergence).
+    None se nem stoch nem rsi. RSI deixa de ser decorativo — entra aqui."""
+    s_stoch = score_slow_stoch_weekly(stoch_k) if stoch_k is not None else None
+    s_rsi = score_rsi(rsi) if rsi is not None else None
+    comps = []
+    if s_stoch is not None:
+        comps.append((s_stoch, 0.60))
+    if s_rsi is not None:
+        comps.append((s_rsi, 0.40))
+    if not comps:
+        return None
+    wsum = sum(w for _, w in comps)
+    base = _clamp(sum(s * w for s, w in comps) / wsum)
+    # Sobrevenda só "conta" com divergência/virada. Sem ela (div=0), desconta a 40% do sinal
+    # (puxa pro neutro 50). Com divergência plena (div=1), o sinal vale inteiro.
+    div = 0.0 if divergence is None else _clamp(divergence, 0.0, 1.0)
+    fator = 0.4 + 0.6 * div
+    return _clamp(50 + (base - 50) * fator)
+
+
+def score_momentum_relativo(rel_percentile: Optional[float]) -> Optional[float]:
+    """Momentum RELATIVO cross-sectional: força do ativo vs universo (percentil DENTRO da
+    categoria, 0-1). Alto percentil (líder de força) → nota alta. Best-effort: calculado
+    em 2 passos no ranking_service (retorno por ativo → percentila pós-loop → injeta aqui).
+    None se não houver percentil (renormaliza — nunca fabrica um proxy fingido)."""
+    if rel_percentile is None:
+        return None
+    return _clamp(rel_percentile * 100.0)
+
+
+def score_estrutura_reversao(estrutura: Optional[float]) -> Optional[float]:
+    """Estrutura de reversão / suporte (0-1 → 0-100): higher-low / fechamento > máxima anterior /
+    suporte recuperado. Computado dos arrays no ranking_service. None se ausente (renormaliza)."""
+    if estrutura is None:
+        return None
+    return _clamp(estrutura * 100.0)
+
+
 def compute_momentum(slow_stoch_weekly=None, discount_from_top=None,
-                     reversal_confirmation=None, distance_ma200=None):
-    """Momento de entrada (0-100): Stoch LENTO semanal (principal) + desconto×reversão + MM200."""
-    s_stoch = score_slow_stoch_weekly(slow_stoch_weekly)
+                     reversal_confirmation=None, distance_ma200=None,
+                     rsi=None, ma200_slope_weekly=None, dy=None, dy_avg10=None,
+                     divergence=None, rel_momentum_percentile=None, estrutura=None):
+    """
+    CAMADA 2 — MOMENTO DE ENTRADA (0-100). Desenho TRAVADO. Retorna (score, breakdown).
+
+    breakdown tem EXATAMENTE as chaves (termo sem dado SAI e renormaliza, nunca "50 falso"):
+      desconto_reversao · tendencia_primaria · valuation_relativo · osciladores ·
+      momentum_relativo · estrutura  (valores int 0-100).
+
+    Pesos (somam 100%): desconto×reversão 28 · tendência 22 · valuation 18 · osciladores 14 ·
+      momentum relativo 10 · estrutura 8.
+
+    GATE DE REVERSÃO: sem reversão confirmada (reversal < 0.5) E havendo desconto real
+    (≥8%), o score é CAPADO em JUSTO (≤50) — desconto-sem-reversão não vira COMPRAR (faca).
+    Deliberadamente covarde (alavancado: faca = catastrófico; tarde = ruído).
+    """
+    # Desconto × reversão CONFIRMADA (coração da tese; já era anti-faca).
     s_disc = score_discount_from_top(discount_from_top, reversal_confirmation)
-    s_ma = score_distance_ma200(distance_ma200)
-    breakdown = {"stoch_lento_semanal": round(s_stoch),
-                 "desconto_x_reversao": round(s_disc),
-                 "distancia_ma200": round(s_ma)}
-    # Stoch não decide sozinho metade; desconto×reversão (anti-faca) sobe.
-    m = s_stoch*0.40 + s_disc*0.35 + s_ma*0.25
+    # Tendência primária de LP (inclinação MM200 semanal + posição vs média longa).
+    s_trend = score_tendencia_primaria(ma200_slope_weekly, distance_ma200)
+    # Valuation relativo (yield atual vs banda histórica própria).
+    s_val = score_valuation_relativo(dy, dy_avg10)
+    # Osciladores (sobrevenda SÓ com divergência/virada — RSI entra aqui).
+    s_osc = score_osciladores(slow_stoch_weekly, rsi, divergence)
+    # Momentum relativo cross-sectional (best-effort).
+    s_rel = score_momentum_relativo(rel_momentum_percentile)
+    # Estrutura de reversão / suporte.
+    s_est = score_estrutura_reversao(estrutura)
+
+    pilares = [
+        (s_disc, 0.28, "desconto_reversao"),
+        (s_trend, 0.22, "tendencia_primaria"),
+        (s_val, 0.18, "valuation_relativo"),
+        (s_osc, 0.14, "osciladores"),
+        (s_rel, 0.10, "momentum_relativo"),
+        (s_est, 0.08, "estrutura"),
+    ]
+    breakdown = {}
+    comps = []
+    for s, w, k in pilares:
+        if s is not None:
+            comps.append((s, w))
+            breakdown[k] = round(s)
+    wsum = sum(w for _, w in comps)
+    m = (sum(s * w for s, w in comps) / wsum) if wsum > 0 else 50.0
+
+    # ── GATE DE REVERSÃO (teto JUSTO ≤50 sem reversão confirmada) ──
+    # Só morde quando há desconto real a explorar (≥8%): perto da máxima não há "faca".
+    conf = 0.0 if reversal_confirmation is None else _clamp(reversal_confirmation, 0.0, 1.0)
+    disc = abs(discount_from_top) if discount_from_top is not None else 0.0
+    if disc >= _DESCONTO_GATE_MIN and conf < _REVERSAO_MIN_CONF:
+        m = min(m, _GATE_REVERSAO_TETO)
+
     return round(_clamp(m), 1), breakdown
+
+
+# ─────────────────── GATE DE TENDÊNCIA → CAPA A ALAVANCAGEM (Camada 2) ───────────────────
+# Decisão travada: a tendência primária NÃO veta a COMPRA (compra-se descontado mesmo em baixa),
+# mas CAPA a ALAVANCAGEM do fluxo. Downtrend primário FORTE (preço << MM200 longa E MM200 caindo)
+# = "pegar faca alavancado é catastrófico" → teto 2x. Integra com os tetos da Camada 3 via MIN
+# no ranking_service (nunca SOBE alavancagem; só capa). Conservador: na dúvida (dado ausente),
+# NÃO capa (não fabrica downtrend).
+_DOWNTREND_DIST_FORTE = -12.0    # preço ≥12% ABAIXO da MM200 longa = bem abaixo da média
+_DOWNTREND_SLOPE_CAI = 0.0       # E a MM200 inclinando p/ baixo (<0)
+_TETO_LEV_DOWNTREND = 2.0
+
+
+def teto_leverage_tendencia(distance_ma200: Optional[float],
+                            ma200_slope_weekly: Optional[float]) -> Optional[float]:
+    """Teto de alavancagem pela TENDÊNCIA primária (capa, não veta a compra).
+    Downtrend FORTE (preço << MM200 longa E MM200 caindo) → teto 2x. Senão None (não capa).
+    Precisa dos DOIS sinais (posição E inclinação) p/ ser conservador — preço abaixo da média
+    numa MM200 ainda subindo é só pullback (não capa); MM200 caindo perto da média é início de
+    deterioração mas ainda não 'faca' (não capa). Só a combinação << + caindo = downtrend real."""
+    if distance_ma200 is None or ma200_slope_weekly is None:
+        return None
+    if distance_ma200 <= _DOWNTREND_DIST_FORTE and ma200_slope_weekly < _DOWNTREND_SLOPE_CAI:
+        return _TETO_LEV_DOWNTREND
+    return None
 
 
 # #15b — "número ótimo" (qualidade importa E não perde pechincha):

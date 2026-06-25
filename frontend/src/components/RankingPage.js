@@ -89,6 +89,14 @@ const QUALITY_LABELS = {
   fundamentos: "Fundamentos",
 };
 const MOMENTUM_LABELS = {
+  // Camada 2 (momento de entrada) — chaves novas (renormalizadas; podem estar ausentes).
+  desconto_reversao: "Desconto × reversão",
+  tendencia_primaria: "Tendência primária",
+  valuation_relativo: "Valuation relativo",
+  osciladores: "Osciladores (divergência)",
+  momentum_relativo: "Momentum relativo",
+  estrutura: "Estrutura/suporte",
+  // Retrocompat — chaves antigas (pré-refatoração da Camada 2).
   stoch_lento_semanal: "Stoch lento sem.",
   desconto_x_reversao: "Desconto × reversão",
   distancia_ma200: "Distância MM200",
@@ -473,6 +481,11 @@ function qualityRaw(a) {
 }
 function momentumRaw(a) {
   const r = {};
+  // Camada 2 (chaves novas): valor bruto sob a chave nova, quando há dado.
+  if (a.discount_from_top != null) r.desconto_reversao = `-${Math.round(a.discount_from_top)}% topo`;
+  if (a.distance_ma200 != null)
+    r.tendencia_primaria = `${a.distance_ma200 > 0 ? "+" : ""}${Math.round(a.distance_ma200)}% MM200`;
+  // Retrocompat (chaves antigas): se vier breakdown antigo, FactorGrid ainda casa o raw.
   if (a.stoch_k != null && a.stoch_d != null) r.stoch_lento_semanal = `%K ${a.stoch_k} · %D ${a.stoch_d}`;
   else if (a.slow_stoch_weekly != null) r.stoch_lento_semanal = `${Math.round(a.slow_stoch_weekly)}`;
   if (a.discount_from_top != null) r.desconto_x_reversao = `-${Math.round(a.discount_from_top)}% topo`;

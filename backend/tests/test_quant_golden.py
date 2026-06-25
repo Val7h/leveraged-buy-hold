@@ -286,10 +286,12 @@ def test_is_falling_knife_15c():
 
 
 def test_momentum_blend_range():
+    # Camada 2 (refatorada): breakdown com as chaves novas; reversão confirmada libera o teto.
     m, bd = S.compute_momentum(slow_stoch_weekly=15, discount_from_top=-10,
                                reversal_confirmation=1, distance_ma200=-5)
     assert 0 <= m <= 100
-    assert "stoch_lento_semanal" in bd
+    assert "desconto_reversao" in bd
+    assert "stoch_lento_semanal" not in bd  # chave antiga REMOVIDA
 
 
 def test_rank_composite_weight_45_55():

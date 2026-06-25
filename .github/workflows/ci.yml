@@ -71,3 +71,8 @@ jobs:
         # Alavancagem efetiva ajustada por correlação, cap duro 2.5x, máxDD/Kelly
         # da cesta, max_lev_novo_fluxo com VETO sobre a guidance de aporte.
         run: python -m pytest tests/test_c3_agregado.py -q
+      - name: Camada 2 — momento de entrada
+        # compute_momentum refeito (desconto×reversão/tendência primária/valuation
+        # relativo/osciladores+divergência/momentum relativo/estrutura) + gate de
+        # reversão (sem quique→teto JUSTO) + tendência→capa alavancagem.
+        run: python -m pytest tests/test_camada2_momento.py -q
