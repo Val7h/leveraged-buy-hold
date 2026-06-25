@@ -1619,8 +1619,9 @@ def score_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, dividend_yield=
 # ─────────────────────────── TETOS de sobrevivência (cada um → leverage) ───────────────────────────
 def teto_maxdd(max_dd_pct: Optional[float], hist_curto: bool = False,
                sigma_pct: Optional[float] = None) -> Optional[float]:
-    """A liquidação (100/lev) tem de ficar ABAIXO do máxDD × FOLGA. FOLGA: 1,6× base; 2,2× se
-    história curta (<15a) ou σ alto (>35%). Escolhe o MAIOR tier cuja liquidação ainda sobrevive
+    """A liquidação (100/lev) tem de ficar ABAIXO do máxDD × FOLGA. FOLGA: 1,8× base
+    (_FOLGA_BASE); 2,5× dura (_FOLGA_DURA) se história curta (<15a) ou σ alto (>35%). Escolhe o
+    MAIOR tier cuja liquidação ainda sobrevive
     ao tombo exigido. None se máxDD ausente (não entra no MIN). Ex (ratificado): −50%→1x · −30%
     longo→2x."""
     if max_dd_pct is None:
@@ -1654,14 +1655,16 @@ def teto_sigma(sigma_pct: Optional[float]) -> Optional[float]:
 
 
 def teto_gap(gap_pct: Optional[float]) -> Optional[float]:
-    """Sobreviver ao PIOR gap plausível × 1,5× (desconto de realidade). A liquidação (100/lev)
-    tem de ficar abaixo do gap×1,5. Escolhe o maior tier que sobrevive. None se gap ausente."""
+    """Sobreviver ao PIOR gap plausível × 2,0× (folga INEGOCIÁVEL). O gap (salto overnight, sem
+    chance de stop) é o risco mais LETAL do sistema — por isso carrega a MAIOR folga, não a menor.
+    A liquidação (100/lev) tem de ficar abaixo do gap×2,0. Escolhe o maior tier que sobrevive.
+    None se gap ausente."""
     if gap_pct is None:
         return None
     g = abs(gap_pct)
     if g <= 0:
         return 5.0
-    required = g * 1.5
+    required = g * 2.0
     best = 1.0
     for L in _LEV_TIERS:
         if LIQUIDATION_PCT_BY_LEV[L] >= required:
@@ -1703,9 +1706,11 @@ def teto_kelly(mu_excess_annual: Optional[float], sigma_pct: Optional[float]) ->
     return float(max(1.0, quarter))  # o floor final cuida do arredondamento pra baixo
 
 
-def gate_liquidez(volume: Optional[float], min_volume: float = 1_000_000.0) -> bool:
-    """GATE eliminatório de liquidez: volume MUITO baixo → True (zera a alavancagem → 1x à vista).
-    Sem dado de volume (None) → NÃO veta (não fabrica liquidez ruim). Conservador só com evidência."""
+def gate_liquidez(volume: Optional[float], min_volume: float = 5_000_000.0) -> bool:
+    """GATE eliminatório de liquidez: ADV-$ (volume financeiro diário médio, US$) MUITO baixo
+    (< US$ 5M) → True (zera a alavancagem → 1x à vista). Large-caps passam folgado; só micro-caps
+    ilíquidas (onde a saída alavancada escorrega/não executa) são vetadas. Sem dado de volume
+    (None) → NÃO veta (não fabrica liquidez ruim). Conservador só com evidência."""
     if volume is None:
         return False
     return volume < min_volume

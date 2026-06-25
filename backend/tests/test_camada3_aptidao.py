@@ -70,13 +70,20 @@ def test_teto_sigma_ausente_nao_opina():
     assert S.teto_sigma(None) is None
 
 
-# ─────────────────────────── TETO gap (× 1,5 desconto de realidade) ───────────────────────────
+# ─────────────────────────── TETO gap (× 2,0 folga INEGOCIÁVEL) ───────────────────────────
+def test_teto_gap_folga_2x():
+    # FOLGA 2,0× (inegociável — gap é o risco mais letal): gap 20% × 2,0 = 40% exigido →
+    # 2x liquida em −50% (>40) → 2x; 3x liquida em −33 (<40) → não sobrevive.
+    assert S.teto_gap(20) == 2.0
+
+
 def test_teto_gap_extremo_capa():
-    # gap 30% × 1,5 = 45% exigido → 2x liquida em −50% (>45) → 2x; 3x liquida em −33 (<45) → não.
-    assert S.teto_gap(30) == 2.0
+    # gap 30% × 2,0 = 60% exigido → NENHUM tier alavancado sobrevive (2x liquida −50% < 60) → 1x.
+    assert S.teto_gap(30) == 1.0
 
 
 def test_teto_gap_baixo_libera():
+    # gap 5% × 2,0 = 10% exigido → 5x liquida em −20% (>10) → 5x.
     assert S.teto_gap(5) == 5.0
 
 
@@ -173,6 +180,41 @@ def test_gate_gap_extremo_zera():
     assert lev == 1.0 and det["binding"] == "GATE"
 
 
+def test_gap_risk_extremo_armado_gap_20_forca_1x():
+    # VÁLVULA agora ARMADA no live path: gap histórico ≥20% = ativo estruturalmente gappy → 1x.
+    # Replica a regra de ranking_service: gap_risk_extremo = (gap_pct >= 20).
+    gap_pct = 22.0
+    extremo = (gap_pct is not None and abs(gap_pct) >= 20.0)
+    lev, det = S.teto_alavancagem_aptidao(max_dd_pct=-10, sigma_pct=8, beta=0.5,
+                                          mult_regime=4, gap_risk_extremo=extremo)
+    assert extremo is True
+    assert lev == 1.0 and det["binding"] == "GATE" and det["gate_gap_extremo"] is True
+
+
+def test_gap_risk_nao_extremo_nao_dispara():
+    # gap < 20% → válvula NÃO dispara (não força 1x por gap-risk).
+    extremo = (12.0 >= 20.0)
+    lev, det = S.teto_alavancagem_aptidao(max_dd_pct=-10, sigma_pct=8, beta=0.5,
+                                          mult_regime=4, gap_risk_extremo=extremo)
+    assert det["binding"] != "GATE"
+
+
+# ─────────────────────────── GATE de LIQUIDEZ via ADV-$ (vivo) ───────────────────────────
+def test_gate_liquidez_adv_baixo_veta():
+    # ADV-$ < US$ 5M (micro-cap ilíquida) → veta → 1x à vista.
+    lev, det = S.teto_alavancagem_aptidao(max_dd_pct=-10, sigma_pct=8, beta=0.5,
+                                          mult_regime=4, volume=2_000_000.0)
+    assert lev == 1.0 and det["binding"] == "GATE" and det["gate_liquidez"] is True
+
+
+def test_gate_liquidez_adv_largecap_passa():
+    # ADV-$ de large-cap (US$ 500M) passa folgado → não veta.
+    lev, det = S.teto_alavancagem_aptidao(max_dd_pct=-10, sigma_pct=8, beta=0.5,
+                                          mult_regime=4, volume=500_000_000.0)
+    assert det["binding"] != "GATE"
+    assert lev == 4.0
+
+
 # ─────────────────────────── ETF: aptidão DIFERENCIA (JEPI vs lixo) ───────────────────────────
 def test_etf_jepi_alto_vs_volatil_baixo():
     # JEPI-like: baixo beta, queda rasa, baixa vol, dividendo consistente → aptidão ALTA.
@@ -265,21 +307,50 @@ def test_vehicle_quality_renormaliza_sem_dado():
     assert q0 == 50.0 and bd0 == {}
 
 
-def _rank_alavancado(rank, leverage):
-    # Réplica fiel da fórmula de ranking_service (rank duplo v1).
-    return round(rank * (1.0 + 0.25 * (leverage - 1.0)), 1)
+# ─────────────────────────── RANK DUPLO v2 (Kelly: desempate, não dominância) ───────────────────────────
+def test_rank_alavancado_v2_lev1_igual_base():
+    # Sem alavancagem (1x): rank alavancado == rank base (bonus=0 → mult=1 → a decisão não muda).
+    assert R._rank_alavancado_v2(80.0, 1.0, None) == 80.0
+    assert R._rank_alavancado_v2(80.0, 1.0, 20.0) == 80.0
 
 
-def test_rank_duplo_lev1_igual_base():
-    # Sem alavancagem (1x): rank alavancado == rank base (a decisão não muda).
-    assert _rank_alavancado(80.0, 1.0) == 80.0
+def test_rank_alavancado_v2_boa_3x_sobe_pouco():
+    # Boa-3x σ baixo: DESEMPATE (sobe pouco, ≤ teto 1,35× → ≤ +35%), não domina.
+    base = 72.0
+    rav = R._rank_alavancado_v2(base, 3.0, 15.0)     # σ 15% baixo
+    assert rav > base                                # ganha bônus
+    assert rav <= base * 1.35 + 1e-6                 # teto duro 1,35×
+    # sobe pouco: na faixa de desempate (~+15-20%), não os +50% da v1 linear
+    assert (rav / base - 1.0) <= 0.35
 
 
-def test_rank_duplo_alavancavel_sobe():
-    # Mesmo mérito base: o alavancável 3x sobe acima do que só faz 1x → ranking RE-ORDENA.
-    base_otimo_1x = _rank_alavancado(82.0, 1.0)     # ótimo mas σ-alto → 1x
-    base_bom_3x = _rank_alavancado(72.0, 3.0)       # bom e seguro → 3x
-    assert base_bom_3x > base_otimo_1x              # com lev ligada, o 3x lidera
-    # mas o mérito ainda importa: junk (rank baixo) não ultrapassa por alavancagem
-    junk_4x = _rank_alavancado(30.0, 4.0)
-    assert junk_4x < base_otimo_1x
+def test_rank_alavancado_v2_inversao_suavizou():
+    # A INVERSÃO da v1 (boa-3x 26pts à frente da ótima-1x) sumiu/suavizou: a ótima-1x não fica
+    # MUITO atrás; a alavancagem vira desempate, não dominância.
+    otima_1x = R._rank_alavancado_v2(82.0, 1.0, 12.0)   # ótima, σ baixo, mas regime/teto → 1x
+    boa_3x = R._rank_alavancado_v2(72.0, 3.0, 15.0)     # boa, alavancável 3x
+    # boa-3x pode encostar/passar levemente, mas NÃO os 26 pontos da v1 (≈90 vs 82).
+    assert boa_3x - otima_1x < 12.0
+
+
+def test_rank_alavancado_v2_junk_nao_resgatado():
+    # GATE ANTI-JUNK: mérito < 40 NÃO ganha bônus de alavancagem (mult=1) → junk-4x = rank base.
+    junk = R._rank_alavancado_v2(30.0, 4.0, 50.0)
+    assert junk == 30.0                              # sem bônus
+    otima_1x = R._rank_alavancado_v2(82.0, 1.0, 12.0)
+    assert junk < otima_1x                           # junk nunca ultrapassa por alavancagem
+
+
+def test_rank_alavancado_v2_drag_desconta_sigma_alto():
+    # Mesma alavancagem: σ ALTO tem o volatility drag descontado → bônus MENOR que σ baixo.
+    base = 70.0
+    bonus_sig_baixo = R._rank_alavancado_v2(base, 3.0, 10.0)
+    bonus_sig_alto = R._rank_alavancado_v2(base, 3.0, 40.0)
+    assert bonus_sig_baixo > bonus_sig_alto          # drag côncavo pune σ alto
+    assert bonus_sig_alto >= base                    # mas nunca abaixo do base (piso 1,0×)
+
+
+def test_rank_alavancado_v2_sigma_ausente_sem_desconto():
+    # σ ausente (crypto) → sig=0 → SEM desconto de drag (conservador no bônus, que fica pequeno).
+    rav = R._rank_alavancado_v2(70.0, 3.0, None)
+    assert rav > 70.0 and rav <= 70.0 * 1.35 + 1e-6

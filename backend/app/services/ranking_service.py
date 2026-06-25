@@ -272,6 +272,8 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: b
         q = res["indicators"]["quote"][0]
         adj = (res["indicators"].get("adjclose") or [{}])[0].get("adjclose")
         cl = adj or q.get("close") or []
+        raw_cl = q.get("close") or []          # close NÃO-ajustado p/ casar com o volume (notional real)
+        vol = q.get("volume") or []            # CAMADA 3: volume diário (OHLCV vem na mesma chamada)
         hi = q.get("high") or []
         lo = q.get("low") or []
         rows = []
@@ -282,7 +284,10 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: b
             # Máx/mín reais; barra quebrada (H/L ausente ou ≤0, ex: semana corrente) → usa o close
             h = hi[i] if (i < len(hi) and hi[i] and hi[i] > 0) else c
             l = lo[i] if (i < len(lo) and lo[i] and lo[i] > 0) else c
-            rows.append((t, float(c), float(h), float(l)))
+            # ADV-$ usa preço BRUTO × volume (notional negociado real). adjclose × volume infla/deturpa.
+            rc = raw_cl[i] if (i < len(raw_cl) and raw_cl[i] and raw_cl[i] > 0) else c
+            vi = vol[i] if (i < len(vol) and vol[i] is not None and vol[i] > 0) else None
+            rows.append((t, float(c), float(h), float(l), float(rc), (float(vi) if vi is not None else None)))
         if len(rows) < 60:
             return (None, None, None) if want_annual else (None, None)
         idx = pd.to_datetime([r[0] for r in rows], unit="s")
@@ -290,6 +295,15 @@ def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: b
             {"Close": [r[1] for r in rows], "High": [r[2] for r in rows], "Low": [r[3] for r in rows]},
             index=idx,
         )
+        # CAMADA 3 — gate de liquidez: ADV-$ (mediana de preço_bruto×volume dos últimos pregões).
+        # Guardado em df.attrs p/ NÃO mudar a assinatura do retorno. None se o provedor não mandou
+        # volume confiável (a maioria manda OHLCV junto, mas Stooq/fallback pode não ter) → não fabrica.
+        try:
+            import numpy as _np
+            _adv = [r[4] * r[5] for r in rows if r[5] is not None and r[4] > 0]
+            df.attrs["adv_dollar"] = (float(_np.median(_adv[-60:])) if len(_adv) >= 30 else None)
+        except Exception:
+            df.attrs["adv_dollar"] = None
         pairs = [(r[0], r[1]) for r in rows]  # mantido p/ o cálculo de dividendos abaixo
 
         dy = None
@@ -683,6 +697,22 @@ def _sharpe(a: np.ndarray) -> Optional[float]:
     return float(r.mean() / r.std() * math.sqrt(252)) if r.std() > 0 else None
 
 
+def _rank_alavancado_v2(rank: float, leverage: float,
+                        sigma_total: Optional[float]) -> float:
+    """RANK DUPLO v2 (quant/Kelly) — alavancagem como DESEMPATE, não dominância.
+    bonus = ganho linear (L−1) MENOS o volatility drag CÔNCAVO ½(L²−1)σ² (σ em fração anual).
+    mult = 1 + 0,12·bonus, travado em [1,0 ; 1,35]. σ ausente → sig=0 (sem desconto de drag).
+    GATE ANTI-JUNK: rank < 40 NÃO ganha bônus (mult=1) — alavancagem não resgata mérito baixo.
+    Substitui a v1 linear (rank×(1+0,25(L−1))), que deixava a alavancagem substituir mérito."""
+    sig = (sigma_total or 0.0) / 100.0          # σ em fração anual; ausente → 0 (sem desconto)
+    bonus = (leverage - 1.0) - 0.5 * (leverage ** 2 - 1.0) * (sig ** 2)
+    mult = 1.0 + 0.12 * bonus
+    mult = max(1.0, min(1.35, mult))            # teto duro 1,35× e piso 1,0×
+    if rank < 40:                               # gate anti-junk: mérito baixo não ganha bônus
+        mult = 1.0
+    return round(rank * mult, 1)
+
+
 def _daily_log_returns(a: np.ndarray) -> Optional[np.ndarray]:
     """Retornos log diários da janela disponível (Camada 3: σ/gap). None se série curta."""
     if a is None or len(a) < 31:
@@ -938,7 +968,9 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
         leverage = min(leverage, lev_cap)   # teto por ativo é inviolável
 
         rank = quality * 0.45 + momentum * 0.55
-        rank_alavancado = round(rank * (1.0 + 0.25 * (leverage - 1.0)), 1)  # rank duplo (ver _analyze)
+        # rank duplo v2 (ver _analyze): crypto não calcula σ TOTAL anualizada aqui → sigma=None →
+        # sig=0 (sem desconto de drag; conservador, mantém o bônus pequeno). Mesmo teto 1,35×/anti-junk.
+        rank_alavancado = _rank_alavancado_v2(rank, leverage, None)
         stops = S.staggered_stops(leverage)
 
         return {
@@ -1280,10 +1312,20 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # acima). ¼·Kelly conservador com rf ~4,5% e μ = CAGR de preço (proxy). Arredonda PRA BAIXO.
         _rf = 0.045
         _mu_excess = (g5 / 100.0 - _rf) if g5 is not None else None
+        # GATE DE LIQUIDEZ (vivo): ADV-$ vindo do próprio OHLCV (df_full.attrs, calculado em
+        # _chart_api_df). None → não veta (não fabrica). Large-cap passa folgado; micro-cap ilíquida → 1x.
+        _adv_dollar = None
+        try:
+            _adv_dollar = df_full.attrs.get("adv_dollar")
+        except Exception:
+            _adv_dollar = None
         teto_lev, teto_det = S.teto_alavancagem_aptidao(
             max_dd_pct=dd, sigma_pct=sigma_total, gap_pct=gap_pct, beta=beta,
             mult_regime=leverage, mu_excess_annual=_mu_excess,
-            hist_curto=hist_curto, volume=None,   # sem volume confiável grátis p/ ações → não veta
+            hist_curto=hist_curto, volume=_adv_dollar,
+            # VÁLVULA gap-risk extremo (agora ARMADA): gap histórico ≥20% = ativo estruturalmente
+            # gappy (salto overnight sem chance de stop) → força 1x à vista. Antes era default False.
+            gap_risk_extremo=(gap_pct is not None and abs(gap_pct) >= 20.0),
         )
         leverage = min(leverage, teto_lev)   # MIN inviolável (sobrevivência nunca sobe o teto)
 
@@ -1293,8 +1335,11 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         #   • rank_alavancado (COM alavancagem) = mérito × quanto dá p/ alavancar com segurança →
         #     re-ordena quando o usuário liga a Camada 3. Ativo ótimo alavancável 3x sobe; ótimo mas
         #     σ-alto (só 1x) desce. Amplificação MODERADA (mérito domina; não promove faca, que já
-        #     tem rank baixo E leverage capada). v1 p/ revisão dos especialistas da Camada 3.
-        rank_alavancado = round(rank * (1.0 + 0.25 * (leverage - 1.0)), 1)
+        #     tem rank baixo E leverage capada).
+        # FÓRMULA v2 (quant/Kelly): alavancagem é DESEMPATE, não dominância. Ganho linear da
+        # alavancagem MENOS o volatility drag CÔNCAVO (−½(L²−1)σ²); teto duro 1,35×, piso 1,0×.
+        # GATE ANTI-JUNK: mérito < 40 NÃO ganha bônus (não resgata lixo). σ ausente → sem desconto.
+        rank_alavancado = _rank_alavancado_v2(rank, leverage, sigma_total)
 
         # SHY = reserva: na Quantfury só dá p/ ter até US$10k de notional → "alavancagem" de SHY
         # é irrelevante. Não força leverage aqui; fica fora da medida na carteira.

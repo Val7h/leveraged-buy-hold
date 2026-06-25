@@ -67,3 +67,7 @@ jobs:
         # Score de aptidão (máxDD/σ/gap/DY/recuperação/beta) + teto de alavancagem
         # por-fluxo MIN(σ,gap,beta,regime); máxDD/Kelly são travas agregadas (C.3).
         run: python -m pytest tests/test_camada3_aptidao.py -q
+      - name: Camada 3 — cap agregado que força (C.3)
+        # Alavancagem efetiva ajustada por correlação, cap duro 2.5x, máxDD/Kelly
+        # da cesta, max_lev_novo_fluxo com VETO sobre a guidance de aporte.
+        run: python -m pytest tests/test_c3_agregado.py -q

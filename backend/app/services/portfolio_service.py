@@ -714,6 +714,244 @@ def _exposure_caps(rows: List[dict], buckets: List[dict], correlation: Dict,
     }
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# CAP AGREGADO DE ALAVANCAGEM (Camada 3 nível portfólio / C.3) — O BLOQUEANTE.
+#
+# A Camada 3 POR-FLUXO (no ranking, teto_alavancagem_aptidao) capa cada aporte por
+# σ/gap/beta/regime. máxDD e ¼·Kelly foram EXILADOS pro AGREGADO — e até aqui o
+# agregado só ALERTAVA (_exposure_caps). Isto FORÇA: dá um teto DURO de alavancagem
+# efetiva da CARTEIRA e calcula a alavancagem MÁXIMA que um aporte novo pode ter sem
+# estourar esse teto. A guidance de aporte passa a usar MIN(o que já calcula, esse teto)
+# → o agregado tem VETO sobre o fluxo individual.
+#
+# Survival-first: sem isto, 2x em 8 ações correlacionadas passa cada fluxo isolado
+# enquanto a carteira fica a ~16x de exposição a um único fator.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Cap DURO da alavancagem efetiva (corr-ajustada) da carteira. Acima disto, nenhum
+# fluxo novo pode adicionar alavancagem (max_lev_novo_fluxo cai a 1x = sem alavanca).
+_LEV_EFETIVA_CAP = 2.5
+# Alerta antes do cap: zona amarela, ainda permite mas avisa.
+_LEV_EFETIVA_ALERTA = 2.0
+# Folga sobre o máxDD da CESTA (consistente com teto_maxdd por-fluxo, 1,8× base).
+_FOLGA_MAXDD_CESTA = 1.8
+
+
+def _effective_leverage_corr(risk_rows: List[dict], equity: Optional[float],
+                             correlation: Optional[Dict]) -> Optional[float]:
+    """Alavancagem efetiva AJUSTADA POR CORRELAÇÃO.
+
+    A efetiva normal (Σnotional_risco / equity) trata todo ativo como independente —
+    subestima o risco quando a carteira tem clusters que andam colados (corr≥0.8): 4
+    ações de um mesmo fator a 0.5x cada NÃO diversificam, comportam-se como UM bloco a 2x.
+
+    FÓRMULA (proxy honesto):
+      1. Agrupa tickers em clusters por componentes conexos dos pares corr≥0.8 (a mesma
+         lógica que _exposure_caps usa). Ativos sem par ≥0.8 = cluster de 1 (independentes).
+      2. Para cada cluster, soma os notionais → notional do BLOCO. Um cluster conta como
+         um único fator concentrado.
+      3. effective_leverage_corr = eff_normal × penalidade_de_concentração. A penalidade
+         compara a diversificação que você TERIA com N ativos independentes contra a que
+         você REALMENTE tem com os blocos correlacionados:
+            div_assets = (Σ notional_ativo)² / Σ (notional_ativo²)   (Nº efetivo de ATIVOS)
+            div_blocks = (Σ bloco_i)²        / Σ (bloco_i²)          (Nº efetivo de BLOCOS)
+         Sob diversificação ideal (independentes, iguais), o σ da cesta escala com 1/sqrt(N).
+         Ao colapsar N ativos em menos blocos efetivos, a redução de risco que você
+         esperava (sqrt(div_assets)) NÃO se materializa (só sqrt(div_blocks)). A exposição
+         efetiva ao fator SOBE por esse fator:
+            penalty = sqrt(div_assets / div_blocks)   (≥ 1)
+            eff_corr = eff_normal × penalty
+         - Sem clusters (cada ativo = 1 bloco): div_assets == div_blocks → penalty=1 → eff_corr = eff_normal.
+         - Todos num cluster: div_blocks=1 (1 bloco) mas div_assets=N → penalty=sqrt(N) → eff_corr sobe forte.
+
+    Sem equity ou sem rows → None (não fabrica)."""
+    if not equity or equity <= 0 or not risk_rows:
+        return None
+    notional_by_tk = {r["ticker"]: float(r.get("notional") or 0.0) for r in risk_rows}
+    total_notional = sum(notional_by_tk.values())
+    if total_notional <= 0:
+        return None
+    eff_normal = total_notional / equity
+
+    # Componentes conexos dos pares corr≥0.8 (mesma lógica de _exposure_caps).
+    pairs = (correlation or {}).get("redundant_pairs") or []
+    adj: Dict[str, set] = {}
+    for p in pairs:
+        a, b = p.get("a"), p.get("b")
+        if a in notional_by_tk and b in notional_by_tk:
+            adj.setdefault(a, set()).add(b)
+            adj.setdefault(b, set()).add(a)
+    seen = set()
+    blocks: List[float] = []          # notional somado por bloco/cluster
+    for tk in notional_by_tk:
+        if tk in seen:
+            continue
+        # BFS/DFS componente conexo
+        stack, comp = [tk], []
+        while stack:
+            n = stack.pop()
+            if n in seen:
+                continue
+            seen.add(n)
+            comp.append(n)
+            stack.extend(adj.get(n, set()) - seen)
+        blocks.append(sum(notional_by_tk.get(t, 0.0) for t in comp))
+
+    blocks = [b for b in blocks if b > 0]
+    asset_notionals = [n for n in notional_by_tk.values() if n > 0]
+    if not blocks or not asset_notionals:
+        return round(eff_normal, 3)
+    # Número EFETIVO de ATIVOS e de BLOCOS (índice de Herfindahl invertido).
+    sum_a = sum(asset_notionals); sum_a2 = sum(n * n for n in asset_notionals)
+    sum_b = sum(blocks); sum_b2 = sum(b * b for b in blocks)
+    div_assets = (sum_a * sum_a) / sum_a2 if sum_a2 > 0 else 1.0
+    div_blocks = (sum_b * sum_b) / sum_b2 if sum_b2 > 0 else 1.0
+    # Penalidade: a diversificação que NÃO se materializou por causa dos clusters (≥1).
+    penalty = math.sqrt(div_assets / div_blocks) if div_blocks > 0 else 1.0
+    penalty = max(1.0, penalty)
+    eff_corr = eff_normal * penalty
+    return round(eff_corr, 3)
+
+
+def _aggregate_leverage_cap(rows: List[dict], equity: Optional[float],
+                            correlation: Optional[Dict], risk_obj: Optional[Dict],
+                            totals: Dict) -> Dict:
+    """C.3 — CAP AGREGADO QUE FORÇA. Retorna o bloco `leverage_agregado`.
+
+    Combina:
+      • cap DURO de alavancagem efetiva corr-ajustada (_LEV_EFETIVA_CAP = 2.5);
+      • teto_maxdd da CESTA (máxDD agregado × folga 1,8× — onde o máxDD finalmente morde);
+      • ¼·Kelly do PORTFÓLIO (μ/σ da cesta — onde o Kelly finalmente morde).
+
+    `max_lev_novo_fluxo` = MIN dos três, arredondado PRA BAIXO. É o teto que a guidance de
+    aporte passa a respeitar (VETO do agregado sobre o fluxo). Quando a efetiva já está alta,
+    esse número CAI até 1x (sem alavanca nova).
+
+    Dado ausente NÃO entra no MIN (não fabrica) — segue a doutrina das travas por-fluxo."""
+    from app.quantitative.scoring_v2 import teto_maxdd, teto_kelly
+
+    risk_rows = [r for r in rows if not r.get("is_shy")]
+    eff_normal = totals.get("effective_leverage")            # já = risk_notional/equity (ou None)
+    eff_corr = _effective_leverage_corr(risk_rows, equity, correlation)
+
+    out: Dict = {
+        "effective_leverage": eff_normal,
+        "effective_leverage_corr": eff_corr,
+        "cap": _LEV_EFETIVA_CAP,
+        "alerta": _LEV_EFETIVA_ALERTA,
+        "status": "ok",
+        "max_lev_novo_fluxo": None,
+        "caps_aplicados": {},          # rastreabilidade: qual teto mordeu
+        "nota": "",
+    }
+
+    # Sem equity → não há como medir alavancagem efetiva. Survival default: 1x (sem alavanca).
+    if not equity or equity <= 0 or not risk_rows:
+        out["status"] = "indisponivel"
+        out["max_lev_novo_fluxo"] = 1.0
+        out["nota"] = ("Equity ausente — sem base p/ medir alavancagem efetiva. "
+                       "Survival default: nenhum aporte novo deve alavancar (1x).")
+        return out
+
+    eff_use = eff_corr if eff_corr is not None else eff_normal
+    if eff_use is None:
+        out["status"] = "indisponivel"
+        out["max_lev_novo_fluxo"] = 1.0
+        return out
+
+    # STATUS pela efetiva corr-ajustada.
+    if eff_use >= _LEV_EFETIVA_CAP:
+        out["status"] = "estourado"
+    elif eff_use >= _LEV_EFETIVA_ALERTA:
+        out["status"] = "alerta"
+    else:
+        out["status"] = "ok"
+
+    # ── TETO 1: cap DURO de alavancagem efetiva corr-ajustada ─────────────────────
+    # A alavancagem MÁXIMA que um aporte novo (de tamanho típico) pode ter sem a carteira
+    # passar do cap. Modelo: o cap limita o notional de RISCO total a (cap × equity). A folga
+    # que sobra (headroom) é o notional adicional possível; um aporte usa parte dela. Mas o
+    # SINAL que importa é o teto de MULTIPLICADOR: se a efetiva já está no/acima do cap, o
+    # multiplicador do fluxo novo cai a 1x. Escala linear entre alerta e cap.
+    risk_notional = totals.get("risk_notional") or sum(r["notional"] for r in risk_rows)
+    headroom_notional = max(0.0, _LEV_EFETIVA_CAP * equity - (risk_notional or 0.0))
+    # ajuste corr: se a efetiva corr é maior que a normal, o headroom REAL é menor.
+    if eff_corr and eff_normal and eff_normal > 0:
+        headroom_notional *= (eff_normal / eff_corr)        # encolhe o espaço pela concentração
+    # Teto de multiplicador pelo cap: decai de 5x (efetiva baixa) a 1x (efetiva no cap).
+    if eff_use >= _LEV_EFETIVA_CAP:
+        cap_lev = 1.0
+    else:
+        # folga relativa até o cap → vira teto de multiplicador (até 5x).
+        folga_rel = (_LEV_EFETIVA_CAP - eff_use) / _LEV_EFETIVA_CAP
+        cap_lev = max(1.0, min(5.0, 1.0 + folga_rel * 5.0))
+    out["caps_aplicados"]["cap_efetivo"] = round(cap_lev, 2)
+    out["headroom_notional"] = round(headroom_notional, 2)
+
+    candidates = [cap_lev]
+
+    # ── TETO 2: máxDD da CESTA (onde o máxDD finalmente morde) ────────────────────
+    # Reaproveita o máxDD da cesta de risco que o `risk` já reconstruiu (série ponderada).
+    maxdd_cesta = None
+    if risk_obj and risk_obj.get("maxdd_basket") is not None:
+        maxdd_cesta = risk_obj["maxdd_basket"]
+    sigma_cesta_pct = totals.get("_sigma_basket_pct")        # opcional (vol da cesta), se disponível
+    if maxdd_cesta is not None:
+        # teto_maxdd já aplica a folga 1,8× internamente (consistente com _FOLGA_MAXDD_CESTA).
+        t_dd = teto_maxdd(maxdd_cesta, sigma_pct=sigma_cesta_pct)
+        if t_dd is not None:
+            candidates.append(t_dd)
+            out["caps_aplicados"]["maxdd_cesta"] = t_dd
+            out["maxdd_cesta"] = round(maxdd_cesta, 1)
+
+    # ── TETO 3: ¼·Kelly do PORTFÓLIO (onde o Kelly finalmente morde) ──────────────
+    # μ da cesta ≈ CAGR ponderado − rf ; σ da cesta = vol anualizada da cesta de risco.
+    rf = 4.0                                                 # taxa livre de risco aprox. (% a.a.)
+    cagr_cesta = totals.get("cagr")                          # CAGR ponderado da carteira (% a.a.)
+    mu_excess = None
+    if cagr_cesta is not None:
+        mu_excess = (cagr_cesta - rf) / 100.0                # em FRAÇÃO anual
+    if mu_excess is not None and sigma_cesta_pct is not None:
+        t_kelly = teto_kelly(mu_excess, sigma_cesta_pct)
+        if t_kelly is not None:
+            candidates.append(t_kelly)
+            out["caps_aplicados"]["kelly_cesta"] = round(t_kelly, 2)
+            out["mu_excess_cesta"] = round(mu_excess * 100, 2)
+            out["sigma_cesta_pct"] = round(sigma_cesta_pct, 1)
+
+    # MIN dos tetos válidos, arredonda PRA BAIXO (survival = MÍNIMO).
+    max_lev = min(candidates) if candidates else 1.0
+    max_lev = max(1.0, math.floor(max_lev))
+    out["max_lev_novo_fluxo"] = float(max_lev)
+
+    # ── C.2 (best-effort): disjuntor de fluxos consecutivos ───────────────────────
+    # ESPEC: degradar o multiplicador (5x→3x→2x→1x) a cada aporte CONSECUTIVO no MESMO
+    # ativo em queda (abaixo da MM / em drawdown). DADO AUSENTE: o modelo Position guarda
+    # apenas opened_at + shares/avg_price agregados — NÃO há histórico de aportes individuais
+    # (quantos aportes consecutivos foram feitos, quando, a que preço). Sem tabela de
+    # aporte-history NÃO dá pra contar fluxos consecutivos sem FABRICAR. Doutrina: não inventa.
+    out["disjuntor_fluxos"] = {
+        "implementado": False,
+        "motivo": ("Requer histórico de aportes por ativo (tabela aporte-history): nº de aportes "
+                   "consecutivos, datas e preços. O modelo Position só tem opened_at + shares/avg_price "
+                   "agregados — impossível contar fluxos consecutivos sem fabricar."),
+        "degradacao_alvo": "5x→3x→2x→1x por aporte consecutivo em ativo abaixo da MM/em drawdown",
+        "falta": "tabela aporte-history (contribution log) com [ticker, data, preço, abaixo_MM, drawdown]",
+    }
+
+    # Nota legível.
+    quem = min(out["caps_aplicados"], key=out["caps_aplicados"].get) if out["caps_aplicados"] else "cap_efetivo"
+    nomes = {"cap_efetivo": "cap de alavancagem efetiva", "maxdd_cesta": "máxDD da cesta",
+             "kelly_cesta": "¼·Kelly da carteira"}
+    if max_lev <= 1.0:
+        out["nota"] = (f"Carteira a {eff_use:.2f}x efetiva (corr-ajustada) — sem espaço para "
+                       f"alavancar fluxo novo. Teto que mordeu: {nomes.get(quem, quem)}.")
+    else:
+        out["nota"] = (f"Fluxo novo limitado a {max_lev:.0f}x (efetiva corr {eff_use:.2f}x; "
+                       f"teto vinculante: {nomes.get(quem, quem)}).")
+    return out
+
+
 def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                         cooldown_tickers: Optional[List[str]] = None) -> Dict:
     """
@@ -951,6 +1189,9 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                 var_d = float(-np.percentile(portr, 5))
                 cumr = np.cumprod(1 + portr); rmr = np.maximum.accumulate(cumr)
                 maxdd_b = float(((cumr - rmr) / rmr).min() * 100)
+                # σ anualizada da cesta de risco (alimenta ¼·Kelly e teto_maxdd do agregado).
+                sigma_basket_pct = float(portr.std() * math.sqrt(252) * 100) if portr.std() > 0 else None
+                totals["_sigma_basket_pct"] = round(sigma_basket_pct, 2) if sigma_basket_pct is not None else None
                 L = risk_notional / eq
                 liq_zero = round(100.0 / L, 1) if L > 0 else None             # queda da cesta que ZERA o equity (perda=equity)
                 liq_dist = round(_LIQ_EQUITY_PCT / L, 1) if L > 0 else None    # queda que LIQUIDA (Quantfury, com buffer slippage)
@@ -965,6 +1206,22 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                 }
         except Exception:
             pass
+
+    # ── CAP AGREGADO DE ALAVANCAGEM (C.3) — o BLOQUEANTE que FORÇA ────────────────
+    # Calculado ANTES do aporte: max_lev_novo_fluxo vira VETO sobre a alavancagem sugerida.
+    try:
+        leverage_agregado = _aggregate_leverage_cap(rows, eq, correlation, risk, totals)
+    except Exception as e:
+        logger.warning(f"[C.3] leverage_agregado falhou: {e}")
+        # Survival default: na dúvida, não alavanca fluxo novo.
+        leverage_agregado = {
+            "effective_leverage": totals.get("effective_leverage"),
+            "effective_leverage_corr": None, "cap": _LEV_EFETIVA_CAP,
+            "alerta": _LEV_EFETIVA_ALERTA, "status": "indisponivel",
+            "max_lev_novo_fluxo": 1.0, "caps_aplicados": {},
+            "nota": "Cap agregado indisponível — survival default 1x.",
+        }
+    cap_novo_fluxo = leverage_agregado.get("max_lev_novo_fluxo")
 
     # ── APORTE pelo BUCKET SUB-ALVO (item 2 — usa o ranking novo, não o screening velho) ──
     # Onde colocar dinheiro novo: bucket(s) abaixo do alvo → melhor ranqueado COMPRAR/FORTE
@@ -984,21 +1241,48 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         cands.sort(key=lambda x: -(x.get("rank") or 0))
         for a in cands[:2]:
             reg_a = regime_by_cat.get(a.get("category"), equity_regime)   # regime do MERCADO do candidato
-            mult_a = _MULT.get(reg_a, mult_aporte)
+            mult_regime_a = _MULT.get(reg_a, mult_aporte)
+            # VETO do AGREGADO (C.3): a alavancagem sugerida = MIN(regime, cap agregado).
+            # Se a carteira está alavancada demais, o cap puxa pra baixo (até 1x = sem alavanca).
+            if cap_novo_fluxo is not None:
+                mult_a = int(min(mult_regime_a, cap_novo_fluxo))
+            else:
+                mult_a = mult_regime_a
+            mult_a = max(1, mult_a)
+            capped = cap_novo_fluxo is not None and mult_a < mult_regime_a
+            rationale = (f"{b['bucket']} {abs(b['drift']):.0f}% abaixo do alvo — "
+                         f"alavanca o aporte {mult_a}x ({reg_a.lower()})")
+            if capped:
+                rationale += (f" · CAP AGREGADO limitou de {mult_regime_a}x → {mult_a}x "
+                              f"(alavancagem efetiva da carteira)")
             aporte.append({
                 "bucket": b["bucket"], "drift": b["drift"],
                 "ticker": a["ticker"], "name": a.get("name"), "verdict": a.get("verdict"),
                 "rank": a.get("rank"), "dividend_yield": a.get("dividend_yield"),
                 "leverage_sugg": mult_a,
-                "rationale": f"{b['bucket']} {abs(b['drift']):.0f}% abaixo do alvo — alavanca o aporte {mult_a}x ({reg_a.lower()})",
+                "leverage_regime": mult_regime_a,
+                "capped_by_aggregate": capped,
+                "rationale": rationale,
             })
+    # Multiplicador EFETIVO do regime = MIN(regime, cap agregado C.3). O agregado tem VETO.
+    mult_regime_headline = mult_aporte
+    if cap_novo_fluxo is not None:
+        mult_aporte_efetivo = max(1, int(min(mult_aporte, cap_novo_fluxo)))
+    else:
+        mult_aporte_efetivo = mult_aporte
+    regime_capped = mult_aporte_efetivo < mult_regime_headline
     aporte_regime = {
-        "regime": equity_regime, "multiplier": mult_aporte,
+        "regime": equity_regime,
+        "multiplier": mult_aporte_efetivo,            # já com o veto do agregado aplicado
+        "multiplier_regime": mult_regime_headline,    # o que o regime sozinho pediria
+        "capped_by_aggregate": regime_capped,
         "deploy_shy": capitulacao,
         "shy_available": round(shy_notional, 2),
-        "nota": ("CAPITULAÇÃO: venda o SHY e deploye o fluxo a %dx nos descontados" % mult_aporte)
-                if capitulacao else
-                ("Reinvista dividendos/aportes a %dx no bucket sub-alvo" % mult_aporte),
+        "nota": (("CAPITULAÇÃO: venda o SHY e deploye o fluxo a %dx nos descontados" % mult_aporte_efetivo)
+                 if capitulacao else
+                 ("Reinvista dividendos/aportes a %dx no bucket sub-alvo" % mult_aporte_efetivo))
+                + (f" · CAP AGREGADO segurou {mult_regime_headline}x→{mult_aporte_efetivo}x (carteira já alavancada)"
+                   if regime_capped else ""),
     }
 
     # STRESS TEST (item 5/sênior): replay de 2008/2020/2022 na carteira atual alavancada.
@@ -1040,12 +1324,15 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         exposure_caps = {"alerts": [], "clusters": [], "bucket_breaches": []}
 
     import datetime as _dt
+    totals.pop("_sigma_basket_pct", None)        # interno (alimentou Kelly/máxDD) — não vaza
     return {
         "assets": rows, "totals": totals, "buckets": buckets,
         "correlation": correlation, "rotation": rotation,
         "survival_stops": survival_stops, "risk": risk,
         "aporte": aporte, "aporte_regime": aporte_regime,
         "stress": stress, "deleverage": deleverage,
+        # C.3 — CAP AGREGADO DE ALAVANCAGEM (o bloqueante que FORÇA):
+        "leverage_agregado": leverage_agregado,
         # Travas Fase 2:
         "thesis_stops": thesis_stops,
         "duration_warnings": duration_warnings,
