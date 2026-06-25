@@ -31,6 +31,22 @@ export async function PATCH(
     data: { isSeed: nextSeed, isCycle: nextSeed ? false : position.isCycle },
   });
 
+  // Histórico: toggle da semente.
+  try {
+    await prisma.positionEvent.create({
+      data: {
+        portfolioId: id,
+        ticker: updated.ticker,
+        action: "SEMENTE",
+        shares: Number(updated.quantity),
+        price: Number(updated.avgPrice),
+        totalValue: Number(updated.quantity) * Number(updated.avgPrice),
+        leverage: Number(updated.leverage),
+        notes: nextSeed ? "Marcada como semente (on)" : "Semente desmarcada (off)",
+      },
+    });
+  } catch { /* não derruba a mutação se o log falhar */ }
+
   return NextResponse.json({
     id: updated.id,
     portfolioId: updated.portfolioId,

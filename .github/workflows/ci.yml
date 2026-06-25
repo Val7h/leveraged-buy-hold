@@ -80,3 +80,7 @@ jobs:
         # fetch_price_history cai p/ _chart_api_df (Yahoo via urllib) quando yfinance
         # falha (bloqueado no Render); conserta market-state/Sharpe/Backtest.
         run: python -m pytest tests/test_market_data_chartapi.py -q
+      - name: Backtest na doutrina (fluxos, não patrimônio)
+        # _run_adaptive_strategy alavanca FLUXOS (dívida fixa por aporte, stop ⅓,
+        # SHY, desalavancagem natural) — espelha a ESTRATÉGIA MASTER do Simulador.
+        run: python -m pytest tests/test_backtest_doutrina.py -q

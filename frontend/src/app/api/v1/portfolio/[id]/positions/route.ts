@@ -199,6 +199,22 @@ export async function POST(req: NextRequest, { params: { id } }: RouteCtx) {
       },
     });
 
+    // Histórico: consolidação em posição existente -> aporte adicional (COMPRA das shares novas).
+    try {
+      await prisma.positionEvent.create({
+        data: {
+          portfolioId: id,
+          ticker,
+          action: "COMPRA",
+          shares: q2,
+          price: p2,
+          totalValue: q2 * p2,
+          leverage: l2,
+          notes: `Aporte consolidado (preço médio ${updated.avgPrice.toString()})`,
+        },
+      });
+    } catch { /* não derruba a mutação se o log falhar */ }
+
     return NextResponse.json(
       {
         id: updated.id,
@@ -230,6 +246,23 @@ export async function POST(req: NextRequest, { params: { id } }: RouteCtx) {
       ...(openedAt && !isNaN(openedAt.getTime()) ? { openedAt } : {}),
     },
   });
+
+  // Histórico: nova posição -> COMPRA.
+  try {
+    await prisma.positionEvent.create({
+      data: {
+        portfolioId: id,
+        ticker,
+        action: "COMPRA",
+        shares: parsed.shares,
+        price: parsed.avg_price,
+        totalValue: parsed.shares * parsed.avg_price,
+        leverage: parsed.leverage,
+        notes: "Abertura de posição",
+        ...(openedAt && !isNaN(openedAt.getTime()) ? { executedAt: openedAt } : {}),
+      },
+    });
+  } catch { /* não derruba a mutação se o log falhar */ }
 
   return NextResponse.json(
     {

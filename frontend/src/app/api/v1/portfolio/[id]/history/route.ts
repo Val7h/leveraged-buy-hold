@@ -1,9 +1,10 @@
 /**
  * GET /api/v1/portfolio/[id]/history
  *
- * Retorna o histórico de operações da carteira.
- * Hoje: posições com data de criação (snapshot inicial).
- * Futuro: quando existir tabela PositionHistory no Prisma, consultar diretamente.
+ * Retorna o histórico REAL de operações da carteira (tabela PositionEvent).
+ * Cada mutação (COMPRA/VENDA/AJUSTE/SEMENTE/CICLO) grava um evento.
+ * FALLBACK: carteiras antigas (sem eventos, criadas antes da tabela) caem na
+ * síntese a partir das posições — pra não ficar vazio.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -26,8 +27,60 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
   });
   if (!portfolio) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Build a synthetic history from position creation events.
-  // Field names match TradeHistoryItem type used by history/page.tsx.
+  // Histórico real: eventos gravados pelos mutadores.
+  let realEvents: Array<{
+    id: string;
+    action: string;
+    ticker: string;
+    shares: number | null;
+    price: number | null;
+    total_value: number | null;
+    leverage: number | null;
+    executed_at: string;
+    notes: string | null;
+  }> = [];
+
+  try {
+    const rows = await prisma.positionEvent.findMany({
+      where: { portfolioId: id },
+      orderBy: { executedAt: "desc" },
+    });
+    realEvents = rows.map((e) => ({
+      id: e.id,
+      action: e.action,
+      ticker: e.ticker,
+      shares: e.shares ?? null,
+      price: e.price ?? null,
+      total_value: e.totalValue ?? null,
+      leverage: e.leverage ?? null,
+      executed_at: e.executedAt.toISOString(),
+      notes: e.notes ?? null,
+    }));
+  } catch {
+    // tabela ainda não migrada em ambientes muito antigos -> cai no fallback
+    realEvents = [];
+  }
+
+  if (realEvents.length > 0) {
+    // total_invested = soma das COMPRAS (entradas de capital).
+    const totalInvested = realEvents
+      .filter((e) => e.action === "COMPRA")
+      .reduce((s, e) => s + (e.total_value ?? 0), 0);
+
+    return NextResponse.json(
+      {
+        portfolio_id: id,
+        portfolio_name: portfolio.name,
+        events: realEvents,
+        total_invested: totalInvested,
+        event_count: realEvents.length,
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  // FALLBACK sintético (carteiras antigas, sem eventos registrados):
+  // cada posição vira 1 evento COMPRA fabricado a partir do createdAt.
   const events = portfolio.positions.map((p) => {
     const total_value = Number(p.quantity) * Number(p.avgPrice);
     return {
@@ -39,7 +92,7 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
       total_value,
       leverage: Number(p.leverage),
       executed_at: p.createdAt.toISOString(),
-      notes: "Posição registrada",
+      notes: "Posição registrada (histórico sintético)",
     };
   });
 

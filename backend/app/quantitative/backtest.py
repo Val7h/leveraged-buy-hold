@@ -23,6 +23,16 @@ from app.quantitative.scoring import (
     compute_quality_score, compute_opportunity_score,
     compute_composite_score, leverage_from_score,
 )
+# ESTRATÉGIA MASTER (ADC): espelha a doutrina já implementada no Simulador
+# (simulate_portfolio). Só LEMOS de monte_carlo p/ reusar os helpers de regime/
+# stop/SHY — não reescrevemos nada lá.
+from app.quantitative.monte_carlo import (
+    _regime_leverage, _STOP_BANDS, _SHY_BUILD_FRAC,
+)
+
+# Multiplicador-teto do regime por perfil de risco (mesmo mapa do Monte Carlo:
+# conservador 2x / equilibrado 3x / agressivo 4x). O regime escolhe abaixo disso.
+_MAX_LEV_BY_PROFILE = {"conservative": 2.0, "balanced": 3.0, "aggressive": 4.0}
 
 CRISIS_PERIODS = [
     {"name": "GFC 2008-2009",       "start": "2007-10-01", "end": "2009-03-31"},
@@ -70,129 +80,172 @@ def _run_adaptive_strategy(
     max_drawdown_hist: float = -35.0,
     sharpe_hist: float = 0.8,
     vol_hist: float = 15.0,
+    index_close: Optional[pd.Series] = None,
 ) -> Tuple[pd.DataFrame, List[Dict]]:
     """
-    Adaptive leveraged B&H with monthly leverage rebalancing.
-    Properly tracks equity = shares * price - borrowed.
-    Margin call triggered by intraday LOW, not close.
+    Backtest da ESTRATÉGIA MASTER (Alavancagem Dinâmica Composta) sobre PREÇOS
+    REAIS — fiel à doutrina, espelhando `simulate_portfolio` do monte_carlo:
+
+      • o aporte INICIAL entra SEM alavancagem (a doutrina alavanca FLUXOS, não o
+        patrimônio de partida);
+      • cada mês, o FLUXO NOVO (aporte + dividendos reinvestidos) é deployado com
+        alavancagem POR REGIME (topo/correção/urso/capitulação), criando dívida
+        FIXA — a dívida NÃO re-margina com o mercado → desalavancagem natural
+        conforme o equity compõe;
+      • stop escalonado -10/-20/-30% do pico: vende 1/3 e ABATE dívida (o caixa
+        liberado acima da dívida vira reserva SHY de munição);
+      • reserva SHY (sem alavancagem) construída no topo/correção e DEPLOYADA na
+        capitulação;
+      • Quantfury CARRY ZERO (sem juro de margem). LIQUIDAÇÃO quando a perda ≈
+        equity alocado (assets - debt ≈ 0), checada na MÍNIMA (Low) do dia.
+
+    Regime = multiplicador do mercado na data. Usa o drawdown do ÍNDICE
+    (`index_close`, ex. SPY) quando disponível; senão usa o drawdown do próprio
+    ativo como proxy (mesma lógica auto-referente do Monte Carlo).
+    NÃO alavanca mais o patrimônio inteiro: `new_notional = equity * target_lev`
+    foi removido de propósito.
     """
     close = price_df["Close"].squeeze()
-    high  = price_df["High"].squeeze() if "High" in price_df.columns else close * 1.005
     low   = price_df["Low"].squeeze()  if "Low"  in price_df.columns else close * 0.995
 
-    rsi       = calculate_rsi(close)
-    stoch_k, _= calculate_stochastic(high, low, close)
-    bb_upper, _, bb_lower = calculate_bollinger_bands(close)
-    ma200     = calculate_ma200(close)
-    dist_ma   = distance_from_ma(close, ma200)
-    bb_pos    = bollinger_position(close, bb_upper, bb_lower)
+    max_leverage = _MAX_LEV_BY_PROFILE.get(risk_profile, 3.0)
 
-    quality_score, _ = compute_quality_score(
-        beta=beta,
-        max_drawdown_pct=max_drawdown_hist,
-        dividend_yield=dividend_yield,
-        sharpe=sharpe_hist,
-        volatility_pct=vol_hist,
-    )
+    # ── Índice de regime: drawdown do pico até a data (point-in-time) ─────────
+    # Preferimos um índice externo (SPY) alinhado às datas do ativo; sem ele,
+    # usamos o próprio ativo como proxy de regime.
+    if index_close is not None and len(index_close) > 0:
+        regime_src = index_close.reindex(close.index).ffill().bfill()
+    else:
+        regime_src = close
+    regime_peak_series = regime_src.cummax()
 
-    # ── Initial position at 1x (no debt) ─────────────────────────────────────
-    price0         = float(close.iloc[0])
-    total_shares   = initial_capital / price0
-    total_borrowed = 0.0
-    current_lev    = 1.0
-    prev_lev       = 1.0
-    liq_price      = 0.0       # No margin call at 1x
-    margin_called  = False
+    # ── Posição: ATIVOS (notional) / DÍVIDA (fixa por fluxo) / SHY ────────────
+    price0   = float(close.iloc[0])
+    assets   = initial_capital     # aporte inicial entra SEM alavancagem (1x)
+    debt     = 0.0                 # dívida fixa por fluxo; não re-margina
+    shy      = 0.0                 # reserva de ataque (cash-like, 1x)
+    liquidated = False
+
+    asset_peak = assets            # pico dos ATIVOS p/ stop escalonado
+    triggered: set = set()         # stops já disparados desde o último pico
+    prev_lev = 1.0
 
     trades: List[Dict] = [{
         "date": str(close.index[0])[:10],
         "type": "INICIAL",
         "price": round(price0, 4),
         "leverage": 1.0,
-        "details": "Posição inicial 1x",
+        "details": "Aporte inicial 1x (alavanca fluxos, não o patrimônio)",
     }]
 
     records    = []
     prev_month = None
+    prev_price = price0
 
     for i, (date, price_val) in enumerate(close.items()):
         price     = float(price_val)
         date_str  = str(date)[:10]
         daily_low = _safe_float(low, i) or price * 0.99
 
-        # ── Already liquidated ────────────────────────────────────────────────
-        if margin_called:
+        # ── Já liquidado: equity zerado dali em diante ───────────────────────
+        if liquidated:
             records.append({"date": date, "equity": 0.0, "leverage": 0.0, "price": price})
             continue
 
-        # ── Intraday margin call check (uses LOW, not close) ──────────────────
-        if liq_price > 0 and daily_low <= liq_price:
-            margin_called = True
-            trades.append({
-                "date": date_str, "type": "MARGIN_CALL",
-                "price": round(liq_price, 4), "leverage": 0.0,
-                "details": f"Liquidado @ ${liq_price:.2f}",
-            })
-            total_shares   = 0.0
-            total_borrowed = 0.0
-            records.append({"date": date, "equity": 0.0, "leverage": 0.0, "price": liq_price})
-            continue
+        # ── Mercado mexe nos ATIVOS (dívida NÃO muda → desalavancagem natural) ─
+        if i > 0 and prev_price > 0:
+            ret = price / prev_price - 1.0
+            assets *= (1.0 + ret)
+        prev_price = price
+
+        # ── Quantfury: liquidação quando a perda ≈ equity alocado ────────────
+        # Checada na MÍNIMA do dia (assets na mínima - dívida ≈ 0). Carry zero.
+        if i > 0:
+            assets_at_low = assets * (daily_low / price) if price > 0 else assets
+            if debt > 0 and (assets_at_low + shy - debt) <= initial_capital * 0.05:
+                liquidated = True
+                trades.append({
+                    "date": date_str, "type": "MARGIN_CALL",
+                    "price": round(daily_low, 4), "leverage": 0.0,
+                    "details": f"Liquidado (perda ≈ equity) @ ${daily_low:.2f}",
+                })
+                assets = debt = shy = 0.0
+                records.append({"date": date, "equity": 0.0, "leverage": 0.0, "price": daily_low})
+                continue
+
+        # ── Drawdown do regime (índice ou proxy) até esta data ───────────────
+        rpeak = float(regime_peak_series.iloc[i])
+        rval  = float(regime_src.iloc[i])
+        dd_regime = (rval / rpeak - 1.0) if rpeak > 0 else 0.0
+
+        # ── Pico dos ATIVOS + drawdown do próprio ativo p/ stop escalonado ───
+        if assets > asset_peak:
+            asset_peak = assets
+            triggered.clear()        # novo pico zera os stops
+        dd_assets = (assets / asset_peak - 1.0) if asset_peak > 0 else 0.0
+
+        # ── Stop escalonado: vende 1/3 e abate dívida (sobrevivência) ────────
+        for k, band in enumerate(_STOP_BANDS):
+            if dd_assets <= band and k not in triggered:
+                triggered.add(k)
+                sell = assets / 3.0
+                assets -= sell
+                pay = min(debt, sell)
+                debt -= pay
+                shy += (sell - pay)  # caixa acima da dívida vira munição
+                trades.append({
+                    "date": date_str, "type": "STOP",
+                    "price": round(price, 4), "leverage": 0.0,
+                    "details": f"Stop {int(band*100)}% — vendeu ⅓, abateu dívida",
+                })
 
         month = pd.Timestamp(date).month
-
         if prev_month is None or month != prev_month:
-            # ── Score and leverage for this month ─────────────────────────────
-            opp_score, _ = compute_opportunity_score(
-                rsi=_safe_float(rsi, i),
-                stoch_k=_safe_float(stoch_k, i),
-                distance_ma200=_safe_float(dist_ma, i),
-                bb_position=_safe_float(bb_pos, i),
-            )
-            composite = compute_composite_score(quality_score, opp_score)
-            lev_rec   = leverage_from_score(composite, risk_profile)
-            target_lev = lev_rec["recommended_leverage"]
+            # ── Fluxo novo do mês: aporte + dividendos reinvestidos ──────────
+            div_income = assets * (dividend_yield / 12.0)
+            flow = (monthly_contribution if monthly_contribution > 0 else 0.0) + div_income
 
-            # ── Current equity before monthly events ─────────────────────────
-            current_equity = max(0.0, total_shares * price - total_borrowed)
+            # ── Regime → alavancagem dos FLUXOS + comportamento do SHY ───────
+            lev, regime = _regime_leverage(dd_regime, max_leverage)
+            if regime in ("topo", "correcao"):
+                to_shy = flow * _SHY_BUILD_FRAC      # constrói reserva (sem alavancagem)
+                shy   += to_shy
+                deploy = flow - to_shy
+            else:
+                deploy = flow + shy                  # urso/capitulação: solta a munição
+                shy    = 0.0
 
-            # ── Monthly contribution ──────────────────────────────────────────
+            # ── Alavanca SÓ o fluxo deployado (dívida FIXA por fluxo) ────────
+            if deploy > 0:
+                assets += lev * deploy
+                debt   += (lev - 1.0) * deploy
+
             if monthly_contribution > 0:
-                current_equity += monthly_contribution
                 trades.append({
                     "date": date_str, "type": "APORTE",
-                    "price": round(price, 4), "leverage": round(target_lev, 2),
-                    "details": f"+${monthly_contribution:,.0f}",
+                    "price": round(price, 4), "leverage": round(lev, 2),
+                    "details": f"+${monthly_contribution:,.0f} @ {lev:.1f}x [{regime}]",
                 })
 
-            # ── Dividend reinvestment ─────────────────────────────────────────
-            div_income = total_shares * price * (dividend_yield / 12)
-            current_equity += div_income
-
-            # ── Rebalance to target leverage ──────────────────────────────────
-            new_notional   = current_equity * target_lev
-            total_shares   = new_notional / price
-            total_borrowed = current_equity * (target_lev - 1)
-            current_lev    = target_lev
-            liq_price = (total_borrowed / total_shares
-                         if total_shares > 0 and total_borrowed > 0 else 0.0)
-
-            # Track significant leverage changes (≥ 0.25x jump)
-            if prev_month is not None and abs(target_lev - prev_lev) >= 0.25:
-                trade_type = "REBALANCE_ALTA" if target_lev > prev_lev else "REBALANCE_BAIXA"
+            # ── Marca mudança de regime/alavancagem (≥ 0.25x) ────────────────
+            if prev_month is not None and abs(lev - prev_lev) >= 0.25:
+                trade_type = "REBALANCE_ALTA" if lev > prev_lev else "REBALANCE_BAIXA"
                 trades.append({
                     "date": date_str, "type": trade_type,
-                    "price": round(price, 4), "leverage": round(target_lev, 2),
-                    "details": f"{prev_lev:.1f}x → {target_lev:.1f}x",
+                    "price": round(price, 4), "leverage": round(lev, 2),
+                    "details": f"{prev_lev:.1f}x → {lev:.1f}x [{regime}]",
                 })
 
-            prev_lev   = target_lev
+            prev_lev   = lev
             prev_month = month
 
-        equity = max(0.0, total_shares * price - total_borrowed)
+        # ── Equity + alavancagem EFETIVA medida (notional / equity) ──────────
+        equity = max(0.0, assets + shy - debt)
+        eff_lev = (assets / equity) if equity > 1e-9 else 0.0
         records.append({
             "date":     date,
             "equity":   equity,
-            "leverage": current_lev,
+            "leverage": eff_lev,
             "price":    price,
         })
 
@@ -377,9 +430,16 @@ def run_backtest(
     primary_ticker = list(price_data.keys())[0]
     primary_df     = price_data[primary_ticker]
 
+    # Sinal de REGIME: drawdown do índice (SPY) na data. Sem SPY, o adaptativo
+    # cai pro proxy (drawdown do próprio ativo).
+    index_close = None
+    if "SPY" in price_data and primary_ticker != "SPY":
+        index_close = price_data["SPY"]["Close"].squeeze()
+
     adaptive_df,  adaptive_trades  = _run_adaptive_strategy(
         primary_df, initial_capital, monthly_contribution, risk_profile,
         beta, dividend_yield, max_dd_hist, sharpe_hist, vol_hist,
+        index_close=index_close,
     )
     bh1x_df,  _  = _run_buy_hold(primary_df, initial_capital, monthly_contribution, 1.0, dividend_yield)
     bh2x_df,  bh2x_trades = _run_buy_hold(primary_df, initial_capital, monthly_contribution, 2.0, dividend_yield)

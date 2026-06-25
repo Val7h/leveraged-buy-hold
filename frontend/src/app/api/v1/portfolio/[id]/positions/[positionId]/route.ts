@@ -52,6 +52,22 @@ export async function PUT(request: NextRequest, { params }: RouteCtx) {
     },
   });
 
+  // Histórico: edição manual da posição -> AJUSTE.
+  try {
+    await prisma.positionEvent.create({
+      data: {
+        portfolioId: id,
+        ticker: updated.ticker,
+        action: "AJUSTE",
+        shares: parsed.shares,
+        price: parsed.avg_price,
+        totalValue: parsed.shares * parsed.avg_price,
+        leverage: parsed.leverage,
+        notes: "Ajuste manual da posição",
+      },
+    });
+  } catch { /* não derruba a mutação se o log falhar */ }
+
   return NextResponse.json(
     {
       id: updated.id,
@@ -76,7 +92,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteCtx) {
 
   const existing = await prisma.position.findFirst({
     where: { id: positionId, portfolio: { id, userId: user.id } },
-    select: { id: true, ticker: true },
+    select: { id: true, ticker: true, quantity: true, avgPrice: true, leverage: true },
   });
 
   if (!existing) {
@@ -86,6 +102,24 @@ export async function DELETE(_request: NextRequest, { params }: RouteCtx) {
   // Registra a venda p/ o cooldown de recompra da rotação (30 dias).
   try {
     await prisma.sellEvent.create({ data: { portfolioId: id, ticker: existing.ticker } });
+  } catch { /* não bloqueia a remoção se o log falhar */ }
+
+  // Histórico: remoção da posição -> VENDA (shares/preço atuais).
+  try {
+    const soldShares = Number(existing.quantity);
+    const soldPrice = Number(existing.avgPrice);
+    await prisma.positionEvent.create({
+      data: {
+        portfolioId: id,
+        ticker: existing.ticker,
+        action: "VENDA",
+        shares: soldShares,
+        price: soldPrice,
+        totalValue: soldShares * soldPrice,
+        leverage: Number(existing.leverage),
+        notes: "Posição encerrada",
+      },
+    });
   } catch { /* não bloqueia a remoção se o log falhar */ }
 
   await prisma.position.delete({ where: { id: positionId } });

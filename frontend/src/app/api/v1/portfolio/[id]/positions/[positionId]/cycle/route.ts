@@ -31,6 +31,22 @@ export async function PATCH(
     data: { isCycle: nextCycle, isSeed: nextCycle ? false : position.isSeed },
   });
 
+  // Histórico: toggle do ciclo.
+  try {
+    await prisma.positionEvent.create({
+      data: {
+        portfolioId: id,
+        ticker: updated.ticker,
+        action: "CICLO",
+        shares: Number(updated.quantity),
+        price: Number(updated.avgPrice),
+        totalValue: Number(updated.quantity) * Number(updated.avgPrice),
+        leverage: Number(updated.leverage),
+        notes: nextCycle ? "Marcada como ciclo (on)" : "Ciclo desmarcado (off)",
+      },
+    });
+  } catch { /* não derruba a mutação se o log falhar */ }
+
   return NextResponse.json({
     id: updated.id,
     portfolioId: updated.portfolioId,

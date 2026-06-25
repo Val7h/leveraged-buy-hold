@@ -96,9 +96,31 @@ model Portfolio {
 
   user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   positions           Position[]
+  events              PositionEvent[]
 
   @@index([userId, createdAt])
   @@map("portfolios")
+}
+
+// Histórico REAL de operações da carteira. Cada mutação (compra/venda/ajuste/
+// toggle semente/ciclo) grava um evento aqui. Aditivo — não substitui Position.
+// Carteiras antigas (sem eventos) usam o fallback sintético no history route.
+model PositionEvent {
+  id          String    @id @default(cuid())
+  portfolioId String
+  ticker      String
+  action      String    // COMPRA | VENDA | AJUSTE | SEMENTE | CICLO
+  shares      Float?
+  price       Float?
+  totalValue  Float?
+  leverage    Float?    @default(1)
+  notes       String?
+  executedAt  DateTime  @default(now())
+
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId, executedAt])
+  @@map("position_events")
 }
 
 model Position {
