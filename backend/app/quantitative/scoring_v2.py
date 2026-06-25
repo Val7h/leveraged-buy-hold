@@ -1855,17 +1855,42 @@ def teto_sigma(sigma_pct: Optional[float]) -> Optional[float]:
     return 1.0                   # σ ≥ 65% (cripto-like/alavancado) → só à vista
 
 
-def teto_gap(gap_pct: Optional[float]) -> Optional[float]:
+# Piso de cauda de gap (Fix 2 — survival): o gap OBSERVADO (maior |retorno diário| numa janela ~6a)
+# SUBESTIMA o gap de cauda de um ativo estruturalmente "gappy" que simplesmente não teve um crash
+# NESSA janela. Confiar no "nunca gapeou em 6a" libera alavancagem alta indevida. Correção
+# conservadora: ao computar o teto, usa-se um gap EFETIVO = gap_observado × multiplicador de cauda,
+# e/ou um PISO ABSOLUTO de gap-risk para ativos sem histórico longo (hist_curto) ou de alta σ — onde
+# a janela é menos confiável p/ revelar o pior salto plausível. Conservador, não fabrica número
+# absurdo; só não deixa o teto liberar lev alta com base só na ausência de crash recente.
+_GAP_TAIL_MULT = 1.3          # cauda além do observado (gap_efetivo = gap_obs × 1,3)
+_GAP_FLOOR_HIST_CURTO = 10.0  # piso de gap (%) p/ ativo sem histórico longo (janela não testou crise)
+_GAP_FLOOR_SIGMA_ALTO = 12.0  # piso de gap (%) p/ ativo de alta σ (≥40% a.a.) — propenso a saltos
+
+
+def teto_gap(gap_pct: Optional[float], hist_curto: bool = False,
+             sigma_pct: Optional[float] = None) -> Optional[float]:
     """Sobreviver ao PIOR gap plausível × 2,0× (folga INEGOCIÁVEL). O gap (salto overnight, sem
     chance de stop) é o risco mais LETAL do sistema — por isso carrega a MAIOR folga, não a menor.
     A liquidação (100/lev) tem de ficar abaixo do gap×2,0. Escolhe o maior tier que sobrevive.
-    None se gap ausente."""
+    None se gap ausente (não fabrica).
+
+    PISO DE CAUDA (Fix 2): o gap observado numa janela ~6a subestima a cauda. Aplica-se:
+      • multiplicador de cauda fixo (gap_efetivo = max(gap_obs, gap_obs × 1,3)); e
+      • um piso ABSOLUTO de gap-risk quando a janela é pouco confiável: hist_curto (não viu crise
+        antiga) → piso 10% ; alta σ (≥40% a.a., propenso a saltos) → piso 12%.
+    Assim o teto não libera lev alta confiando só no "nunca gapeou nesta janela"."""
     if gap_pct is None:
         return None
     g = abs(gap_pct)
-    if g <= 0:
+    if g <= 0 and not hist_curto and not (sigma_pct is not None and abs(sigma_pct) >= 40.0):
         return 5.0
-    required = g * 2.0
+    # gap EFETIVO conservador: cauda além do observado + piso por característica do ativo.
+    g_eff = max(g, g * _GAP_TAIL_MULT)
+    if hist_curto:
+        g_eff = max(g_eff, _GAP_FLOOR_HIST_CURTO)
+    if sigma_pct is not None and abs(sigma_pct) >= 40.0:
+        g_eff = max(g_eff, _GAP_FLOOR_SIGMA_ALTO)
+    required = g_eff * 2.0
     best = 1.0
     for L in _LEV_TIERS:
         if LIQUIDATION_PCT_BY_LEV[L] >= required:
@@ -1891,10 +1916,23 @@ def teto_beta(beta: Optional[float]) -> Optional[float]:
     return 1.0
 
 
+# Teto do prêmio esperado do Kelly (Fix 1 — survival, anti return-chasing). O μ do Kelly costuma vir
+# do CAGR de PREÇO passado − rf, o que é PRÓ-CÍCLICO: ativo que já subiu muito vira "μ alto" → Kelly
+# mais GENEROSO → mais alavancagem no TOPO do ciclo (viés exatamente errado). Cap conservador: nenhum
+# prêmio de risco esperado SUSTENTÁVEL passa de ~12% a.a.; acima disso é provável extrapolação de um
+# rali passado, não edge forward. Capar μ impede o Kelly de superdimensionar lev em vencedores
+# recentes. (TSR forward = DY + crescimento real seria o ideal; quando indisponível, capamos o μ.)
+MU_EXCESS_CAP = 0.12             # teto do μ de excesso anual (12% a.a.) no Kelly
+
+
 def teto_kelly(mu_excess_annual: Optional[float], sigma_pct: Optional[float]) -> Optional[float]:
     """¼·Kelly (conservador): 0,25 × (μ_excesso / σ²). μ_excesso e σ EM FRAÇÃO anual (σ% / 100).
     Arredonda PRA BAIXO. None se faltar μ ou σ, ou se μ≤0 (sem edge → não justifica alavancar →
-    1x). Resultado mínimo 1x quando há edge fraco."""
+    1x). Resultado mínimo 1x quando há edge fraco.
+
+    Fix 1: o μ de excesso é CAPADO em MU_EXCESS_CAP (12% a.a.) antes de entrar no Kelly. Como o μ
+    normalmente é o CAGR de preço passado − rf, valores altos refletem rali passado (pró-cíclico),
+    não prêmio forward sustentável — capar evita superdimensionar lev no topo do ciclo."""
     if mu_excess_annual is None or sigma_pct is None:
         return None
     sig = abs(sigma_pct) / 100.0
@@ -1902,7 +1940,8 @@ def teto_kelly(mu_excess_annual: Optional[float], sigma_pct: Optional[float]) ->
         return None
     if mu_excess_annual <= 0:
         return 1.0                   # sem prêmio esperado → não alavanca
-    kelly = mu_excess_annual / (sig * sig)
+    mu = min(mu_excess_annual, MU_EXCESS_CAP)   # Fix 1: capa μ (anti return-chasing pró-cíclico)
+    kelly = mu / (sig * sig)
     quarter = 0.25 * kelly
     return float(max(1.0, quarter))  # o floor final cuida do arredondamento pra baixo
 
@@ -1918,9 +1957,11 @@ def gate_liquidez(volume: Optional[float], min_volume: float = 5_000_000.0) -> b
 
 
 def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta=None,
-                             mult_regime=None, mu_excess_annual=None,
+                             mult_regime=None, mu_excess_annual=None,  # DEPRECATED: ignorado.
                              hist_curto=False, volume=None,
                              gap_risk_extremo: bool = False):
+    # NOTA (Fix 1): `mu_excess_annual` é VESTIGIAL e IGNORADO — ¼·Kelly NÃO entra no MIN por-fluxo
+    # (vive só no agregado C.3 e no score). Mantido na assinatura só p/ compat; não reintroduzir.
     """
     ENTREGA A — TETO de alavancagem POR-FLUXO = MIN dos tetos de risco FORWARD (sobrevivência é
     MÍNIMO, nunca média). Tetos ausentes (dado faltando) NÃO entram no MIN. Arredonda PRA BAIXO.
@@ -1943,7 +1984,9 @@ def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta
     """
     tetos = {
         "sigma": teto_sigma(sigma_pct),
-        "gap": teto_gap(gap_pct),
+        # Fix 2: piso de cauda de gap — gap_obs×1,3 + piso por hist_curto / alta σ (janela pouco
+        # confiável). Não deixa o teto liberar lev alta confiando só em "nunca gapeou nesta janela".
+        "gap": teto_gap(gap_pct, hist_curto=hist_curto, sigma_pct=sigma_pct),
         "beta": teto_beta(beta),
         "regime": (float(mult_regime) if mult_regime is not None else None),
     }

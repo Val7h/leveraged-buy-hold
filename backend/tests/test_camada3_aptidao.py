@@ -77,23 +77,49 @@ def test_teto_sigma_ausente_nao_opina():
 
 # ─────────────────────────── TETO gap (× 2,0 folga INEGOCIÁVEL) ───────────────────────────
 def test_teto_gap_folga_2x():
-    # FOLGA 2,0× (inegociável — gap é o risco mais letal): gap 20% × 2,0 = 40% exigido →
-    # 2x liquida em −50% (>40) → 2x; 3x liquida em −33 (<40) → não sobrevive.
-    assert S.teto_gap(20) == 2.0
+    # FOLGA 2,0× × cauda 1,3× (Fix 2): gap_obs 20% → gap_efetivo 26% × 2,0 = 52% exigido →
+    # só 1x liquida em −100% (>52); 2x liquida −50 (<52) → não sobrevive → 1x.
+    assert S.teto_gap(20) == 1.0
 
 
 def test_teto_gap_extremo_capa():
-    # gap 30% × 2,0 = 60% exigido → NENHUM tier alavancado sobrevive (2x liquida −50% < 60) → 1x.
+    # gap 30% → efetivo 39% × 2,0 = 78% exigido → NENHUM tier alavancado sobrevive → 1x.
     assert S.teto_gap(30) == 1.0
 
 
 def test_teto_gap_baixo_libera():
-    # gap 5% × 2,0 = 10% exigido → 5x liquida em −20% (>10) → 5x.
+    # gap 5% → efetivo 6,5% × 2,0 = 13% exigido → 5x liquida em −20% (>13) → 5x.
     assert S.teto_gap(5) == 5.0
 
 
 def test_teto_gap_ausente_nao_opina():
     assert S.teto_gap(None) is None
+
+
+def test_teto_gap_cauda_multiplicador():
+    # Fix 2: o multiplicador de cauda (×1,3) aperta o teto vs. o gap cru. gap 7% cru daria
+    # required=14% (→5x); com cauda, 7×1,3=9,1% → required 18,2% → 5x ainda (liq −20>18,2). Mas
+    # gap 8%: cru 16% (5x liq −20>16); cauda 8×1,3=10,4 → 20,8 exigido → 4x (liq −25>20,8), 5x não.
+    assert S.teto_gap(8) == 4.0
+
+
+def test_teto_gap_piso_hist_curto():
+    # Fix 2: ativo sem histórico longo (hist_curto) que "nunca gapeou" (gap baixo) NÃO ganha lev
+    # alta — piso 10% → efetivo 10% × 2,0 = 20% exigido → 5x liquida exatamente −20 (≥20) → 5x;
+    # mas gap baixo + hist_curto não deixa subir acima do que o piso permite (testa o piso ativo).
+    sem_piso = S.teto_gap(2, hist_curto=False)        # gap 2% → 5x
+    com_piso = S.teto_gap(2, hist_curto=True)          # piso 10% → required 20 → 5x ainda (limite)
+    assert sem_piso == 5.0 and com_piso == 5.0
+    # piso morde de fato quando combinado com required > liq de tiers altos:
+    assert S.teto_gap(2, hist_curto=True, sigma_pct=45) <= S.teto_gap(2, hist_curto=False)
+
+
+def test_teto_gap_piso_sigma_alto():
+    # Fix 2: ativo de alta σ (≥40%) propenso a saltos → piso 12% mesmo com gap observado baixo.
+    # gap 3% sozinho → 5x; com σ 45% → piso 12% → required 24% → só 1x sobrevive (2x liq −50? não:
+    # liq 2x=−50≥24 → 2x). 12×2=24: tiers liq≥24 → 1(100),2(50),3(33,3),4(25) → 4x.
+    assert S.teto_gap(3, sigma_pct=45) == 4.0
+    assert S.teto_gap(3, sigma_pct=20) == 5.0          # σ normal → sem piso
 
 
 # ─────────────────────────── TETO beta (tabela; integra a trava ≥1,45→2x) ───────────────────────────
@@ -113,20 +139,32 @@ def test_teto_beta_ausente_nao_opina():
 def test_kelly_quarto_formula():
     # ¼·Kelly = 0,25 × (μ_excesso / σ²). Função existe p/ a trava AGREGADA (C.3) usar; NÃO entra
     # no MIN por-fluxo (Kelly de patrimônio-inteiro colapsaria o fluxo a 1x — ver docstring).
-    k = S.teto_kelly(0.30, 14)
-    assert math.isclose(k, 0.25 * (0.30 / (0.14 ** 2)), rel_tol=1e-6)
+    # μ ABAIXO do teto (Fix 1) → fórmula crua vale; usa μ=0,10 (< MU_EXCESS_CAP 0,12).
+    k = S.teto_kelly(0.10, 14)
+    assert math.isclose(k, 0.25 * (0.10 / (0.14 ** 2)), rel_tol=1e-6)
 
 
 def test_kelly_fora_do_min_por_fluxo():
-    # mu_excess passado mas Kelly NÃO morde o teto por-fluxo (binding nunca é 'kelly').
-    lev, det = S.teto_alavancagem_aptidao(sigma_pct=14, mult_regime=4, mu_excess_annual=0.05)
-    # σ<15%→4x, regime 4x → 4x; Kelly baixo (0,05) NÃO derruba (fora do MIN).
+    # ¼·Kelly NÃO entra no teto por-fluxo (μ foi REMOVIDO da assinatura — vive só no agregado C.3).
+    lev, det = S.teto_alavancagem_aptidao(sigma_pct=14, mult_regime=4)
+    # σ<15%→4x, regime 4x → 4x; Kelly nem participa do MIN por-fluxo.
     assert det["binding"] != "kelly" and "kelly" not in det["tetos"]
     assert lev == 4.0
 
 
 def test_kelly_sem_edge_da_1x():
     assert S.teto_kelly(-0.02, 20) == 1.0   # μ_excesso ≤ 0 → não justifica alavancar
+
+
+def test_kelly_mu_capado_anti_prociclico():
+    # Fix 1: μ acima do teto (12% a.a.) é CAPADO antes do Kelly → não superdimensiona lev em ativo
+    # que já subiu muito (return-chasing pró-cíclico). μ=0,40 e μ=0,12 devem dar o MESMO ¼·Kelly.
+    capado = S.teto_kelly(0.40, 14)
+    no_teto = S.teto_kelly(S.MU_EXCESS_CAP, 14)
+    assert math.isclose(capado, no_teto, rel_tol=1e-9)
+    # e o cap REALMENTE reduz vs. o Kelly "ingênuo" sem cap:
+    ingenuo = 0.25 * (0.40 / (0.14 ** 2))
+    assert capado < ingenuo
 
 
 def test_kelly_ausente_nao_opina():
@@ -139,7 +177,7 @@ def test_min_pega_o_menor_teto():
     # σ 70% (extremo → 1x) + beta 1.0 (4x) + regime 4x → MIN = 1x (σ binding). máxDD/Kelly fora do MIN.
     lev, det = S.teto_alavancagem_aptidao(
         max_dd_pct=-30, sigma_pct=70, gap_pct=8, beta=1.0, mult_regime=4,
-        mu_excess_annual=0.10, hist_curto=False)
+        hist_curto=False)
     assert lev == 1.0
     assert det["binding"] == "sigma"
     assert "maxdd" not in det["tetos"] and "kelly" not in det["tetos"]
@@ -166,8 +204,8 @@ def test_aptidao_nunca_sobe_o_teto():
 def test_regime_entra_no_min():
     # Ativo seguríssimo (tudo libera 4x+) mas regime conservador 2x → MIN = 2x.
     lev, det = S.teto_alavancagem_aptidao(
-        max_dd_pct=-10, sigma_pct=8, gap_pct=3, beta=0.5, mult_regime=2,
-        mu_excess_annual=0.20)   # ¼·Kelly = 0,25×(0,20/0,08²)=7,8 → não morde
+        max_dd_pct=-10, sigma_pct=8, gap_pct=3, beta=0.5, mult_regime=2)
+    # ¼·Kelly nem entra no MIN por-fluxo; gap 3% (efetivo 3,9 × 2 = 7,8) → 5x não morde.
     assert lev == 2.0 and det["binding"] == "regime"
 
 

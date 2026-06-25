@@ -1455,9 +1455,10 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # "Quanto dá pra alavancar este ativo e SOBREVIVER ao pior tombo?" Sobrevivência = MÍNIMO.
         # Integra (não duplica) a trava beta≥1,45→2x: teto_beta tem a tabela completa e o MIN abaixo
         # capa de novo. mult_regime entra como mais um teto (o leverage do regime já foi aplicado
-        # acima). ¼·Kelly conservador com rf ~4,5% e μ = CAGR de preço (proxy). Arredonda PRA BAIXO.
-        _rf = 0.045
-        _mu_excess = (g5 / 100.0 - _rf) if g5 is not None else None
+        # acima). Arredonda PRA BAIXO. NOTA: ¼·Kelly NÃO entra no MIN por-fluxo (vive só no agregado
+        # C.3 e no score). O μ por-fluxo era CAGR de preço − rf — PRÓ-CÍCLICO (return-chasing) e, além
+        # disso, alimentava só um parâmetro VESTIGIAL de teto_alavancagem_aptidao (que ignora μ).
+        # Removido (Fix 1): não reintroduzir Kelly no MIN por-fluxo.
         # GATE DE LIQUIDEZ (vivo): ADV-$ vindo do próprio OHLCV (df_full.attrs, calculado em
         # _chart_api_df). None → não veta (não fabrica). Large-cap passa folgado; micro-cap ilíquida → 1x.
         _adv_dollar = None
@@ -1467,7 +1468,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             _adv_dollar = None
         teto_lev, teto_det = S.teto_alavancagem_aptidao(
             max_dd_pct=dd, sigma_pct=sigma_total, gap_pct=gap_pct, beta=beta,
-            mult_regime=leverage, mu_excess_annual=_mu_excess,
+            mult_regime=leverage,
             hist_curto=hist_curto, volume=_adv_dollar,
             # VÁLVULA gap-risk extremo (agora ARMADA): gap histórico ≥20% = ativo estruturalmente
             # gappy (salto overnight sem chance de stop) → força 1x à vista. Antes era default False.

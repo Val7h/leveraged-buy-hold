@@ -911,6 +911,12 @@ def _aggregate_leverage_cap(rows: List[dict], equity: Optional[float],
     mu_excess = None
     if cagr_cesta is not None:
         mu_excess = (cagr_cesta - rf) / 100.0                # em FRAÇÃO anual
+        # Fix 1 (anti return-chasing PRÓ-CÍCLICO): μ aqui é CAGR de PREÇO passado − rf. Cesta que
+        # já subiu muito → μ alto → ¼·Kelly libera MAIS lev no TOPO do ciclo (viés errado). Capa o
+        # prêmio esperado em ~12% a.a. (sem TSR forward por cesta disponível, capar é o conservador).
+        # teto_kelly também capa internamente; aqui deixamos explícito p/ o mu_excess_cesta reportado.
+        from app.quantitative.scoring_v2 import MU_EXCESS_CAP
+        mu_excess = min(mu_excess, MU_EXCESS_CAP)
     if mu_excess is not None and sigma_cesta_pct is not None:
         t_kelly = teto_kelly(mu_excess, sigma_cesta_pct)
         if t_kelly is not None:

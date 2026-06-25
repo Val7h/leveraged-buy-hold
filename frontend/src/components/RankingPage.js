@@ -1214,9 +1214,16 @@ export default function RankingPage() {
               Onde colocar o próximo aporte — qualidade × momento, por categoria.
             </p>
             {showLeverage && (
-              <p className="text-xs text-[#C084FC] mt-1 flex items-center gap-1.5">
-                <Zap size={11} /> ranking reordenado pelo melhor pick alavancável
-              </p>
+              <>
+                <p className="text-xs text-[#C084FC] mt-1 flex items-center gap-1.5">
+                  <Zap size={11} /> ranking reordenado pelo melhor pick alavancável
+                </p>
+                <p className="text-[11px] text-text-muted mt-1 max-w-xl leading-relaxed">
+                  A alavancagem por ativo <span className="text-text-secondary font-medium">NÃO</span> considera sua
+                  carteira atual. A rede de sobrevivência agregada (cap 2,5x) está na aba{" "}
+                  <span className="text-text-secondary font-medium">Portfólio</span> — alavanque por lá.
+                </p>
+              </>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">

@@ -56,6 +56,21 @@ export default function BacktestPage() {
           <p className="text-sm text-text-secondary mt-0.5">Compare estratégias em crises históricas: 2008, COVID, 2022</p>
         </div>
 
+        {/* Rótulo honesto: o que este backtest valida (e o que NÃO valida) */}
+        <div className="bg-warning/5 border border-warning/20 rounded-xl px-4 py-3 mb-6">
+          <p className="text-xs text-text-secondary leading-relaxed">
+            <span className="text-warning font-semibold">O que este backtest valida:</span>{" "}
+            a mecânica de <span className="text-text-primary font-medium">alavancagem por REGIME</span> (multiplicador
+            dinâmico sobre os fluxos) — uma referência histórica de como a rede de sobrevivência se comportou em crises.
+          </p>
+          <p className="text-xs text-text-secondary leading-relaxed mt-1.5">
+            <span className="text-warning font-semibold">O que NÃO é:</span>{" "}
+            não é exatamente o motor de 3 camadas (Qualidade × Momento × Aptidão) da aba{" "}
+            <span className="text-text-primary font-medium">Ranking</span>. Não prova as recomendações atuais —
+            é a mecânica de sobrevivência testada no passado, não a seleção de ativos de hoje.
+          </p>
+        </div>
+
         {/* Config */}
         <div className="card mb-6">
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4">

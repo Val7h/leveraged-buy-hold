@@ -48,6 +48,10 @@ function signalToEntry(signal: string): string {
   }
 }
 
+// Mapeia a resposta do BFF (agora alimentada pelo MOTOR REAL de 3 camadas via
+// /api/ranking/screen) p/ o shape de sinal da UI. Os campos do motor — verdict
+// (→ signal/entry_signal), leverage (→ entry_leverage, agora NUNCA null p/ ativos
+// analisados), entry_signal_color, entry_rationale — vêm prontos do route handler.
 function mapRaw(raw: any): WatchlistSignal {
   const changePct: number | null = raw.change_pct ?? null;
   return {
@@ -55,10 +59,13 @@ function mapRaw(raw: any): WatchlistSignal {
     ticker: raw.ticker,
     name: raw.name ?? null,
     company_name: raw.name ?? raw.company_name ?? null,
-    current_price: raw.price ?? raw.current_price ?? null,
+    current_price: raw.current_price ?? raw.price ?? null,
     change_pct: changePct,
+    composite_score: raw.composite_score ?? undefined,
+    // Veredito REAL do motor (COMPRAR FORTE/COMPRAR → buy; ESPECULATIVO → sell; demais → hold/unknown).
     signal: raw.signal ?? "unknown",
     entry_signal: raw.entry_signal ?? signalToEntry(raw.signal ?? "unknown"),
+    entry_signal_color: raw.entry_signal_color ?? undefined,
     entry_leverage: raw.entry_leverage ?? null,
     entry_rationale:
       raw.entry_rationale ??

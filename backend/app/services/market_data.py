@@ -346,44 +346,24 @@ def fetch_price_history(
         return cached
 
     # ── Yahoo Finance (yfinance) ──────────────────────────────────────────────
-    for attempt in range(3):
-        try:
-            tk = yf.Ticker(ticker, session=_session)
-            df = tk.history(period=period, interval=interval, auto_adjust=True)
-            if df.empty or len(df) < 50:
-                # 1ª opção de fallback: chart API (real, funciona no Render)
-                chart_df = _chart_api_history(ticker, period)
-                if chart_df is not None:
-                    redis_cache.cache_set_df(cache_key, chart_df)
-                    return chart_df
-                if not _ALLOW_SYNTH:
-                    logger.warning(f"Empty/insufficient data for {ticker} ({period}) — sintético desligado → None")
-                    return None
-                logger.warning(f"Empty/insufficient data for {ticker} ({period}) — falling back to synthetic")
-                return _synthetic_price_history(ticker, period)
+    # LATÊNCIA: 1 tentativa rápida no yfinance. Em QUALQUER falha (rate-limit, timeout,
+    # DNS, dados insuficientes) cai IMEDIATAMENTE para o chart API (urllib, Render-safe),
+    # sem os antigos time.sleep(15)+time.sleep(30) que travavam a request por ~45s.
+    # O chart API é o caminho confiável no Render → não faz sentido esperar yfinance morto.
+    try:
+        tk = yf.Ticker(ticker, session=_session)
+        df = tk.history(period=period, interval=interval, auto_adjust=True)
+        if not df.empty and len(df) >= 50:
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             # Guarda no Redis para os próximos requests (inclusive pós-restart)
             redis_cache.cache_set_df(cache_key, df)
             return df
-        except Exception as e:
-            err_str = str(e)
-            logger.warning(f"Failed to fetch {ticker} (attempt {attempt+1}): {e}")
-            if "RateLimit" in type(e).__name__ or "Too Many Requests" in err_str:
-                # yfinance bloqueado/limitado → vai DIRETO ao chart API (real, sem espera)
-                chart_df = _chart_api_history(ticker, period)
-                if chart_df is not None:
-                    redis_cache.cache_set_df(cache_key, chart_df)
-                    return chart_df
-                if not _ALLOW_SYNTH:
-                    logger.warning(f"Rate-limit em {ticker} — sintético desligado → None (sem dados)")
-                    return None
-                return _synthetic_price_history(ticker, period)
-            if attempt < 2:
-                wait = 15 + attempt * 15   # 15s, 30s
-                logger.info(f"Aguardando {wait}s antes de retentar {ticker}...")
-                time.sleep(wait)
-    # Esgotou as tentativas no yfinance. Última cartada REAL: chart API (Render-safe).
+        logger.warning(f"Empty/insufficient data for {ticker} ({period}) — indo direto ao chart API")
+    except Exception as e:
+        logger.warning(f"yfinance falhou para {ticker} ({e}) — fallback rápido ao chart API")
+
+    # Fallback REAL e rápido (<~3s): chart API (urllib, funciona no Render).
     chart_df = _chart_api_history(ticker, period)
     if chart_df is not None:
         redis_cache.cache_set_df(cache_key, chart_df)
@@ -575,7 +555,7 @@ def screen_assets(
     for i, ticker in enumerate(tickers):
         try:
             if i > 0:
-                time.sleep(1.5)  # evitar rate limiting do Yahoo Finance
+                time.sleep(0.1)  # chart API (urllib) aguenta cadência alta — antes 1.5s/ticker (~13s p/ 10)
             analysis = analyze_asset(ticker, risk_profile, market_multiplier=market_multiplier)
             if analysis and analysis["composite_score"] >= min_score:
                 results.append(analysis)

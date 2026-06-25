@@ -171,6 +171,19 @@ def test_kelly_enters_with_mu_and_sigma():
     assert "kelly_cesta" in out["caps_aplicados"]
 
 
+def test_kelly_mu_capado_anti_prociclico_agregado():
+    """Fix 1: μ do Kelly agregado (CAGR de PREÇO − rf) é CAPADO em ~12% a.a. — cesta que já subiu
+    muito (CAGR 40%) NÃO superdimensiona a alavancagem (return-chasing pró-cíclico). O mu_excess_cesta
+    reportado fica no teto, não no excesso cru (40−4=36%)."""
+    rows = [_row("A", 8000)]
+    eq = 10000.0
+    totals = _totals(eq, 8000.0, 0.8, cagr=40.0, sigma=20.0)   # CAGR alto = topo de ciclo
+    out = ps._aggregate_leverage_cap(rows, equity=eq, correlation={}, risk_obj={"maxdd_basket": -10.0},
+                                     totals=totals)
+    # μ reportado capado (12% a.a.), NÃO o cru de 36%.
+    assert abs(out["mu_excess_cesta"] - 12.0) < 1e-6
+
+
 def test_kelly_absent_without_sigma():
     """Sem σ da cesta → Kelly NÃO entra no MIN (não fabrica)."""
     rows = [_row("A", 8000)]

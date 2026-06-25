@@ -213,9 +213,6 @@ export default function WatchlistPage() {
                         <p className="text-sm font-mono font-bold text-primary">
                           {(score.entry_leverage ?? score.recommended_leverage)?.toFixed(2) || "—"}x
                         </p>
-                        {score.kelly?.kelly_half != null && (
-                          <p className="text-[10px] text-text-muted">½K {score.kelly.kelly_half.toFixed(2)}x</p>
-                        )}
                       </div>
 
                       {/* RSI semanal */}
