@@ -64,10 +64,11 @@ try:
     _CHART_CTX = _ssl.create_default_context(cafile=_certifi.where())
 except Exception:
     _CHART_CTX = _ssl.create_default_context()
-# Fallback SEM verificação de cert (MITM-risk). Gateado por env: ALLOW_INSECURE_SSL=0 desliga
-# (default "0" = SEGURO em prod). Setar "1" só p/ destravar a coleta num ambiente onde a
-# verificação de cert falha (aceitando o risco MITM nesse fallback).
-_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "0").strip() == "1"
+# Fallback SEM verificação de cert (MITM-risk). Gateado por env. Default "1" PRESERVA a coleta
+# (não arrisca tela branca em prod onde a verificação de cert possa falhar). HARDENING: setar
+# ALLOW_INSECURE_SSL=0 no Render APÓS confirmar AO VIVO que os preços carregam verificados —
+# passo deliberado/observado, não default às cegas (não dá p/ validar de fora do Render).
+_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "1").strip() == "1"
 _CHART_CTX_NOVERIFY = _ssl.create_default_context()
 _CHART_CTX_NOVERIFY.check_hostname = False
 _CHART_CTX_NOVERIFY.verify_mode = _ssl.CERT_NONE

@@ -48,7 +48,8 @@ try:
 except Exception:
     _CTX = _ssl.create_default_context()
 
-_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "0").strip() == "1"
+# Default "1" preserva a coleta; HARDENING via ALLOW_INSECURE_SSL=0 no Render (passo observado).
+_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "1").strip() == "1"
 _CTX_NOVERIFY = _ssl.create_default_context()
 _CTX_NOVERIFY.check_hostname = False
 _CTX_NOVERIFY.verify_mode = _ssl.CERT_NONE
