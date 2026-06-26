@@ -63,7 +63,7 @@ function mapAsset(a: any, id?: string) {
     company_name: a.name ?? null,
     sector: a.is_crypto ? "Cripto" : a.is_tatico ? "Tático/Cíclico" : undefined,
     current_price: a.current_price ?? null,
-    change_pct: a.change_pct ?? null,
+    change_pct: a.day_change_pct ?? a.change_pct ?? null,
 
     quality_score: quality,
     momentum_score: momentum,

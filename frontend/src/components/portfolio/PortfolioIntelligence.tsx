@@ -25,6 +25,8 @@ type Analytics = {
   exposure_caps?: any;
   // C.3 — cap agregado de alavancagem:
   leverage_agregado?: any;
+  // C.2 — disjuntor de fluxos consecutivos:
+  disjuntor_fluxos?: any;
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -78,7 +80,10 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const exposureAlerts = (exposureCaps && exposureCaps.alerts) || [];
   // C.3 — cap agregado de alavancagem (survival-crítico):
   const levAgg = analytics.leverage_agregado || null;
-  const levRegime = analytics.aporte_regime?.mult ?? analytics.aporte_regime?.multiplicador ?? null;
+  const levRegime = analytics.aporte_regime?.multiplier ?? analytics.aporte_regime?.multiplier_regime ?? null;
+  // C.2 — disjuntor de fluxos consecutivos (averaging-down alavancado):
+  const disj = analytics.disjuntor_fluxos || null;
+  const disjAfetados = (disj && disj.afetados) || [];
 
   const levStatus: string = levAgg?.status || "ok";
   const levStatusCls =
@@ -170,6 +175,30 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
               )}
             </div>
           )}
+        </section>
+      )}
+
+      {/* C.2 — DISJUNTOR DE FLUXOS CONSECUTIVOS (averaging-down alavancado) */}
+      {disjAfetados.length > 0 && (
+        <section className="bg-amber-500/5 rounded-xl border border-amber-500/40 p-4">
+          <h3 className="text-sm font-semibold text-amber-400 mb-1">Disjuntor de fluxos consecutivos</h3>
+          <p className="text-[11px] text-text-muted mb-3">
+            Você aportou seguidas vezes no mesmo ativo enquanto ele cai — empilhar dívida num ativo em queda (averaging-down alavancado) liquida antes da recuperação. A alavancagem do próximo aporte foi <b>degradada</b> automaticamente.
+          </p>
+          <div className="space-y-1.5">
+            {disjAfetados.map((d: any) => (
+              <div key={d.ticker} className="flex items-start gap-2 text-xs">
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-400 font-semibold text-[10px] shrink-0 font-mono">
+                  {fmt(d.mult_original, "x", 0)}→{fmt(d.mult_degradado, "x", 0)}
+                </span>
+                <span className="font-semibold text-text-primary shrink-0">{d.ticker}</span>
+                <span className="text-text-muted">
+                  — {d.aportes_recentes} aporte(s) consecutivo(s) em queda{d.motivo ? `: ${d.motivo}` : ""}
+                </span>
+                {d.is_seed && <span className="text-[9px] text-emerald-400 shrink-0">(semente — não imune)</span>}
+              </div>
+            ))}
+          </div>
         </section>
       )}
 

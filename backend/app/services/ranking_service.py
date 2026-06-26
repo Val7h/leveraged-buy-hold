@@ -64,9 +64,9 @@ try:
 except Exception:
     _CHART_CTX = _ssl.create_default_context()
 # Fallback SEM verificação de cert (MITM-risk). Gateado por env: ALLOW_INSECURE_SSL=0 desliga
-# (recomendado em prod após confirmar que os preços carregam verificados). Default "1" preserva
-# o comportamento atual (zero risco de quebrar a coleta).
-_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "1").strip() == "1"
+# (default "0" = SEGURO em prod). Setar "1" só p/ destravar a coleta num ambiente onde a
+# verificação de cert falha (aceitando o risco MITM nesse fallback).
+_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "0").strip() == "1"
 _CHART_CTX_NOVERIFY = _ssl.create_default_context()
 _CHART_CTX_NOVERIFY.check_hostname = False
 _CHART_CTX_NOVERIFY.verify_mode = _ssl.CERT_NONE

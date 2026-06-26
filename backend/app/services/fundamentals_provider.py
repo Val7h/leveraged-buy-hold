@@ -43,9 +43,9 @@ try:
 except Exception:
     _CTX = _ssl.create_default_context()
 
-# Fallback SEM verificação de cert — gateado por ALLOW_INSECURE_SSL (default "1" preserva
-# comportamento; setar "0" em prod p/ endurecer após confirmar que os fundamentos carregam).
-_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "1").strip() == "1"
+# Fallback SEM verificação de cert — gateado por ALLOW_INSECURE_SSL (default "0" = SEGURO;
+# setar "1" só p/ destravar coleta num ambiente onde a verificação de cert falha).
+_ALLOW_INSECURE = os.environ.get("ALLOW_INSECURE_SSL", "0").strip() == "1"
 _CTX_NOVERIFY = _ssl.create_default_context()
 _CTX_NOVERIFY.check_hostname = False
 _CTX_NOVERIFY.verify_mode = _ssl.CERT_NONE
