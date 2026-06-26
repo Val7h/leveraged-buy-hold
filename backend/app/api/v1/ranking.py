@@ -11,11 +11,12 @@ Rotas (montadas SEM o prefixo /v1, conforme contrato com o frontend):
 Tudo blindado: qualquer erro vira JSON limpo, NUNCA derruba o app.
 """
 import logging
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from app.services import ranking_service as R
+from app.quantitative import profiles
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,9 @@ def get_ranking(force: bool = Query(False, description="Ignora o cache e recalcu
 
 class ScreenBody(BaseModel):
     tickers: List[str] = []
+    # Perfil do ASSINANTE (borda): None → moderado (default seguro). As funções internas usam
+    # agressivo como default (= comportamento atual), então aqui passamos o perfil explícito.
+    profile: Optional[str] = None
 
 
 @router.post("/api/ranking/screen")
@@ -42,7 +46,8 @@ def screen(body: ScreenBody):
     market_state vem do REAL (regime do S&P), NUNCA hardcoded."""
     try:
         tickers = [t.strip() for t in (body.tickers or []) if t and t.strip()][:60]
-        return R.screen_assets(tickers)
+        prof = profiles.normalize_profile(body.profile)   # borda do assinante: None → moderado
+        return R.screen_assets(tickers, profile=prof)
     except Exception as e:
         logger.exception("Erro ao rodar screen do ranking")
         return {"error": str(e), "assets": [], "failed_tickers": [],

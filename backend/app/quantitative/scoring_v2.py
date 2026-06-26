@@ -1837,15 +1837,20 @@ def teto_maxdd(max_dd_pct: Optional[float], hist_curto: bool = False,
     return best
 
 
-def teto_sigma(sigma_pct: Optional[float]) -> Optional[float]:
-    """σ TOTAL anualizada — capa SÓ OS EXTREMOS. A DOUTRINA DO DONO manda no resto (alavancagem do
-    REGIME 2/3/4/5x); a rede de sobrevivência é o CAP AGREGADO C.3 (carteira), não o por-fluxo
-    apertado. A tabela antiga (σ<15→4x · 15-25→2x · 25-35→1,5x) colapsava ação normal (MSFT σ27→1x)
-    = conservador demais. Agora: σ<35%→SEM cap (regime/beta governam) · 35-50%→3x · 50-65%→2x ·
-    ≥65%→1x. None = não entra no MIN (deixa o regime decidir)."""
+def teto_sigma(sigma_pct: Optional[float], floor_min_pct: Optional[float] = None) -> Optional[float]:
+    """σ TOTAL anualizada — capa SÓ OS EXTREMOS (perfil agressivo do dono). A DOUTRINA manda no resto
+    (alavancagem do REGIME 2/3/4/5x); a rede de sobrevivência é o CAP AGREGADO C.3 (carteira), não o
+    por-fluxo apertado. A tabela antiga (σ<15→4x · 15-25→2x · 25-35→1,5x) colapsava ação normal
+    (MSFT σ27→1x) = conservador demais. AGRESSIVO: σ<35%→SEM cap · 35-50%→3x · 50-65%→2x · ≥65%→1x.
+
+    PERFIL (produto): `floor_min_pct` antecipa o cap p/ assinantes menos agressivos — σ em
+    [floor_min_pct, 35) já capa a 2x (ação de vol elevada não pega lev cheia). None = comportamento
+    agressivo atual (só extremos ≥35). Presets: conservador 25 · moderado 30 · agressivo None."""
     if sigma_pct is None:
         return None
     s = abs(sigma_pct)
+    if floor_min_pct is not None and floor_min_pct <= s < 35:
+        return 2.0               # vol elevada (perfil cauteloso) → capa antes do extremo
     if s < 35:
         return None              # vol normal → doutrina/regime manda (não capa)
     if s <= 50:
@@ -1959,7 +1964,8 @@ def gate_liquidez(volume: Optional[float], min_volume: float = 5_000_000.0) -> b
 def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta=None,
                              mult_regime=None, mu_excess_annual=None,  # DEPRECATED: ignorado.
                              hist_curto=False, volume=None,
-                             gap_risk_extremo: bool = False):
+                             gap_risk_extremo: bool = False,
+                             leverage_cap=None, sigma_floor_min_pct=None):  # PERFIL (produto)
     # NOTA (Fix 1): `mu_excess_annual` é VESTIGIAL e IGNORADO — ¼·Kelly NÃO entra no MIN por-fluxo
     # (vive só no agregado C.3 e no score). Mantido na assinatura só p/ compat; não reintroduzir.
     """
@@ -1983,12 +1989,16 @@ def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta
     gap-risk extremo. Sem volume, NÃO veta por liquidez. Retorna (leverage_floor, detalhe_dict).
     """
     tetos = {
-        "sigma": teto_sigma(sigma_pct),
+        # PERFIL: sigma_floor_min_pct antecipa o cap p/ perfis cautelosos (None = agressivo atual).
+        "sigma": teto_sigma(sigma_pct, floor_min_pct=sigma_floor_min_pct),
         # Fix 2: piso de cauda de gap — gap_obs×1,3 + piso por hist_curto / alta σ (janela pouco
         # confiável). Não deixa o teto liberar lev alta confiando só em "nunca gapeou nesta janela".
         "gap": teto_gap(gap_pct, hist_curto=hist_curto, sigma_pct=sigma_pct),
         "beta": teto_beta(beta),
         "regime": (float(mult_regime) if mult_regime is not None else None),
+        # PERFIL: teto DURO de alavancagem do preset (conservador 2 · moderado 3 · agressivo 5).
+        # None = sem teto de perfil (comportamento atual). Entra no MIN como qualquer outro teto.
+        "perfil": (float(leverage_cap) if leverage_cap is not None else None),
     }
     presentes = {k: v for k, v in tetos.items() if v is not None}
 

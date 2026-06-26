@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, normalizeRiskProfile } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -151,7 +151,8 @@ export async function GET(req: NextRequest) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ tickers }),
+      // profile: perfil de risco do usuário logado → motor calibra alavancagem/travas.
+      body: JSON.stringify({ tickers, profile: normalizeRiskProfile(user.riskProfile) }),
       signal: controller.signal,
       cache: "no-store",
     });

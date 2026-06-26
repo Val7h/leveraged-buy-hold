@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, normalizeRiskProfile } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,7 +102,13 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
     const res = await fetch(`${BACKEND_URL}/api/v1/portfolio/analytics`, {
       method: "POST",
       headers: bHeaders(),
-      body: JSON.stringify({ positions, equity, cooldown_tickers }),
+      // profile: perfil de risco do usuário logado → motor calibra alavancagem/travas.
+      body: JSON.stringify({
+        positions,
+        equity,
+        cooldown_tickers,
+        profile: normalizeRiskProfile(user.riskProfile),
+      }),
       cache: "no-store",
     });
     if (!res.ok) {

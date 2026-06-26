@@ -2,41 +2,62 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import toast from "react-hot-toast";
-import { Info, Loader2, Save } from "lucide-react";
+import { Info, Loader2, Save, Check } from "lucide-react";
 import Tooltip from "@/components/ui/Tooltip";
 import { useAuthStore } from "@/store/authStore";
 
-const RISK_PROFILES = [
-  { value: "conservative", label: "Conservador" },
-  { value: "moderate", label: "Moderado" },
-  { value: "aggressive", label: "Agressivo" },
+// Perfis canônicos (contrato com o motor): conservador/moderado/agressivo.
+// Cada card explica em linguagem simples o que muda na alavancagem/travas.
+type RiskProfile = "conservador" | "moderado" | "agressivo";
+
+const RISK_PRESETS: {
+  value: RiskProfile;
+  label: string;
+  blurb: string;
+  isDefault?: boolean;
+}[] = [
+  {
+    value: "conservador",
+    label: "Conservador",
+    blurb:
+      "Alavancagem até 2x · trava ações muito voláteis · semente com stop de preço · reserva maior",
+  },
+  {
+    value: "moderado",
+    label: "Moderado",
+    blurb: "Alavancagem até 3x · trava leve de volatilidade · equilíbrio",
+    isDefault: true,
+  },
+  {
+    value: "agressivo",
+    label: "Agressivo",
+    blurb:
+      "Alavancagem até 5x · regime de mercado manda · sem trava de volatilidade · semente só sai por tese — perfil previdenciário 10-15a",
+  },
 ];
 
-// O Prisma persiste o perfil em PT ("conservador"/"moderado"/"agressivo"),
-// mas as <option> do select usam values em EN. Sem normalizar, o select nao
-// acha o value e cai no default (Conservador) — mostrando errado mesmo apos
-// salvar "Agressivo". Mapeia PT (e variantes) -> value EN canonico do select.
-function normalizeRiskProfile(raw: string | null | undefined): string {
+// O Prisma persiste o perfil em PT canônico. Mapeia variantes/legados EN
+// (conservative/balanced/aggressive) -> PT canônico; default = moderado.
+function normalizeRiskProfile(raw: string | null | undefined): RiskProfile {
   const v = (raw ?? "").trim().toLowerCase();
   switch (v) {
     case "conservador":
     case "conservative":
-      return "conservative";
+      return "conservador";
+    case "agressivo":
+    case "aggressive":
+      return "agressivo";
     case "moderado":
     case "moderate":
     case "balanced":
-      return "moderate";
-    case "agressivo":
-    case "aggressive":
-      return "aggressive";
     default:
-      return "moderate";
+      return "moderado";
   }
 }
 
 interface ProfileForm {
   fullName: string;
-  riskProfile: string;
+  riskProfile: RiskProfile;
   email: string;
 }
 
@@ -46,7 +67,7 @@ export default function PerfilPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<ProfileForm>({
     fullName: "",
-    riskProfile: "moderate",
+    riskProfile: "moderado",
     email: "",
   });
 
@@ -164,26 +185,45 @@ export default function PerfilPage() {
         </div>
 
         <div>
-          <label
-            htmlFor="riskProfile"
-            className="block text-sm font-medium text-text-primary mb-1.5"
-          >
+          <label className="block text-sm font-medium text-text-primary mb-2">
             Perfil de risco
           </label>
-          <select
-            id="riskProfile"
-            value={form.riskProfile}
-            onChange={(e) => setForm({ ...form, riskProfile: e.target.value })}
-            className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition"
-          >
-            {RISK_PROFILES.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-text-muted mt-1.5">
-            Usado pelo screening pra calibrar alavancagem sugerida.
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {RISK_PRESETS.map((preset) => {
+              const selected = form.riskProfile === preset.value;
+              return (
+                <button
+                  key={preset.value}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setForm({ ...form, riskProfile: preset.value })}
+                  className={`text-left rounded-lg border p-3.5 transition focus:outline-none focus:ring-1 focus:ring-primary/40 ${
+                    selected
+                      ? "border-primary bg-primary/10 ring-1 ring-primary/40"
+                      : "border-border bg-surface-2 hover:border-primary/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-semibold text-text-primary">
+                      {preset.label}
+                    </span>
+                    {selected ? (
+                      <Check size={15} className="text-primary shrink-0" />
+                    ) : preset.isDefault ? (
+                      <span className="text-[10px] uppercase tracking-wide text-text-muted">
+                        padrão
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-text-secondary leading-snug">
+                    {preset.blurb}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-text-muted mt-2">
+            Muda a alavancagem que o app sugere no Ranking e nos aportes.
           </p>
         </div>
 

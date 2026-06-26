@@ -62,6 +62,28 @@ export function clearSessionCookie(): void {
   cookies().delete(COOKIE_NAME);
 }
 
+// Perfil de investidor canônico (contrato com o motor): conservador/moderado/agressivo.
+// Default do assinante = moderado. Mapeia legados EN (conservative/balanced/aggressive)
+// e qualquer valor desconhecido/ausente → moderado.
+export type RiskProfile = "conservador" | "moderado" | "agressivo";
+
+export function normalizeRiskProfile(raw: string | null | undefined): RiskProfile {
+  const v = (raw ?? "").trim().toLowerCase();
+  switch (v) {
+    case "conservador":
+    case "conservative":
+      return "conservador";
+    case "agressivo":
+    case "aggressive":
+      return "agressivo";
+    case "moderado":
+    case "moderate":
+    case "balanced":
+    default:
+      return "moderado";
+  }
+}
+
 export async function getCurrentUser() {
   const userSelect = {
     id: true,

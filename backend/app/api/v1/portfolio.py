@@ -388,6 +388,9 @@ class _AnalyticsBody(BaseModel):
     positions: List[_AnalyticsPos] = []
     equity: Optional[float] = None
     cooldown_tickers: List[str] = []
+    # Perfil do ASSINANTE (borda): None → moderado (default seguro). As funções internas usam
+    # agressivo como default (= comportamento atual), então aqui passamos o perfil explícito.
+    profile: Optional[str] = None
 
 
 @router.post("/analytics")
@@ -402,9 +405,11 @@ def post_portfolio_analytics(body: _AnalyticsBody):
     ranking. Antes exigia get_current_user (JWT) que a BFF não manda → 401/404 → rotação e aporte
     sumiam no frontend."""
     from app.services.portfolio_service import portfolio_analytics
+    from app.quantitative import profiles
     try:
+        prof = profiles.normalize_profile(body.profile)   # borda do assinante: None → moderado
         return portfolio_analytics([p.dict() for p in body.positions], equity=body.equity,
-                                   cooldown_tickers=body.cooldown_tickers)
+                                   cooldown_tickers=body.cooldown_tickers, profile=prof)
     except Exception as e:
         # BLINDAGEM: a inteligência é pesada (ranking 228 ativos + correlação + agregado C.3). Se
         # algum bloco estourar, NÃO derruba a aba inteira com 502 — devolve estrutura mínima + erro,

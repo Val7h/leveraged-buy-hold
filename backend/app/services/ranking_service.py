@@ -34,6 +34,7 @@ import numpy as np
 
 from app.quantitative.universe import UNIVERSE, INDEX_BY_CAT
 from app.quantitative import scoring_v2 as S
+from app.quantitative import profiles
 from app.quantitative import accumulation as A
 from app.quantitative import indicators_v2 as I
 from app.services.market_data import fetch_price_history, fetch_fundamentals
@@ -1147,7 +1148,8 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
 
 
 def _analyze(tk: str, bucket: str, name: str, cat: str,
-             idxc: dict, idxdm: dict, equity_regime: str) -> Optional[dict]:
+             idxc: dict, idxdm: dict, equity_regime: str,
+             profile: str = "agressivo") -> Optional[dict]:
     try:
         # PREÇOS via chart API confiável (yfinance cai em SINTÉTICO em prod → preços errados).
         # Fetch LONGO (desde ~2000) p/ TODOS — drawdown histórico real (opção B) + dividendo 10a.
@@ -1298,7 +1300,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         tsr = (dy or 0.0) + (g5 or 0.0)  # TSR esperado proxy = dividend yield + crescimento
 
         reg = regime(idxc.get(INDEX_BY_CAT.get(cat)))
-        mult = MULT.get(reg, 3)
+        # Multiplicador do fluxo por regime CONFORME O PERFIL (agressivo = tabela atual MULT).
+        _plp = profiles.profile_leverage_params(profile)
+        mult = profiles.regime_multiplier(profile, reg)
 
         # ─────────────────── CAMADA 2 — MOMENTO DE ENTRADA (inputs) ───────────────────
         # Tendência primária: inclinação da MM200 SEMANAL (≈3 meses) — uptrend secular = promoção.
@@ -1473,6 +1477,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             # VÁLVULA gap-risk extremo (agora ARMADA): gap histórico ≥20% = ativo estruturalmente
             # gappy (salto overnight sem chance de stop) → força 1x à vista. Antes era default False.
             gap_risk_extremo=(gap_pct is not None and abs(gap_pct) >= 20.0),
+            # TETO DURO + PISO DE σ DO PERFIL (agressivo: cap=5, sigma_floor=None → comportamento atual).
+            leverage_cap=_plp["leverage_cap"],
+            sigma_floor_min_pct=_plp["sigma_floor_min_pct"],
         )
         leverage = min(leverage, teto_lev)   # MIN inviolável (sobrevivência nunca sobe o teto)
 
@@ -1743,7 +1750,7 @@ def _find_in_ranking(ticker: str, ranking: dict) -> Optional[dict]:
     return None
 
 
-def analyze_tickers(tickers: List[str]) -> List[dict]:
+def analyze_tickers(tickers: List[str], profile: str = "agressivo") -> List[dict]:
     """Roda o MOTOR REAL de 3 camadas para os tickers pedidos.
 
     Universo (cache do Ranking) p/ os conhecidos; _analyze ao vivo p/ o resto. Cada item é o MESMO
@@ -1762,8 +1769,15 @@ def analyze_tickers(tickers: List[str]) -> List[dict]:
 
     uni = _index_universe()
 
-    # 2) Tickers fora do universo: precisam de _analyze ao vivo → busca os índices UMA vez só.
-    fora = [t for t in tickers if t.upper() not in uni or _find_in_ranking(t, ranking) is None]
+    # O cache do Ranking é CANÔNICO (perfil agressivo = doutrina/comportamento atual). Só dá p/
+    # reaproveitá-lo quando o assinante pediu agressivo; para conservador/moderado é preciso rodar
+    # _analyze AO VIVO com o perfil (caps diferentes) — o cache não reflete esses tetos.
+    _reuse_cache = (profiles.normalize_profile(profile) == "agressivo")
+
+    # 2) Tickers que precisam de _analyze ao vivo → busca os índices UMA vez só.
+    #    Com perfil não-agressivo, TODOS rodam ao vivo (cache canônico não serve).
+    fora = [t for t in tickers
+            if (not _reuse_cache) or t.upper() not in uni or _find_in_ranking(t, ranking) is None]
     idxc = idxdm = None
     equity_regime = "NEUTRO"
     if fora:
@@ -1775,18 +1789,19 @@ def analyze_tickers(tickers: List[str]) -> List[dict]:
 
     for tk in tickers:
         tku = tk.upper()
-        # a) no universo E já no ranking → reaproveita (mesmos números).
-        res = _find_in_ranking(tk, ranking) if tku in uni else None
+        # a) no universo E já no ranking E perfil agressivo → reaproveita (mesmos números).
+        res = _find_in_ranking(tk, ranking) if (_reuse_cache and tku in uni) else None
         if res is not None:
             res["failed"] = False
             out.append(res)
             continue
-        # b) fora do universo (ou ainda não no ranking) → _analyze ao vivo.
+        # b) fora do universo / perfil não-agressivo → _analyze ao vivo COM o perfil.
         cat, row = uni.get(tku, (_infer_category(tk), None))
         bucket = (row or {}).get("bucket", "ACELERADOR")
         name = (row or {}).get("name", tk)
         try:
-            res = _analyze(tk, bucket, name, cat, idxc or {}, idxdm or {}, equity_regime)
+            res = _analyze(tk, bucket, name, cat, idxc or {}, idxdm or {}, equity_regime,
+                           profile=profile)
         except Exception as e:
             logger.warning(f"[SCREEN] _analyze {tk} falhou: {e}")
             res = None
@@ -1799,10 +1814,10 @@ def analyze_tickers(tickers: List[str]) -> List[dict]:
     return out
 
 
-def screen_assets(tickers: List[str]) -> dict:
+def screen_assets(tickers: List[str], profile: str = "agressivo") -> dict:
     """Endpoint helper: {assets:[...], market_state:{...}, failed_tickers:[...]} com o motor REAL.
     market_state vem do REAL (regime do S&P via compute_market_bar/regime), NÃO hardcoded."""
-    analyzed = analyze_tickers(tickers or [])
+    analyzed = analyze_tickers(tickers or [], profile=profile)
     assets = [a for a in analyzed if not a.get("failed")]
     failed = [a["ticker"] for a in analyzed if a.get("failed")]
 

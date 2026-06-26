@@ -12,6 +12,7 @@ from app.models.position import Position
 from app.services.market_data import get_portfolio_live_data, fetch_price_history
 from app.quantitative.indicators import historical_max_drawdown, sharpe_ratio
 from app.quantitative.leverage import historical_var, expected_shortfall, annualized_volatility
+from app.quantitative import profiles
 
 logger = logging.getLogger(__name__)
 
@@ -1039,7 +1040,8 @@ def _disjuntor_fluxos(rows: List[dict], mult_regime: int, capitulacao: bool) -> 
 
 
 def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
-                        cooldown_tickers: Optional[List[str]] = None) -> Dict:
+                        cooldown_tickers: Optional[List[str]] = None,
+                        profile: str = "agressivo") -> Dict:
     """
     Inteligência da carteira (método adotado, modelo Quantfury). `positions`: [{ticker, shares,
     avg_price, is_seed, is_cycle, last_verdict, verdict_since}]. `equity`: equity atual da conta.
@@ -1315,9 +1317,12 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
     # ── APORTE pelo BUCKET SUB-ALVO (item 2 — usa o ranking novo, não o screening velho) ──
     # Onde colocar dinheiro novo: bucket(s) abaixo do alvo → melhor ranqueado COMPRAR/FORTE
     # daquele bucket, não-possuído, fora do cooldown e descorrelacionado.
-    # Multiplicador dinâmico do regime (doutrina: alavanca o FLUXO NOVO conforme o mercado).
-    _MULT = {"CAPIT.EXTREMA": 5, "CAPITULACAO": 4, "NEUTRO": 3, "TOPO": 2}
-    mult_aporte = _MULT.get(equity_regime, 3)
+    # Multiplicador dinâmico do regime CONFORME O PERFIL (agressivo = tabela/doutrina atual).
+    # TETO DURO do perfil (cap2/3/5) entra como MIN — junto do cap agregado C.3 e do disjuntor;
+    # survival nunca SOBE por causa do perfil, só pode descer.
+    _plp = profiles.profile_leverage_params(profile)
+    _profile_cap = _plp["leverage_cap"]
+    mult_aporte = min(profiles.regime_multiplier(profile, equity_regime), int(_profile_cap))
 
     # ── C.2 — DISJUNTOR DE FLUXOS CONSECUTIVOS (a trava do CRO) ───────────────────
     # Calcula a degradação por ativo (aportes consecutivos no MESMO ativo em queda).
@@ -1344,7 +1349,8 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         cands.sort(key=lambda x: -(x.get("rank") or 0))
         for a in cands[:2]:
             reg_a = regime_by_cat.get(a.get("category"), equity_regime)   # regime do MERCADO do candidato
-            mult_regime_a = _MULT.get(reg_a, mult_aporte)
+            # Multiplicador do regime do candidato CONFORME O PERFIL, já capado pelo teto duro.
+            mult_regime_a = min(profiles.regime_multiplier(profile, reg_a), int(_profile_cap))
             # VETO do AGREGADO (C.3): a alavancagem sugerida = MIN(regime, cap agregado).
             # Se a carteira está alavancada demais, o cap puxa pra baixo (até 1x = sem alavanca).
             if cap_novo_fluxo is not None:
@@ -1394,6 +1400,8 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
     mult_final = mult_pos_disjuntor
     aporte_regime = {
         "regime": equity_regime,
+        "profile": profiles.normalize_profile(profile),   # perfil do assinante que governou os caps
+        "profile_leverage_cap": _profile_cap,             # teto duro do perfil (MIN aplicado)
         "multiplier": mult_final,                     # já com veto do agregado E disjuntor
         "multiplier_regime": mult_regime_headline,    # o que o regime sozinho pediria
         "multiplier_pre_disjuntor": mult_aporte_efetivo,  # após cap agregado, antes do disjuntor
