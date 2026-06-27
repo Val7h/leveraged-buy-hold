@@ -5,7 +5,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  // 90s: 20 ativos no yfinance a frio passam de 45s. 90s fica sob o limite ~100s
-  // do Cloudflare. Com o cache Upstash ligado, cai pra poucos segundos.
-  return proxyToBackend(req, "/api/v1/backtest/sharpe-compare", { timeoutMs: 90_000 });
+  // 100s: folga máxima sob o teto ~100s do Cloudflare p/ o cold start do Render free.
+  // O lever principal contra timeout é o DEFAULT de poucos tickers no frontend (4); presets
+  // grandes avisam. Com o cache Upstash ligado, cai pra poucos segundos.
+  return proxyToBackend(req, "/api/v1/backtest/sharpe-compare", { timeoutMs: 100_000 });
 }

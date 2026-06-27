@@ -10,10 +10,13 @@ import TickerLogo from "@/components/ui/TickerLogo";
 
 // Default ENXUTO (~7 tickers) p/ rodar rápido no cold start — o caminho óbvio
 // (abrir + comparar) não pode dar timeout. Presets maiores ficam a 1 clique.
-const DEFAULT_TICKERS = "NEE,JNJ,PG,KO,O,MO,BRK-B";
+// 4 tickers: o caminho óbvio (abrir + comparar) roda mesmo no cold start do Render free
+// (container acordando + N fetches de ~10a). Acima de ~6 o cold start pode estourar — por
+// isso o aviso. Presets maiores (B3 Top 20 etc.) ficam a 1 clique, já com o aviso.
+const DEFAULT_TICKERS = "NEE,JNJ,KO,O";
 
 // Acima disso, avisamos que a 1ª carga (cold start) pode demorar/expirar.
-const SLOW_TICKER_THRESHOLD = 10;
+const SLOW_TICKER_THRESHOLD = 6;
 
 const SHARPE_PRESETS: Record<string, { label: string; flag: string; tickers: string }> = {
   // ── EUA Defensivos ────────────────────────────────────────────────────────
