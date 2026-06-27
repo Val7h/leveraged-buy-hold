@@ -11,6 +11,12 @@ class BacktestRequest(BaseModel):
     monthly_contribution: float = 1000.0
     risk_profile: str = "balanced"
     strategies: List[str] = ["adaptive", "buy_hold", "leveraged_2x", "sp500"]
+    # ── Credibilidade: camada de custos (toggle) + Monte Carlo de ruína ───────
+    apply_costs: bool = True
+    slippage_pct: float = 0.004        # 0,4% no preço de execução de stop/liquidação
+    tax_pct: float = 0.15              # 15% sobre o ganho realizado nos ⅓ vendidos
+    run_monte_carlo: bool = True
+    mc_paths: int = 2000
 
 
 class BacktestPeriodMetrics(BaseModel):
@@ -44,6 +50,9 @@ class BacktestResult(BaseModel):
     crisis_analysis: List[Dict[str, Any]]
     price_series: List[Dict[str, Any]] = []
     trades: List[Dict[str, Any]] = []
+    basket: Optional[Dict[str, Any]] = None
+    cost_breakdown: Optional[Dict[str, Any]] = None
+    monte_carlo: Optional[Dict[str, Any]] = None
     completed_at: datetime
 
 
@@ -62,7 +71,11 @@ class SharpeCompareItem(BaseModel):
     retorno_anualizado: float
     volatilidade: float
     sharpe: float
+    sortino: float = 0.0          # downside-deviation ratio (cauda)
+    calmar: float = 0.0           # CAGR / |MaxDD| — critério de ranking nativo do alavancado
     max_drawdown: float
+    margin_buffer: Optional[float] = None  # % mín. (low − liq_price)/liq_price ; menor = mais perigoso
+    max_leverage: float = 1.0     # leverage máximo sobrevivente no período (busca binária por LOW)
     beta: float
     final_equity: float
     margin_call: bool

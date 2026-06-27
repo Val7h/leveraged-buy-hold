@@ -12,6 +12,11 @@ import { X, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
 interface AssetChartModalProps {
   ticker: string;
   onClose: () => void;
+  // Opcionais — quando o modal é aberto a partir de uma POSIÇÃO real, plotam a
+  // linha de stop escalonado e o preço de liquidação a partir do PM/alavancagem.
+  // Sem eles, o usuário projeta via input de alavancagem dentro do modal.
+  leverage?: number;   // múltiplo de alavancagem da posição (ex.: 3 = 3x)
+  avgPrice?: number;   // preço médio (PM) da posição
 }
 
 const PERIODS = ["3mo", "6mo", "1y", "2y", "5y"] as const;
@@ -98,12 +103,18 @@ function computeRSI(data: { close: number }[], period = 14): (number | null)[] {
   return result;
 }
 
-export default function AssetChartModal({ ticker, onClose }: AssetChartModalProps) {
+export default function AssetChartModal({ ticker, onClose, leverage, avgPrice }: AssetChartModalProps) {
   const [period, setPeriod] = useState<string>("1y");
   const [rawData, setRawData] = useState<any[]>([]);
+  const [dividends, setDividends] = useState<{ date: string; amount: number }[]>([]);
+  const [dyTrailing, setDyTrailing] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>("");
   const [assetInfo, setAssetInfo] = useState<any>(null);
+
+  // Alavancagem projetada: vem da posição (prop) ou de input do usuário (abertura genérica).
+  // Default 3x = múltiplo-base da doutrina (sinal de mercado NORMAL).
+  const [levInput, setLevInput] = useState<number>(leverage ?? 3);
 
   const load = async () => {
     setLoading(true);
@@ -114,12 +125,20 @@ export default function AssetChartModal({ ticker, onClose }: AssetChartModalProp
       const [histRes] = await Promise.all([
         assetsApi.getHistory(ticker, FETCH_PERIOD[period] ?? period),
       ]);
-      const data = Array.isArray(histRes.data) ? histRes.data : [];
+      // Compat: o backend agora devolve { history, dividends, dy_trailing }.
+      // Versões antigas devolviam um array puro — aceitamos os dois (não quebra).
+      const body = histRes.data;
+      const data = Array.isArray(body) ? body : (Array.isArray(body?.history) ? body.history : []);
+      const divs = Array.isArray(body?.dividends) ? body.dividends : [];
       setRawData(data);
+      setDividends(divs);
+      setDyTrailing(typeof body?.dy_trailing === "number" ? body.dy_trailing : null);
       if (data.length === 0) setLoadError("Sem dados de preço para este ativo no período.");
     } catch (e: any) {
       // Não é mais silencioso: mostra o motivo (antes o gráfico ficava vazio sem aviso).
       setRawData([]);
+      setDividends([]);
+      setDyTrailing(null);
       setLoadError(e?.response?.status === 404
         ? "Sem dados de preço para este ativo."
         : "Não foi possível carregar o gráfico. Tente de novo.");
@@ -152,19 +171,42 @@ export default function AssetChartModal({ ticker, onClose }: AssetChartModalProp
     return idx < 0 ? 0 : idx;
   })();
 
-  // priceData = só a janela visível, mas com MM50/MM200 calculadas com lookback.
-  const priceData = fullDaily.slice(visibleStartIdx).map((d, i) => ({
-    date:  d.date.slice(5),   // MM-DD
-    close: d.close,
-    ma50:  ma50full[visibleStartIdx + i],
-    ma200: ma200full[visibleStartIdx + i],
-  }));
-
   // ── RSI SEMANAL (gatilho da doutrina ≤38) ─────────────────────────────────
   // Reamostra a série diária COMPLETA em semanal e calcula o RSI de Wilder ANTES
   // de qualquer thinning. O número que o investidor lê é o RSI SEMANAL.
   const weekly = resampleWeekly(fullDaily);
   const weeklyRsi = computeRSI(weekly, 14);
+
+  // Mapa semana-ISO → RSI, p/ saber em cada PREGÃO se a semana estava na zona ≤38.
+  // (a zona de compra no preço usa o MESMO gatilho do painel de RSI.)
+  const rsiByWeek = new Map<string, number | null>();
+  weekly.forEach((w, i) => rsiByWeek.set(isoWeekKey(w.date), weeklyRsi[i]));
+
+  // ── ZONA DE COMPRA no PREÇO (doutrina "compre o desconto") ────────────────
+  // Pinta a faixa do preço quando o pregão está na tese: RSI semanal ≤ 38 OU
+  // preço ≥ X% abaixo da MM200. Plotamos como uma Area "buyZone" que segue o
+  // próprio close só nesses dias (null fora) → some sozinha sem dado/fora da zona.
+  const BUY_ZONE_MM200_DISCOUNT = 10; // ≥10% abaixo da MM200 = desconto relevante
+  const RSI_ENTRY = 38;
+
+  // priceData = só a janela visível, mas com MM50/MM200 calculadas com lookback.
+  const priceData = fullDaily.slice(visibleStartIdx).map((d, i) => {
+    const ma200 = ma200full[visibleStartIdx + i];
+    const wRsi = rsiByWeek.get(isoWeekKey(d.date));
+    const belowMa200 = ma200 != null && ma200 > 0
+      ? ((d.close - ma200) / ma200) * 100 <= -BUY_ZONE_MM200_DISCOUNT
+      : false;
+    const rsiZone = wRsi != null && wRsi <= RSI_ENTRY;
+    const inBuyZone = belowMa200 || rsiZone;
+    return {
+      date:  d.date.slice(5),   // MM-DD
+      close: d.close,
+      ma50:  ma50full[visibleStartIdx + i],
+      ma200,
+      // buyZone só tem valor (=close) nos pregões da tese; null caso contrário.
+      buyZone: inBuyZone ? d.close : null,
+    };
+  });
   // Só plota as semanas dentro da janela visível.
   const rsiData = weekly
     .map((w, i) => ({ date: w.date.slice(5), rsi: weeklyRsi[i], _full: w.date }))
@@ -192,6 +234,66 @@ export default function AssetChartModal({ ticker, onClose }: AssetChartModalProp
     return null;
   })();
   const distMa200Pct = lastMa200 && lastMa200 > 0 ? ((last - lastMa200) / lastMa200) * 100 : null;
+
+  // ── DRAWDOWN HISTÓRICO (pior tombo peak-to-trough da JANELA visível) ───────
+  // Princípio nº1 (sobrevivência): saber o tombo histórico p/ dimensionar a
+  // alavancagem. Varre a janela visível, guarda o pico corrente e mede a maior
+  // queda %; registra também o nível do FUNDO p/ traçar a linha.
+  const drawdown = (() => {
+    if (priceData.length < 2) return null;
+    let peak = priceData[0].close;
+    let worstPct = 0;
+    let troughClose = priceData[0].close;
+    let troughDate = priceData[0].date;
+    for (const p of priceData) {
+      if (p.close > peak) peak = p.close;
+      const dd = peak > 0 ? ((p.close - peak) / peak) * 100 : 0;
+      if (dd < worstPct) {
+        worstPct = dd;
+        troughClose = p.close;
+        troughDate = p.date;
+      }
+    }
+    if (worstPct >= -0.01) return null; // sem queda relevante
+    return { pct: worstPct, troughClose, troughDate };
+  })();
+
+  // ── STOP ESCALONADO + LIQUIDAÇÃO (B&H ALAVANCADO) ─────────────────────────
+  // Base de cálculo = PM da posição (avgPrice) ou, na abertura genérica, o preço
+  // atual. Stops escalonados por nível de fluxo: -10/-20/-30% do PM (desalavancar
+  // de verdade, escada por nível). Preço de liquidação ≈ PM × (1 - 1/lev): num
+  // long alavancado lev×, o colateral zera quando o ativo cai 1/lev. Tudo
+  // OPCIONAL: se não há base/lev válidos, nada é plotado.
+  const stopBase = (avgPrice && avgPrice > 0) ? avgPrice : (last > 0 ? last : null);
+  const lev = Number.isFinite(levInput) && levInput >= 1 ? levInput : null;
+  const stopLevels = stopBase
+    ? [10, 20, 30].map((d) => ({ pct: d, price: stopBase * (1 - d / 100) }))
+    : [];
+  // Liquidação só faz sentido com alavancagem > 1.
+  const liqPrice = (stopBase && lev && lev > 1) ? stopBase * (1 - 1 / lev) : null;
+  // Distância % do preço atual até a liquidação (folga de sobrevivência).
+  const liqDistPct = (liqPrice && last > 0) ? ((liqPrice - last) / last) * 100 : null;
+
+  // ── DIVIDENDOS na JANELA visível (markers no eixo) ────────────────────────
+  // Cada provento vira uma ReferenceLine vertical no `MM-DD` do pregão mais
+  // próximo dentro da janela. B&H 10-15a: proventos compõem o retorno total.
+  // OPCIONAL: lista vazia (sem dado) → nenhum marker; não fabrica nada.
+  const visibleDividends = (() => {
+    if (!dividends.length || !priceData.length || !cutoffISO) return [];
+    const out: { date: string; amount: number }[] = [];
+    for (const dv of dividends) {
+      if (dv.date < cutoffISO) continue;
+      // casa o dividendo com o pregão visível de data <= ex-date (ou o 1º depois).
+      const mmdd = dv.date.slice(5);
+      const exists = priceData.some((p) => p.date === mmdd);
+      out.push({ date: mmdd, amount: dv.amount });
+      if (!exists) {
+        // se a data exata não é um pregão plotado, ainda assim mostramos o marker
+        // no MM-DD; o eixo categórico aproxima visualmente.
+      }
+    }
+    return out;
+  })();
 
   // Thin out for performance — só o gráfico de PREÇO (a série diária é densa).
   // O RSI já é semanal (poucos pontos): NÃO sofre thinning.
@@ -255,25 +357,67 @@ export default function AssetChartModal({ ticker, onClose }: AssetChartModalProp
             </div>
           ) : (
             <>
+              {/* Métricas de risco da doutrina: desconto, tombo histórico, DY, liquidação */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3 text-xs font-mono">
+                {distMa200Pct != null && (
+                  <span>
+                    <span className="text-text-muted">vs MM200: </span>
+                    <span className={cn("font-semibold", distMa200Pct < 0 ? "text-success" : "text-text-secondary")}>
+                      {distMa200Pct > 0 ? "+" : ""}{distMa200Pct.toFixed(1)}%
+                    </span>
+                  </span>
+                )}
+                {drawdown != null && (
+                  <span>
+                    <span className="text-text-muted">pior tombo: </span>
+                    <span className="font-semibold text-danger">{drawdown.pct.toFixed(1)}%</span>
+                  </span>
+                )}
+                {dyTrailing != null && dyTrailing > 0 && (
+                  <span>
+                    <span className="text-text-muted">DY 12m: </span>
+                    <span className="font-semibold text-primary">{dyTrailing.toFixed(2)}%</span>
+                  </span>
+                )}
+                {/* Projeção de alavancagem / liquidação (B&H alavancado) */}
+                <span className="flex items-center gap-1">
+                  <span className="text-text-muted">alav.:</span>
+                  <input
+                    type="number" min={1} max={10} step={0.5} value={levInput}
+                    onChange={(e) => setLevInput(parseFloat(e.target.value) || 1)}
+                    className="w-12 bg-surface-2 border border-border rounded px-1 py-0.5 text-text-primary text-xs"
+                    title={avgPrice ? "Alavancagem da posição" : "Projete onde liquidaria"}
+                  />
+                  <span className="text-text-muted">x</span>
+                </span>
+                {liqPrice != null && (
+                  <span>
+                    <span className="text-text-muted">liquida em: </span>
+                    <span className="font-semibold text-danger">{formatCurrency(liqPrice)}</span>
+                    {liqDistPct != null && (
+                      <span className="text-text-muted"> ({liqDistPct.toFixed(0)}%)</span>
+                    )}
+                  </span>
+                )}
+              </div>
+
               {/* Price + MA chart */}
               <div className="mb-1">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-text-muted">Preço · MM50 · MM200</p>
-                  {distMa200Pct != null && (
-                    <p className="text-xs font-mono">
-                      <span className="text-text-muted">vs MM200: </span>
-                      <span className={cn("font-semibold", distMa200Pct < 0 ? "text-success" : "text-text-secondary")}>
-                        {distMa200Pct > 0 ? "+" : ""}{distMa200Pct.toFixed(1)}%
-                      </span>
-                    </p>
-                  )}
-                </div>
+                <p className="text-xs text-text-muted mb-2">
+                  Preço · MM50 · MM200
+                  {stopBase && <span className="text-text-muted"> · stop −10/−20/−30% do {avgPrice ? "PM" : "preço"}</span>}
+                </p>
                 <ResponsiveContainer width="100%" height={320} minWidth={0}>
                   <ComposedChart data={displayData} margin={{ top: 4, right: 8, left: 0, bottom: 8 }}>
                     <defs>
                       <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%"  stopColor={isPositive ? "#00E676" : "#FF5252"} stopOpacity={0.15} />
                         <stop offset="95%" stopColor={isPositive ? "#00E676" : "#FF5252"} stopOpacity={0} />
+                      </linearGradient>
+                      {/* Zona de compra: verde translúcido (doutrina "compre o desconto") */}
+                      <linearGradient id="buyZoneGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#00E676" stopOpacity={0.28} />
+                        <stop offset="95%" stopColor="#00E676" stopOpacity={0.04} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1E2730" vertical={false} />
@@ -284,19 +428,54 @@ export default function AssetChartModal({ ticker, onClose }: AssetChartModalProp
                       tickFormatter={(v) => `$${v.toFixed(0)}`} />
                     <Tooltip
                       contentStyle={{ background: "#161C24", border: "1px solid #1F2937", borderRadius: 8, fontSize: 11 }}
-                      formatter={(v: any, name: string) => [
-                        `$${Number(v).toFixed(2)}`,
-                        name === "close" ? "Preço" : name === "ma50" ? "MM50" : "MM200",
-                      ]}
+                      formatter={(v: any, name: string) => {
+                        if (name === "buyZone") return [null, null]; // não duplica no tooltip
+                        return [
+                          `$${Number(v).toFixed(2)}`,
+                          name === "close" ? "Preço" : name === "ma50" ? "MM50" : "MM200",
+                        ];
+                      }}
                     />
                     <Area type="monotone" dataKey="close" stroke={isPositive ? "#00E676" : "#FF5252"}
                       strokeWidth={1.5} fill="url(#priceGrad)" dot={false} />
+                    {/* ZONA DE COMPRA no preço: só pinta os pregões da tese (RSI≤38 ou desconto
+                        ≥10% da MM200). buyZone=null fora da zona → some sozinha sem dado. */}
+                    <Area type="monotone" dataKey="buyZone" stroke="#00E676" strokeWidth={0}
+                      fill="url(#buyZoneGrad)" dot={false} connectNulls={false}
+                      isAnimationActive={false} activeDot={false} />
                     <Line type="monotone" dataKey="ma50"  stroke="#00D4FF" strokeWidth={1.2} dot={false}
                       strokeDasharray="4 2" connectNulls />
                     <Line type="monotone" dataKey="ma200" stroke="#FF9800" strokeWidth={1.5} dot={false} connectNulls />
+
+                    {/* STOP escalonado −10/−20/−30% do PM (ou do preço, abertura genérica).
+                        Linhas horizontais; some quando não há base de cálculo. */}
+                    {stopLevels.map((s) => (
+                      <ReferenceLine key={`stop${s.pct}`} y={s.price} stroke="#FFB020"
+                        strokeDasharray="2 3" strokeWidth={1}
+                        label={{ value: `stop −${s.pct}%`, fill: "#FFB020", fontSize: 8, position: "insideBottomLeft" }} />
+                    ))}
+                    {/* LIQUIDAÇÃO: onde a alavancagem zera o colateral (crítico no B&H alavancado). */}
+                    {liqPrice != null && (
+                      <ReferenceLine y={liqPrice} stroke="#FF5252" strokeWidth={1.5}
+                        label={{ value: `liq ${levInput}x`, fill: "#FF5252", fontSize: 9, position: "insideBottomLeft" }} />
+                    )}
+                    {/* DRAWDOWN: nível do FUNDO do pior tombo da janela (dimensiona alavancagem). */}
+                    {drawdown != null && (
+                      <ReferenceLine y={drawdown.troughClose} stroke="#94A3B8" strokeDasharray="5 4"
+                        strokeWidth={1}
+                        label={{ value: `fundo ${drawdown.pct.toFixed(0)}%`, fill: "#94A3B8", fontSize: 8, position: "insideTopLeft" }} />
+                    )}
+                    {/* DIVIDENDOS: marcador vertical em cada provento da janela (retorno total). */}
+                    {visibleDividends.map((dv, i) => (
+                      <ReferenceLine key={`div${i}-${dv.date}`} x={dv.date} stroke="#22D3EE"
+                        strokeDasharray="1 2" strokeWidth={1} opacity={0.6}
+                        label={{ value: "÷", fill: "#22D3EE", fontSize: 11, position: "insideTop" }} />
+                    ))}
+
                     <Legend formatter={(v) => (
                       <span style={{ color: "#94A3B8", fontSize: 10 }}>
-                        {v === "close" ? "Preço" : v === "ma50" ? "MM50" : "MM200"}
+                        {v === "close" ? "Preço" : v === "ma50" ? "MM50" : v === "ma200" ? "MM200"
+                          : v === "buyZone" ? "Zona de compra" : v}
                       </span>
                     )} />
                     {/* Brush: pan/zoom de faixa por toque (mobile) + arrasto (desktop) */}

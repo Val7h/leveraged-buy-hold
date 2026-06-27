@@ -22,6 +22,11 @@ def run(request: BacktestRequest):
         initial_capital=request.initial_capital,
         monthly_contribution=request.monthly_contribution,
         risk_profile=request.risk_profile,
+        apply_costs=request.apply_costs,
+        slippage_pct=request.slippage_pct,
+        tax_pct=request.tax_pct,
+        run_monte_carlo=request.run_monte_carlo,
+        mc_paths=request.mc_paths,
     )
 
     return {

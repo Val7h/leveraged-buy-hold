@@ -1,14 +1,13 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import AssetCard from "@/components/assets/AssetCard";
 import AssetComparisonModal from "@/components/assets/AssetComparisonModal";
 import MarketStateWidget from "@/components/assets/MarketStateWidget";
-import { assetsApi } from "@/lib/api";
+import { assetsApi, authApi } from "@/lib/api";
 import type { AssetScore, AssetScreenResult } from "@/types";
-import { Search, RefreshCw, Filter, TrendingUp } from "lucide-react";
-import { getScoreColor } from "@/lib/utils";
+import { Search, RefreshCw, Filter, Info, Download } from "lucide-react";
 
 const PRESET_LISTS: Record<string, { tickers: string; label: string; flag?: string }> = {
   // ── EUA ──────────────────────────────────────────────────────────────────
@@ -80,6 +79,33 @@ const PRESET_LISTS: Record<string, { tickers: string; label: string; flag?: stri
   tokenized:  { tickers: "TSLAONUSDT,NVDAONUSDT,AAPLONUSDT,AMZNONUSDT,GOOGLONUSDT,MSFTONUSDT,METAONUSDT", label: "Tokenizadas (Bitget)", flag: "🪙" },
 };
 
+// ── Screener (client-side, sobre o que o motor JÁ retorna) ──────────────────
+// Ordem de força do veredito (FORTE no topo) e rótulo amigável.
+const VERDICT_RANK: Record<string, number> = {
+  "COMPRAR FORTE": 0, COMPRAR: 1, JUSTO: 2, ESTICADO: 3, ESPECULATIVO: 4, RESERVA: 5,
+};
+const VERDICT_LABEL: Record<string, string> = {
+  "COMPRAR FORTE": "Oportunidade Forte",
+  COMPRAR: "Oportunidade",
+  JUSTO: "Neutro (Justo)",
+  ESTICADO: "Neutro (Esticado)",
+  ESPECULATIVO: "Desfavorável",
+  RESERVA: "Reserva",
+};
+
+type SortKey = "rank" | "dy" | "momentum" | "quality" | "beta" | "leverage";
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "rank", label: "Rank (composto)" },
+  { key: "dy", label: "Dividend Yield" },
+  { key: "momentum", label: "Momento" },
+  { key: "quality", label: "Qualidade" },
+  { key: "beta", label: "Beta (menor)" },
+  { key: "leverage", label: "Alavancagem" },
+];
+
+const num = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) ? v : undefined;
+
 function AssetsPageInner() {
   const searchParams = useSearchParams();
   const [tickers, setTickers] = useState(PRESET_LISTS.defensive.tickers);
@@ -89,6 +115,24 @@ function AssetsPageInner() {
   const [error, setError] = useState("");
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
   const [showComparison, setShowComparison] = useState(false);
+  const [riskProfile, setRiskProfile] = useState<string | null>(null);
+
+  // ── Filtros do screener (client-side) ──
+  const [minDY, setMinDY] = useState(0);              // dividend_yield em %
+  const [buyOnly, setBuyOnly] = useState(false);      // só COMPRAR / COMPRAR FORTE
+  const [maxBeta, setMaxBeta] = useState(0);          // 0 = sem teto
+  const [minLev, setMinLev] = useState(1);
+  const [maxLev, setMaxLev] = useState(5);
+  const [sectorFilter, setSectorFilter] = useState("__all__");
+  const [sortKey, setSortKey] = useState<SortKey>("rank");
+  const [groupByVerdict, setGroupByVerdict] = useState(true);
+
+  // Perfil do usuário (p/ o banner Screening↔Ranking). Não bloqueia a UI se falhar.
+  useEffect(() => {
+    authApi.me()
+      .then((res) => setRiskProfile(res.data?.riskProfile ?? res.data?.risk_profile ?? null))
+      .catch(() => setRiskProfile(null));
+  }, []);
 
   // Auto-run when navigated from Sharpe Compare with ?tickers=...&autorun=1
   useEffect(() => {
@@ -138,13 +182,119 @@ function AssetsPageInner() {
     return result.assets.filter((asset) => selectedAssets.has(asset.ticker));
   };
 
+  // Detecta se os campos vêm do motor — se NÃO vierem em nenhum ativo, ocultamos o filtro.
+  const caps = useMemo(() => {
+    const a = result?.assets ?? [];
+    return {
+      hasDY: a.some((x) => num(x.dividend_yield) !== undefined),
+      hasBeta: a.some((x) => num(x.beta) !== undefined),
+      hasVerdict: a.some((x) => !!x.verdict),
+      sectors: Array.from(
+        new Set(a.map((x) => x.bucket || x.sector).filter((s): s is string => !!s))
+      ).sort(),
+    };
+  }, [result]);
+
+  // Helpers de leitura de campos do motor.
+  const dyOf = (a: AssetScore) => num(a.dividend_yield) ?? 0;
+  const betaOf = (a: AssetScore) => num(a.beta);
+  const momentumOf = (a: AssetScore) => num(a.opportunity_score) ?? 0;
+  const qualityOf = (a: AssetScore) => num(a.quality_score) ?? 0;
+  const rankOf = (a: AssetScore) => num(a.composite_score) ?? 0;
+  const levOf = (a: AssetScore) => num(a.recommended_leverage) ?? 1;
+  const sectorOf = (a: AssetScore) => a.bucket || a.sector || "";
+
+  // Aplica filtros client-side + ordenação. NÃO altera o resultado bruto do motor.
+  const filtered = useMemo(() => {
+    let list = (result?.assets ?? []).slice();
+
+    if (caps.hasDY && minDY > 0) list = list.filter((a) => dyOf(a) >= minDY / 100 || dyOf(a) >= minDY);
+    if (caps.hasVerdict && buyOnly) {
+      list = list.filter((a) => a.verdict === "COMPRAR" || a.verdict === "COMPRAR FORTE");
+    }
+    if (caps.hasBeta && maxBeta > 0) {
+      list = list.filter((a) => { const b = betaOf(a); return b === undefined || b <= maxBeta; });
+    }
+    list = list.filter((a) => { const l = levOf(a); return l >= minLev && l <= maxLev; });
+    if (sectorFilter !== "__all__") list = list.filter((a) => sectorOf(a) === sectorFilter);
+
+    list.sort((a, b) => {
+      switch (sortKey) {
+        case "dy": return dyOf(b) - dyOf(a);
+        case "momentum": return momentumOf(b) - momentumOf(a);
+        case "quality": return qualityOf(b) - qualityOf(a);
+        case "leverage": return levOf(b) - levOf(a);
+        case "beta": return (betaOf(a) ?? Infinity) - (betaOf(b) ?? Infinity);
+        case "rank":
+        default: return rankOf(b) - rankOf(a);
+      }
+    });
+    return list;
+  }, [result, caps, minDY, buyOnly, maxBeta, minLev, maxLev, sectorFilter, sortKey]);
+
+  // Agrupa por veredito (FORTE no topo). Mantém a ordenação dentro de cada grupo.
+  const grouped = useMemo(() => {
+    if (!groupByVerdict || !caps.hasVerdict) return null;
+    const map = new Map<string, AssetScore[]>();
+    for (const a of filtered) {
+      const v = a.verdict || "RESERVA";
+      if (!map.has(v)) map.set(v, []);
+      map.get(v)!.push(a);
+    }
+    return Array.from(map.entries()).sort(
+      (x, y) => (VERDICT_RANK[x[0]] ?? 99) - (VERDICT_RANK[y[0]] ?? 99)
+    );
+  }, [filtered, groupByVerdict, caps.hasVerdict]);
+
+  const nonAggressive = !!riskProfile && riskProfile.toLowerCase() !== "aggressive" && riskProfile.toLowerCase() !== "agressivo";
+
+  // ── Export CSV do resultado FILTRADO ──
+  const exportCsv = () => {
+    if (filtered.length === 0) return;
+    const cols = [
+      "ticker", "company_name", "verdict", "rank", "quality", "momentum",
+      "leverage", "beta", "dividend_yield_pct", "risk_rating", "sector", "price",
+    ];
+    const esc = (v: unknown) => {
+      const s = v === undefined || v === null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rows = filtered.map((a) => [
+      a.ticker, a.company_name ?? "", a.verdict ?? "", rankOf(a).toFixed(1),
+      qualityOf(a).toFixed(1), momentumOf(a).toFixed(1), levOf(a).toFixed(2),
+      betaOf(a) ?? "", (dyOf(a) <= 1 ? dyOf(a) * 100 : dyOf(a)).toFixed(2),
+      a.risk_rating ?? "", sectorOf(a), num(a.current_price) ?? "",
+    ]);
+    const csv = [cols.join(","), ...rows.map((r) => r.map(esc).join(","))].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `screening_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const renderCards = (list: AssetScore[]) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {list.map((asset) => (
+        <AssetCard
+          key={asset.ticker}
+          asset={asset}
+          selected={selectedAssets.has(asset.ticker)}
+          onToggleSelect={toggleAssetSelection}
+        />
+      ))}
+    </div>
+  );
+
   return (
     <AppShell>
       <div className="p-6 max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-semibold text-text-primary">Screening de Ativos</h1>
-            <p className="text-sm text-text-secondary mt-0.5">Análise quantitativa de ativos defensivos com score 0-100</p>
+            <p className="text-sm text-text-secondary mt-0.5">Screener quantitativo com filtros sobre o motor de 3 camadas</p>
           </div>
         </div>
 
@@ -193,10 +343,93 @@ function AssetsPageInner() {
         {/* Results */}
         {result && (
           <>
+            {/* Banner perfil: explica divergência Screening ↔ Ranking p/ perfis não-agressivos */}
+            {nonAggressive && (
+              <div className="flex items-start gap-2 bg-primary/5 border border-primary/20 rounded-lg px-4 py-3 text-xs text-text-secondary mb-4">
+                <Info size={15} className="text-primary shrink-0 mt-0.5" />
+                <p>
+                  Para perfis <span className="font-semibold text-text-primary">Conservador/Moderado</span>, a alavancagem
+                  exibida aqui reflete o <span className="font-semibold">seu perfil</span> (calculada ao vivo com seus caps)
+                  e pode diferir da aba <span className="font-semibold">Ranking</span>, que mostra a referência agressiva
+                  canônica. Não é bug — é a calibragem do motor ao seu risco.
+                </p>
+              </div>
+            )}
+
+            {/* Screener: filtros client-side sobre campos que o motor JÁ retorna */}
+            <div className="card mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Filter size={14} className="text-primary" />
+                <span className="text-sm font-semibold text-text-primary">Filtros do screener</span>
+                <span className="text-xs text-text-muted">(aplicados sobre o resultado do motor)</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {caps.hasDY && (
+                  <div>
+                    <label className="label text-xs">DY mínimo (%)</label>
+                    <input type="number" min={0} step={0.5} value={minDY}
+                      onChange={(e) => setMinDY(Number(e.target.value))} className="input text-sm" />
+                  </div>
+                )}
+                {caps.hasBeta && (
+                  <div>
+                    <label className="label text-xs">Beta máximo (0=∞)</label>
+                    <input type="number" min={0} step={0.1} value={maxBeta}
+                      onChange={(e) => setMaxBeta(Number(e.target.value))} className="input text-sm" />
+                  </div>
+                )}
+                <div>
+                  <label className="label text-xs">Alav. mín.</label>
+                  <input type="number" min={1} max={5} step={0.5} value={minLev}
+                    onChange={(e) => setMinLev(Number(e.target.value))} className="input text-sm" />
+                </div>
+                <div>
+                  <label className="label text-xs">Alav. máx.</label>
+                  <input type="number" min={1} max={5} step={0.5} value={maxLev}
+                    onChange={(e) => setMaxLev(Number(e.target.value))} className="input text-sm" />
+                </div>
+                {caps.sectors.length > 0 && (
+                  <div>
+                    <label className="label text-xs">Setor / bucket</label>
+                    <select value={sectorFilter} onChange={(e) => setSectorFilter(e.target.value)} className="input text-sm">
+                      <option value="__all__">Todos</option>
+                      {caps.sectors.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="label text-xs">Ordenar por</label>
+                  <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="input text-sm">
+                    {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 mt-3">
+                {caps.hasVerdict && (
+                  <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+                    <input type="checkbox" checked={buyOnly} onChange={(e) => setBuyOnly(e.target.checked)}
+                      className="accent-primary" />
+                    Só Comprar / Comprar Forte
+                  </label>
+                )}
+                {caps.hasVerdict && (
+                  <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
+                    <input type="checkbox" checked={groupByVerdict} onChange={(e) => setGroupByVerdict(e.target.checked)}
+                      className="accent-primary" />
+                    Agrupar por veredito (Forte no topo)
+                  </label>
+                )}
+                <button onClick={exportCsv} disabled={filtered.length === 0}
+                  className="ml-auto flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary/50 hover:text-primary text-text-secondary transition-colors disabled:opacity-40">
+                  <Download size={13} /> Exportar CSV
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm text-text-secondary">
-                <span className="text-text-primary font-semibold">{result.total_assets}</span> ativos encontrados
-                {" "}· ordenados por score composto
+                <span className="text-text-primary font-semibold">{filtered.length}</span> de {result.total_assets} ativos
+                {filtered.length !== result.total_assets && <span className="text-text-muted"> (filtrados)</span>}
                 {selectedAssets.size > 0 && (
                   <span className="ml-2 px-2 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold">
                     {selectedAssets.size} selecionado{selectedAssets.size > 1 ? "s" : ""}
@@ -226,12 +459,19 @@ function AssetsPageInner() {
               </div>
             </div>
 
+            {/* Failed tickers (mantido) */}
+            {result.failed_tickers && result.failed_tickers.length > 0 && (
+              <div className="bg-warning/10 border border-warning/20 rounded-lg px-4 py-2 text-xs text-warning mb-4">
+                Sem dados do motor: {result.failed_tickers.join(", ")}
+              </div>
+            )}
+
             {/* Summary bar */}
             <div className="grid grid-cols-3 gap-3 mb-5">
               {[
-                { label: "Score Médio", value: result.assets.length > 0 ? (result.assets.reduce((s, a) => s + a.composite_score, 0) / result.assets.length).toFixed(1) : "—" },
-                { label: "Melhor Oport.", value: result.assets[0] ? (result.assets[0].underlying_ticker ?? result.assets[0].ticker.replace("ONUSDT","")) : "—" },
-                { label: "Alavancagem Méd.", value: result.assets.length > 0 ? (result.assets.reduce((s, a) => s + a.recommended_leverage, 0) / result.assets.length).toFixed(2) + "x" : "—" },
+                { label: "Score Médio", value: filtered.length > 0 ? (filtered.reduce((s, a) => s + rankOf(a), 0) / filtered.length).toFixed(1) : "—" },
+                { label: "Melhor Oport.", value: filtered[0] ? (filtered[0].underlying_ticker ?? filtered[0].ticker.replace("ONUSDT", "")) : "—" },
+                { label: "Alavancagem Méd.", value: filtered.length > 0 ? (filtered.reduce((s, a) => s + levOf(a), 0) / filtered.length).toFixed(2) + "x" : "—" },
               ].map((item) => (
                 <div key={item.label} className="card-sm flex items-center justify-between">
                   <span className="text-xs text-text-muted">{item.label}</span>
@@ -240,16 +480,27 @@ function AssetsPageInner() {
               ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {result.assets.map((asset) => (
-                <AssetCard
-                  key={asset.ticker}
-                  asset={asset}
-                  selected={selectedAssets.has(asset.ticker)}
-                  onToggleSelect={toggleAssetSelection}
-                />
-              ))}
-            </div>
+            {filtered.length === 0 ? (
+              <div className="card text-center py-12">
+                <Filter size={32} className="text-text-muted mx-auto mb-3" />
+                <p className="text-sm text-text-secondary">Nenhum ativo passou pelos filtros. Afrouxe os critérios.</p>
+              </div>
+            ) : grouped ? (
+              <div className="space-y-6">
+                {grouped.map(([verdict, list]) => (
+                  <div key={verdict}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-semibold text-text-primary">{VERDICT_LABEL[verdict] ?? verdict}</span>
+                      <span className="text-xs text-text-muted">({list.length})</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    {renderCards(list)}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              renderCards(filtered)
+            )}
 
             {/* Comparison Modal */}
             {showComparison && (

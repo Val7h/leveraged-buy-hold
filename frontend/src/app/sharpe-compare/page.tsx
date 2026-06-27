@@ -59,8 +59,49 @@ function sharpeBg(v: number): string {
   return "bg-purple-500/10";
 }
 
+// Calmar (CAGR/|MaxDD|) — métrica nativa do alavancado, critério principal de rank.
+function calmarColor(v: number): string {
+  if (v <= -99) return "text-danger";       // liquidado (sentinela)
+  if (v < 0)    return "text-danger";
+  if (v < 0.5)  return "text-warning";
+  if (v < 1)    return "text-text-primary";
+  if (v < 2)    return "text-success";
+  return "text-purple-400";
+}
+function calmarBg(v: number): string {
+  if (v <= -99) return "bg-danger/10";
+  if (v < 0)    return "bg-danger/10";
+  if (v < 0.5)  return "bg-warning/10";
+  if (v < 1)    return "bg-surface-3";
+  if (v < 2)    return "bg-success/10";
+  return "bg-purple-500/10";
+}
+
+// Margin buffer: quão perto o LOW chegou da liquidação (%). Menor = mais perigoso.
+function bufferColor(v: number | null): string {
+  if (v === null)  return "text-text-muted";  // sem alavancagem
+  if (v <= 0)      return "text-danger";       // liquidou
+  if (v < 15)      return "text-danger";       // raspou a liquidação
+  if (v < 40)      return "text-warning";
+  if (v < 100)     return "text-text-primary";
+  return "text-success";
+}
+
+function fmtCalmar(v: number): string {
+  if (v <= -99) return "—";
+  return v.toFixed(2);
+}
+function fmtSortino(v: number): string {
+  if (v <= -99) return "—";
+  return v.toFixed(2);
+}
+function fmtBuffer(v: number | null): string {
+  if (v === null) return "—";
+  return `${v.toFixed(0)}%`;
+}
+
 function exportCsv(items: SharpeCompareItem[], leverage: number, period: string) {
-  const header = "Ticker,Beta,Retorno Total (%),CAGR (%),Volatilidade (%),Sharpe,Max Drawdown (%),Patrimônio Final,Sobreviveu,Margin Call Date";
+  const header = "Ticker,Beta,Retorno Total (%),CAGR (%),Volatilidade (%),Calmar,Sortino,Sharpe,Max Drawdown (%),Margin Buffer (%),Max Lev Sobrevivente,Patrimônio Final,Sobreviveu,Margin Call Date";
   const rows = items.map((r) =>
     [
       r.ticker,
@@ -68,8 +109,12 @@ function exportCsv(items: SharpeCompareItem[], leverage: number, period: string)
       r.retorno_total.toFixed(2),
       r.retorno_anualizado.toFixed(2),
       r.volatilidade.toFixed(2),
+      r.calmar <= -99 ? "" : r.calmar.toFixed(3),
+      r.sortino <= -99 ? "" : r.sortino.toFixed(3),
       r.sharpe.toFixed(3),
       r.max_drawdown.toFixed(2),
+      r.margin_buffer === null ? "" : r.margin_buffer.toFixed(2),
+      r.max_leverage.toFixed(1),
       r.final_equity.toFixed(2),
       r.margin_call ? "NÃO" : "SIM",
       r.margin_call_date ?? "",
@@ -122,9 +167,10 @@ export default function SharpeComparePage() {
       <div className="p-6 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-xl font-semibold text-text-primary">Comparação Sharpe Alavancado</h1>
+          <h1 className="text-xl font-semibold text-text-primary">Comparação Alavancada (Calmar / Survival-First)</h1>
           <p className="text-sm text-text-secondary mt-0.5">
-            Qual ativo merece mais alavancagem? Compare risco/retorno com margin call intraday.
+            Qual ativo merece mais alavancagem? Ranking por <strong>Calmar</strong> (CAGR/|MaxDD|), com margin call
+            intraday, margin buffer e leverage máximo sobrevivente. <span className="text-text-muted">Carry zero (Quantfury).</span>
           </p>
         </div>
 
@@ -240,14 +286,19 @@ export default function SharpeComparePage() {
 
             {/* Table */}
             <div className="card overflow-x-auto">
-              {/* Color legend */}
-              <div className="flex gap-4 mb-4 flex-wrap">
+              {/* Ranking note + Calmar color legend */}
+              <div className="mb-3 text-[11px] text-text-muted">
+                Ordenado por <strong className="text-text-secondary">Calmar</strong> (CAGR / |MaxDD|) — desempate por Sortino.
+                Sharpe é apenas informativo (quase invariante à alavancagem). Liquidados no fundo.
+              </div>
+              <div className="flex gap-4 mb-4 flex-wrap items-center">
+                <span className="text-[10px] text-text-muted uppercase tracking-wider">Calmar:</span>
                 {[
-                  { label: "Sharpe < 0", cls: "text-danger bg-danger/10" },
-                  { label: "0 – 1",      cls: "text-warning bg-warning/10" },
-                  { label: "1 – 2",      cls: "text-text-primary bg-surface-3" },
-                  { label: "2 – 3",      cls: "text-success bg-success/10" },
-                  { label: "> 3",        cls: "text-purple-400 bg-purple-500/10" },
+                  { label: "< 0",       cls: "text-danger bg-danger/10" },
+                  { label: "0 – 0.5",   cls: "text-warning bg-warning/10" },
+                  { label: "0.5 – 1",   cls: "text-text-primary bg-surface-3" },
+                  { label: "1 – 2",     cls: "text-success bg-success/10" },
+                  { label: "> 2",       cls: "text-purple-400 bg-purple-500/10" },
                 ].map((l) => (
                   <span key={l.label} className={`text-xs px-2 py-0.5 rounded font-mono ${l.cls}`}>
                     {l.label}
@@ -258,7 +309,7 @@ export default function SharpeComparePage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Ticker", "Beta", "Retorno Total", "CAGR", "Volatilidade", "Sharpe", "Max DD", "Patrimônio Final", "Status"].map((h) => (
+                    {["Ticker", "Beta", "Retorno Total", "CAGR", "Calmar", "Sortino", "Sharpe", "Max DD", "Margin Buffer", "Max Lev", "Patrimônio Final", "Status"].map((h) => (
                       <th key={h} className="text-left text-text-muted font-medium py-2 pr-3">{h}</th>
                     ))}
                   </tr>
@@ -295,12 +346,23 @@ export default function SharpeComparePage() {
                         {item.retorno_anualizado.toFixed(1)}%
                       </td>
                       <td className="py-2.5 pr-3 font-mono text-text-secondary">{item.volatilidade.toFixed(1)}%</td>
+                      {/* Calmar — critério principal de ranking, destacado */}
                       <td className="py-2.5 pr-3">
-                        <span className={`font-mono font-bold px-1.5 py-0.5 rounded ${sharpeColor(item.sharpe)} ${sharpeBg(item.sharpe)}`}>
-                          {item.sharpe.toFixed(2)}
+                        <span className={`font-mono font-bold px-1.5 py-0.5 rounded ${calmarColor(item.calmar)} ${calmarBg(item.calmar)}`}>
+                          {fmtCalmar(item.calmar)}
                         </span>
                       </td>
+                      <td className={`py-2.5 pr-3 font-mono ${sharpeColor(item.sortino)}`}>{fmtSortino(item.sortino)}</td>
+                      {/* Sharpe — informativo, de-emphasizado */}
+                      <td className="py-2.5 pr-3 font-mono text-text-muted">{item.sharpe.toFixed(2)}</td>
                       <td className="py-2.5 pr-3 font-mono text-danger">{item.max_drawdown.toFixed(1)}%</td>
+                      {/* Margin buffer — quão perto chegou da liquidação (survival-first) */}
+                      <td className={`py-2.5 pr-3 font-mono font-semibold ${bufferColor(item.margin_buffer)}`} title="Mínimo histórico de (low − liq_price) / liq_price. Menor = mais perto da liquidação.">
+                        {fmtBuffer(item.margin_buffer)}
+                      </td>
+                      <td className="py-2.5 pr-3 font-mono text-text-secondary" title="Leverage máximo que sobreviveria ao período (busca binária no low intradiário).">
+                        {item.max_leverage.toFixed(1)}x
+                      </td>
                       <td className="py-2.5 pr-3 font-mono font-semibold text-text-primary">
                         {formatCurrency(item.final_equity, "USD", true)}
                       </td>
@@ -325,23 +387,47 @@ export default function SharpeComparePage() {
               </table>
             </div>
 
-            {/* Sharpe reference */}
+            {/* Métricas — doutrina survival-first */}
             <div className="card">
               <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">
-                Interpretação do Sharpe Ratio
+                Como ler as métricas (survival-first, carry zero)
               </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-2 md:gap-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 text-xs">
                 {[
-                  { range: "< 0",   label: "Negativo",   desc: "Pior que a taxa livre de risco",     cls: "text-danger" },
-                  { range: "0 – 1", label: "Aceitável",  desc: "Retorno modesto para o risco",       cls: "text-warning" },
-                  { range: "1 – 2", label: "Bom",        desc: "Boa relação retorno/risco",          cls: "text-text-primary" },
-                  { range: "2 – 3", label: "Muito Bom",  desc: "Excelente — raro em alavancagem",    cls: "text-success" },
-                  { range: "> 3",   label: "Excepcional",desc: "Excepcional — provavelmente outlier",cls: "text-purple-400" },
+                  {
+                    name: "Calmar  ·  critério de ranking",
+                    cls: "text-purple-400",
+                    desc: "CAGR ÷ |Max Drawdown|. A métrica NATIVA do alavancado: pune diretamente a profundidade do tombo, que é o que liquida a conta. Quanto maior, melhor. É por ela que a tabela ordena.",
+                  },
+                  {
+                    name: "Sortino  ·  desempate",
+                    cls: "text-success",
+                    desc: "Como o Sharpe, mas só penaliza a volatilidade de QUEDA (downside deviation). Não pune a oscilação pra cima. Usado como desempate quando o Calmar é parecido.",
+                  },
+                  {
+                    name: "Margin Buffer  ·  cauda",
+                    cls: "text-warning",
+                    desc: "Mínimo histórico de (low − preço de liquidação) / liq. Quão perto o ativo CHEGOU da liquidação no pior intradia. Pequeno = raspou a margem. É o sinal de cauda que o Sharpe esconde.",
+                  },
+                  {
+                    name: "Max Lev sobrevivente",
+                    cls: "text-text-primary",
+                    desc: "Maior alavancagem (busca binária no low intradiário) em que o ativo NÃO teria sido liquidado no período. Teto prático de risco por ativo.",
+                  },
+                  {
+                    name: "Sharpe  ·  só informativo",
+                    cls: "text-text-muted",
+                    desc: "Retorno excedente ÷ volatilidade total. Quase invariante à alavancagem e pune mal a cauda — por isso saiu de critério de ranking. Fica como referência histórica.",
+                  },
+                  {
+                    name: "Carry ZERO (Quantfury)",
+                    cls: "text-text-secondary",
+                    desc: "Não há débito de juro de empréstimo. O custo do leverage aparece só no risco de liquidação (margin call por low), não num carrego diário.",
+                  },
                 ].map((r) => (
-                  <div key={r.range} className="bg-surface-2 rounded-lg p-2.5">
-                    <p className={`font-mono font-bold ${r.cls}`}>{r.range}</p>
-                    <p className="font-medium text-text-primary mt-0.5">{r.label}</p>
-                    <p className="text-text-muted">{r.desc}</p>
+                  <div key={r.name} className="bg-surface-2 rounded-lg p-2.5">
+                    <p className={`font-mono font-bold ${r.cls}`}>{r.name}</p>
+                    <p className="text-text-muted mt-1 leading-snug">{r.desc}</p>
                   </div>
                 ))}
               </div>

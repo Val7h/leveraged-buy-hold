@@ -105,9 +105,16 @@ def get_price_history(
              "5y": 1830, "10y": 3660}.get(period, 366)
 
     df = None
+    dy_trailing = None
     try:
-        res = _chart_api_df(ticker, _days, want_div=False)
-        cand = res[0] if isinstance(res, tuple) else res
+        # want_div=True → o _chart_api_df calcula o DY trailing recorrente (header do gráfico).
+        # B&H de 10-15a: proventos importam no retorno total. Se faltar dado, dy fica None.
+        res = _chart_api_df(ticker, _days, want_div=True)
+        if isinstance(res, tuple):
+            cand = res[0]
+            dy_trailing = res[1] if len(res) > 1 else None
+        else:
+            cand = res
         if cand is not None and len(cand) >= 2:
             df = cand
     except Exception:
@@ -138,4 +145,41 @@ def get_price_history(
                     "close": c, "volume": v})
     if not out:
         raise HTTPException(status_code=404, detail=f"Sem série p/ {ticker}")
-    return out
+
+    # ── DIVIDENDOS (markers no gráfico) ──────────────────────────────────────
+    # _chart_api_df NÃO devolve os eventos por data (só o DY trailing agregado).
+    # Buscamos os eventos crus direto da Yahoo chart API (mesmo helper read-only)
+    # p/ marcar cada provento no eixo. Best-effort: se faltar, dividends fica [].
+    # NÃO fabrica nada; em erro/ausência o gráfico simplesmente não mostra marcador.
+    dividends = []
+    try:
+        import time as _t
+        from app.services.ranking_service import _yahoo_chart_json
+        end = int(_t.time())
+        start = end - int(_days * 86400)
+        d = _yahoo_chart_json(
+            ticker, f"period1={start}&period2={end}&interval=1d&events=div"
+        )
+        if d:
+            res_json = (d.get("chart", {}).get("result") or [{}])[0]
+            divs = (res_json.get("events") or {}).get("dividends") or {}
+            for k, vv in divs.items():
+                try:
+                    tsd = int(vv.get("date", k))
+                    amt = float(vv.get("amount", 0) or 0)
+                    if amt <= 0:
+                        continue
+                    ds = datetime.utcfromtimestamp(tsd).strftime("%Y-%m-%d")
+                    dividends.append({"date": ds, "amount": round(amt, 4)})
+                except Exception:
+                    continue
+            dividends.sort(key=lambda x: x["date"])
+    except Exception:
+        dividends = []
+
+    return {
+        "history": out,
+        "dividends": dividends,
+        "dy_trailing": dy_trailing,
+        "ticker": ticker,
+    }

@@ -25,14 +25,50 @@ from app.quantitative.scoring import (
 )
 # ESTRATÉGIA MASTER (ADC): espelha a doutrina já implementada no Simulador
 # (simulate_portfolio). Só LEMOS de monte_carlo p/ reusar os helpers de regime/
-# stop/SHY — não reescrevemos nada lá.
+# stop/SHY E o motor de Monte Carlo (simulate_portfolio + bootstrap) — não
+# reescrevemos nada lá.
 from app.quantitative.monte_carlo import (
     _regime_leverage, _STOP_BANDS, _SHY_BUILD_FRAC,
+    simulate_portfolio, bootstrap_monthly_returns, gbm_path, _path_max_drawdown,
 )
 
 # Multiplicador-teto do regime por perfil de risco (mesmo mapa do Monte Carlo:
 # conservador 2x / equilibrado 3x / agressivo 4x). O regime escolhe abaixo disso.
 _MAX_LEV_BY_PROFILE = {"conservative": 2.0, "balanced": 3.0, "aggressive": 4.0}
+
+# ── Cesta DEFAULT anti-survivorship ───────────────────────────────────────────
+# O pecado nº1 do parecer sênior: default num único VENCEDOR (NEE). Trocamos por
+# uma CESTA representativa que MISTURA uma utility boa (NEE) com cíclicas/casos que
+# SOFRERAM de verdade (energia que afundou no petróleo barato, banco que apanhou na
+# GFC, industrial cíclica). O resultado da cesta é mais HONESTO que o de 1 vencedor
+# porque carrega os perdedores junto — não é cherry-picking de sobrevivente.
+DEFAULT_BASKET = ["NEE", "XOM", "BAC", "CAT"]
+
+
+# ── Camada de CUSTOS (fricção) — toggle ───────────────────────────────────────
+# Carry continua ZERO (Quantfury) — NÃO há juro de empréstimo aqui de propósito.
+# Os custos modelados são: (1) SLIPPAGE no preço de execução de stops e liquidação
+# (a saída forçada não sai no meio do book); (2) IMPOSTO sobre o GANHO REALIZADO
+# nos ⅓ vendidos no stop. Tudo configurável e desligável (gross vs net).
+class CostModel:
+    def __init__(
+        self,
+        enabled: bool = True,
+        slippage_pct: float = 0.004,   # 0,4% no preço de execução de stop/liquidação
+        tax_pct: float = 0.15,         # 15% sobre o ganho realizado no ⅓ vendido
+    ):
+        self.enabled = enabled
+        self.slippage_pct = max(0.0, slippage_pct) if enabled else 0.0
+        self.tax_pct = max(0.0, tax_pct) if enabled else 0.0
+
+    def exec_price(self, quote: float) -> float:
+        """Preço de execução de uma VENDA forçada (stop/liq): pior que a cotação."""
+        return quote * (1.0 - self.slippage_pct)
+
+    def tax_on_gain(self, proceeds: float, cost_basis: float) -> float:
+        """Imposto sobre o ganho realizado (>=0). Prejuízo não gera imposto."""
+        gain = proceeds - cost_basis
+        return self.tax_pct * gain if gain > 0 else 0.0
 
 CRISIS_PERIODS = [
     {"name": "GFC 2008-2009",       "start": "2007-10-01", "end": "2009-03-31"},
@@ -81,6 +117,7 @@ def _run_adaptive_strategy(
     sharpe_hist: float = 0.8,
     vol_hist: float = 15.0,
     index_close: Optional[pd.Series] = None,
+    costs: Optional["CostModel"] = None,
 ) -> Tuple[pd.DataFrame, List[Dict]]:
     """
     Backtest da ESTRATÉGIA MASTER (Alavancagem Dinâmica Composta) sobre PREÇOS
@@ -109,6 +146,7 @@ def _run_adaptive_strategy(
     low   = price_df["Low"].squeeze()  if "Low"  in price_df.columns else close * 0.995
 
     max_leverage = _MAX_LEV_BY_PROFILE.get(risk_profile, 3.0)
+    costs = costs if costs is not None else CostModel(enabled=False)
 
     # ── Índice de regime: drawdown do pico até a data (point-in-time) ─────────
     # Preferimos um índice externo (SPY) alinhado às datas do ativo; sem ele,
@@ -124,6 +162,8 @@ def _run_adaptive_strategy(
     assets   = initial_capital     # aporte inicial entra SEM alavancagem (1x)
     debt     = 0.0                 # dívida fixa por fluxo; não re-margina
     shy      = 0.0                 # reserva de ataque (cash-like, 1x)
+    cost_basis = initial_capital   # custo dos ATIVOS (cresce no deploy, NÃO com mercado)
+    total_costs = 0.0              # acumulado de slippage + imposto (p/ relatório)
     liquidated = False
 
     asset_peak = assets            # pico dos ATIVOS p/ stop escalonado
@@ -161,16 +201,19 @@ def _run_adaptive_strategy(
         # ── Quantfury: liquidação quando a perda ≈ equity alocado ────────────
         # Checada na MÍNIMA do dia (assets na mínima - dívida ≈ 0). Carry zero.
         if i > 0:
-            assets_at_low = assets * (daily_low / price) if price > 0 else assets
+            # A liquidação sai com SLIPPAGE: o preço de execução forçada é pior que
+            # a mínima (não se zera a posição no meio do book).
+            exec_low = costs.exec_price(daily_low)
+            assets_at_low = assets * (exec_low / price) if price > 0 else assets
             if debt > 0 and (assets_at_low + shy - debt) <= initial_capital * 0.05:
                 liquidated = True
                 trades.append({
                     "date": date_str, "type": "MARGIN_CALL",
-                    "price": round(daily_low, 4), "leverage": 0.0,
-                    "details": f"Liquidado (perda ≈ equity) @ ${daily_low:.2f}",
+                    "price": round(exec_low, 4), "leverage": 0.0,
+                    "details": f"Liquidado (perda ≈ equity, c/ slippage) @ ${exec_low:.2f}",
                 })
-                assets = debt = shy = 0.0
-                records.append({"date": date, "equity": 0.0, "leverage": 0.0, "price": daily_low})
+                assets = debt = shy = cost_basis = 0.0
+                records.append({"date": date, "equity": 0.0, "leverage": 0.0, "price": exec_low})
                 continue
 
         # ── Drawdown do regime (índice ou proxy) até esta data ───────────────
@@ -188,15 +231,28 @@ def _run_adaptive_strategy(
         for k, band in enumerate(_STOP_BANDS):
             if dd_assets <= band and k not in triggered:
                 triggered.add(k)
-                sell = assets / 3.0
-                assets -= sell
-                pay = min(debt, sell)
+                frac = 1.0 / 3.0
+                gross_sell  = assets * frac                 # valor de mercado vendido
+                basis_sold  = cost_basis * frac             # custo proporcional vendido
+                # SLIPPAGE: a venda forçada do stop sai abaixo da cotação.
+                proceeds    = gross_sell * (1.0 - costs.slippage_pct)
+                # IMPOSTO sobre o ganho REALIZADO nesse ⅓ (prejuízo não tributa).
+                tax         = costs.tax_on_gain(proceeds, basis_sold)
+                net_proceeds = proceeds - tax
+                total_costs += (gross_sell - proceeds) + tax
+
+                assets     -= gross_sell
+                cost_basis -= basis_sold
+                pay = min(debt, net_proceeds)
                 debt -= pay
-                shy += (sell - pay)  # caixa acima da dívida vira munição
+                shy += (net_proceeds - pay)  # caixa líquido acima da dívida vira munição
+                detail = f"Stop {int(band*100)}% — vendeu ⅓, abateu dívida"
+                if costs.enabled:
+                    detail += f" (custos ${(gross_sell - proceeds) + tax:,.0f})"
                 trades.append({
                     "date": date_str, "type": "STOP",
-                    "price": round(price, 4), "leverage": 0.0,
-                    "details": f"Stop {int(band*100)}% — vendeu ⅓, abateu dívida",
+                    "price": round(costs.exec_price(price), 4), "leverage": 0.0,
+                    "details": detail,
                 })
 
         month = pd.Timestamp(date).month
@@ -217,8 +273,9 @@ def _run_adaptive_strategy(
 
             # ── Alavanca SÓ o fluxo deployado (dívida FIXA por fluxo) ────────
             if deploy > 0:
-                assets += lev * deploy
-                debt   += (lev - 1.0) * deploy
+                assets     += lev * deploy
+                debt       += (lev - 1.0) * deploy
+                cost_basis += lev * deploy    # o notional comprado entra ao custo
 
             if monthly_contribution > 0:
                 trades.append({
@@ -249,7 +306,9 @@ def _run_adaptive_strategy(
             "price":    price,
         })
 
-    return pd.DataFrame(records).set_index("date"), trades
+    out = pd.DataFrame(records).set_index("date")
+    out.attrs["total_costs"] = round(float(total_costs), 2)
+    return out, trades
 
 
 def _run_buy_hold(
@@ -415,6 +474,143 @@ def analyze_crisis_period(
     return result
 
 
+def build_basket_df(
+    price_data: Dict[str, pd.DataFrame],
+    tickers: List[str],
+) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Constrói uma CESTA equal-weight (rebalanceada diariamente p/ pesos iguais) a
+    partir de N tickers — anti-survivorship: o caminho da cesta carrega os
+    perdedores junto, não só o vencedor. Retorna (df OHLC sintético da cesta,
+    lista de tickers efetivamente usados).
+
+    O índice da cesta começa em 100 e evolui pela MÉDIA dos retornos diários dos
+    componentes (cada um normalizado pelo próprio preço). Low da cesta é derivado
+    da razão Low/Close média do dia (preserva o gap intradiário p/ stops/liq).
+    """
+    used = [t for t in tickers if t in price_data and len(price_data[t]) > 1]
+    if not used:
+        # fallback: usa o que houver
+        used = [t for t in price_data.keys()][:1]
+    # alinha todos na interseção de datas
+    closes = pd.concat(
+        {t: price_data[t]["Close"].squeeze() for t in used}, axis=1
+    ).dropna()
+    if closes.empty or len(closes) < 2:
+        # série degenerada: devolve o primeiro componente cru
+        df = price_data[used[0]].copy()
+        return df, used
+
+    daily_ret = closes.pct_change().fillna(0.0)
+    basket_ret = daily_ret.mean(axis=1)                     # equal-weight
+    basket_close = 100.0 * (1.0 + basket_ret).cumprod()
+
+    # Low intradiário da cesta: aplica a razão média Low/Close do dia ao close da cesta
+    lows = pd.concat(
+        {t: (price_data[t]["Low"].squeeze() if "Low" in price_data[t].columns
+             else price_data[t]["Close"].squeeze() * 0.995) for t in used},
+        axis=1,
+    ).reindex(closes.index).ffill()
+    low_ratio = (lows / closes).mean(axis=1).clip(upper=1.0).fillna(0.995)
+    basket_low = basket_close * low_ratio
+
+    df = pd.DataFrame(
+        {"Close": basket_close.values, "Low": basket_low.values},
+        index=closes.index,
+    )
+    return df, used
+
+
+def run_backtest_monte_carlo(
+    primary_df: pd.DataFrame,
+    initial_capital: float,
+    monthly_contribution: float,
+    risk_profile: str,
+    dividend_yield: float = 0.04,
+    n_paths: int = 2000,
+    horizon_years: Optional[int] = None,
+    seed: int = 42,
+) -> Dict:
+    """
+    Monte Carlo de credibilidade — REUSA o motor da doutrina já existente em
+    monte_carlo.py (`simulate_portfolio` + bootstrap de blocos / GBM). Em vez de
+    um único caminho histórico, roda N caminhos sintéticos sobre os retornos do
+    ativo/cesta e reporta a DISTRIBUIÇÃO de maxDD e a PROBABILIDADE de
+    liquidação/ruína — não um número único.
+
+    Determinístico: `seed` fixa o RNG (np.random.seed) p/ o teste.
+    """
+    close = primary_df["Close"].squeeze()
+    log_returns = np.log(close / close.shift(1)).dropna().values
+    if len(log_returns) < 30:
+        return {
+            "n_paths": 0, "ruin_probability": 0.0,
+            "max_dd_distribution": {}, "final_value_percentiles": {},
+            "note": "histórico insuficiente p/ Monte Carlo",
+        }
+
+    mu = float(np.mean(log_returns)) * 252
+    sigma = float(np.std(log_returns)) * np.sqrt(252)
+    dt = 1.0 / 12.0
+
+    # horizonte: usa o do próprio histórico (anos), no piso de 10a (doutrina 10-15a)
+    hist_years = max(1.0, len(close) / 252.0)
+    h_years = int(horizon_years) if horizon_years else max(10, int(round(hist_years)))
+    horizon_months = h_years * 12
+
+    max_lev = _MAX_LEV_BY_PROFILE.get(risk_profile, 3.0)
+
+    np.random.seed(seed)
+    max_dds: List[float] = []
+    finals:  List[float] = []
+    ruin = 0
+    for i in range(n_paths):
+        if i % 2 == 0:
+            monthly = bootstrap_monthly_returns(log_returns, horizon_months)
+        else:
+            monthly = np.expm1(gbm_path(mu, sigma, dt, horizon_months))
+        path, ruined, _ = simulate_portfolio(
+            initial_capital, monthly_contribution, monthly,
+            max_lev, dividend_yield, 0.03, horizon_months, drip=True,
+        )
+        max_dds.append(_path_max_drawdown(path))
+        finals.append(float(path[-1]))
+        if ruined:
+            ruin += 1
+
+    max_dds_arr = np.array(max_dds)
+    finals_arr = np.array(finals)
+    return {
+        "n_paths": n_paths,
+        "horizon_years": h_years,
+        "ruin_probability": round(ruin / n_paths, 4),
+        "max_dd_distribution": {
+            "p5":  round(float(np.percentile(max_dds_arr, 5)), 2),
+            "p50": round(float(np.percentile(max_dds_arr, 50)), 2),
+            "p95": round(float(np.percentile(max_dds_arr, 95)), 2),
+            "worst": round(float(np.min(max_dds_arr)), 2),
+            "mean": round(float(np.mean(max_dds_arr)), 2),
+        },
+        "max_dd_histogram": _histogram(max_dds_arr, lo=-100.0, hi=0.0, bins=20),
+        "final_value_percentiles": {
+            "p5":  round(float(np.percentile(finals_arr, 5)), 2),
+            "p50": round(float(np.percentile(finals_arr, 50)), 2),
+            "p95": round(float(np.percentile(finals_arr, 95)), 2),
+        },
+    }
+
+
+def _histogram(values: np.ndarray, lo: float, hi: float, bins: int = 20) -> List[Dict]:
+    """Histograma simples (contagem por faixa) p/ o frontend plotar a distribuição."""
+    counts, edges = np.histogram(values, bins=bins, range=(lo, hi))
+    return [
+        {"bin_lo": round(float(edges[i]), 2),
+         "bin_hi": round(float(edges[i + 1]), 2),
+         "count": int(counts[i])}
+        for i in range(len(counts))
+    ]
+
+
 def run_backtest(
     price_data: Dict[str, pd.DataFrame],
     initial_capital: float = 100_000.0,
@@ -425,10 +621,28 @@ def run_backtest(
     max_dd_hist: float = -35.0,
     sharpe_hist: float = 0.8,
     vol_hist: float = 15.0,
+    apply_costs: bool = True,
+    slippage_pct: float = 0.004,
+    tax_pct: float = 0.15,
+    run_monte_carlo: bool = True,
+    mc_paths: int = 2000,
+    mc_seed: int = 42,
 ) -> Dict:
-    """Run all strategies and return comparable results."""
-    primary_ticker = list(price_data.keys())[0]
-    primary_df     = price_data[primary_ticker]
+    """Run all strategies and return comparable results.
+
+    Cesta anti-survivorship: usa TODOS os tickers de `price_data` (exceto SPY,
+    reservado p/ índice de regime) numa cesta equal-weight. Camada de custos
+    (slippage+imposto) com gross×net. Monte Carlo de ruína sobre a cesta.
+    """
+    # ── Cesta equal-weight com TODOS os tickers do usuário (SPY fica de fora) ──
+    basket_tickers = [t for t in price_data.keys() if t != "SPY"] or list(price_data.keys())
+    if len(basket_tickers) >= 2:
+        primary_df, used_tickers = build_basket_df(price_data, basket_tickers)
+        primary_ticker = "CESTA"
+    else:
+        primary_ticker = basket_tickers[0]
+        primary_df     = price_data[primary_ticker]
+        used_tickers   = [primary_ticker]
 
     # Sinal de REGIME: drawdown do índice (SPY) na data. Sem SPY, o adaptativo
     # cai pro proxy (drawdown do próprio ativo).
@@ -436,10 +650,22 @@ def run_backtest(
     if "SPY" in price_data and primary_ticker != "SPY":
         index_close = price_data["SPY"]["Close"].squeeze()
 
+    # ── Camada de custos: roda o adaptativo BRUTO (sem fricção) e LÍQUIDO ──────
+    # Carry continua ZERO (Quantfury). Custos = slippage na liquidação/stops +
+    # imposto sobre o ganho realizado nos ⅓ vendidos. O LÍQUIDO é o que vira a
+    # curva principal exibida; o BRUTO serve de referência (teto otimista).
+    net_costs   = CostModel(enabled=apply_costs, slippage_pct=slippage_pct, tax_pct=tax_pct)
+    gross_costs = CostModel(enabled=False)
+
     adaptive_df,  adaptive_trades  = _run_adaptive_strategy(
         primary_df, initial_capital, monthly_contribution, risk_profile,
         beta, dividend_yield, max_dd_hist, sharpe_hist, vol_hist,
-        index_close=index_close,
+        index_close=index_close, costs=net_costs,
+    )
+    adaptive_gross_df, _ = _run_adaptive_strategy(
+        primary_df, initial_capital, monthly_contribution, risk_profile,
+        beta, dividend_yield, max_dd_hist, sharpe_hist, vol_hist,
+        index_close=index_close, costs=gross_costs,
     )
     bh1x_df,  _  = _run_buy_hold(primary_df, initial_capital, monthly_contribution, 1.0, dividend_yield)
     bh2x_df,  bh2x_trades = _run_buy_hold(primary_df, initial_capital, monthly_contribution, 2.0, dividend_yield)
@@ -489,6 +715,27 @@ def run_backtest(
             for idx, v in dd.items()
         ]
 
+    # ── Gross × Net: CAGR bruto vs líquido do adaptativo ──────────────────────
+    gross_metrics = compute_strategy_metrics(adaptive_gross_df["equity"], "adaptive_gross")
+    cost_breakdown = {
+        "applied":         apply_costs,
+        "slippage_pct":    round(slippage_pct * 100, 3),
+        "tax_pct":         round(tax_pct * 100, 2),
+        "total_costs_usd": float(adaptive_df.attrs.get("total_costs", 0.0)),
+        "cagr_gross_pct":  gross_metrics["cagr_pct"],
+        "cagr_net_pct":    next((m["cagr_pct"] for m in metrics if m["strategy"] == "adaptive"), 0.0),
+        "final_gross":     gross_metrics["final_value"],
+        "final_net":       next((m["final_value"] for m in metrics if m["strategy"] == "adaptive"), 0.0),
+    }
+
+    # ── Monte Carlo de ruína (reuso do motor simulate_portfolio + bootstrap) ──
+    monte_carlo = None
+    if run_monte_carlo:
+        monte_carlo = run_backtest_monte_carlo(
+            primary_df, initial_capital, monthly_contribution, risk_profile,
+            dividend_yield=dividend_yield, n_paths=mc_paths, seed=mc_seed,
+        )
+
     return {
         "equity_curves":   {k: serialize_curve(v) for k, v in equity_curves.items()},
         "drawdown_curves": drawdown_curves,
@@ -497,4 +744,11 @@ def run_backtest(
         "crisis_analysis": [c for c in crisis_analysis if len(c) > 3],
         "price_series":    price_series,
         "trades":          adaptive_trades,
+        "basket": {
+            "is_basket":      len(used_tickers) >= 2,
+            "tickers":        used_tickers,
+            "label":          primary_ticker,
+        },
+        "cost_breakdown":  cost_breakdown,
+        "monte_carlo":     monte_carlo,
     }

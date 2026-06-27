@@ -92,6 +92,11 @@ export const backtestApi = {
     initial_capital: number;
     monthly_contribution: number;
     risk_profile: string;
+    apply_costs?: boolean;
+    slippage_pct?: number;
+    tax_pct?: number;
+    run_monte_carlo?: boolean;
+    mc_paths?: number;
   }) => api.post("/api/v1/backtest", data),
   sharpeCompare: (data: {
     tickers: string;

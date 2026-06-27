@@ -83,6 +83,12 @@ function mapAsset(a: any) {
     beta: a.beta ?? undefined,
     dividend_yield: a.dividend_yield ?? undefined,
 
+    // Veredito BRUTO do motor (COMPRAR FORTE | COMPRAR | JUSTO | ESTICADO | ESPECULATIVO | RESERVA)
+    // — exposto p/ o screener filtrar/agrupar por veredito sem reverter o label da UI.
+    verdict: verdict || undefined,
+    // Bucket/setor do motor (quando vier) p/ filtro de setor no screener.
+    bucket: a.bucket ?? a.sector ?? undefined,
+
     technicals: {
       ticker: a.ticker,
       timestamp: new Date().toISOString(),

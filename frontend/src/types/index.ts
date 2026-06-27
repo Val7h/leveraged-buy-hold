@@ -125,6 +125,10 @@ export interface AssetScore {
   fundamentals?: FundamentalData;
   dividend_yield?: number;
   beta?: number;
+  // Veredito BRUTO do motor (COMPRAR FORTE | COMPRAR | JUSTO | ESTICADO | ESPECULATIVO | RESERVA).
+  verdict?: string;
+  // Bucket/setor do motor (quando o motor o retorna) — usado p/ filtro de setor no screener.
+  bucket?: string;
   score_breakdown: Record<string, number>;
   // Tokenized assets (Bitget)
   is_tokenized?: boolean;
@@ -238,6 +242,39 @@ export interface TradeMarker {
   details: string;
 }
 
+export interface BacktestBasket {
+  is_basket: boolean;
+  tickers: string[];
+  label: string;
+}
+
+export interface BacktestCostBreakdown {
+  applied: boolean;
+  slippage_pct: number;
+  tax_pct: number;
+  total_costs_usd: number;
+  cagr_gross_pct: number;
+  cagr_net_pct: number;
+  final_gross: number;
+  final_net: number;
+}
+
+export interface MonteCarloResult {
+  n_paths: number;
+  horizon_years?: number;
+  ruin_probability: number;
+  max_dd_distribution: {
+    p5: number;
+    p50: number;
+    p95: number;
+    worst: number;
+    mean: number;
+  };
+  max_dd_histogram: Array<{ bin_lo: number; bin_hi: number; count: number }>;
+  final_value_percentiles: { p5: number; p50: number; p95: number };
+  note?: string;
+}
+
 export interface BacktestResult {
   equity_curves: Record<string, TimeSeriesPoint[]>;
   drawdown_curves: Record<string, TimeSeriesPoint[]>;
@@ -246,6 +283,9 @@ export interface BacktestResult {
   crisis_analysis: Array<Record<string, unknown>>;
   price_series?: Array<{ date: string; value: number }>;
   trades?: TradeMarker[];
+  basket?: BacktestBasket;
+  cost_breakdown?: BacktestCostBreakdown;
+  monte_carlo?: MonteCarloResult | null;
   completed_at: string;
 }
 
@@ -255,7 +295,11 @@ export interface SharpeCompareItem {
   retorno_anualizado: number;
   volatilidade: number;
   sharpe: number;
+  sortino: number;
+  calmar: number;
   max_drawdown: number;
+  margin_buffer: number | null;
+  max_leverage: number;
   beta: number;
   final_equity: number;
   margin_call: boolean;
