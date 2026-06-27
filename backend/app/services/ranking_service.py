@@ -1397,12 +1397,17 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # Crivo de HOLDING (análogo ao ETF/financeira): a Qualidade vem de dividendo consistente +
         # safety da controladora — não de métricas operacionais ausentes. Set CURADO (_is_holding).
         is_holding = (cat not in ("ETF", "COMMODITY", "CRYPTO")) and _is_holding(tk, fund)
+        # Mercado p/ o SHRINKAGE da nota (Camada 1): BR conta a cobertura contra os 3 pilares
+        # OBTENÍVEIS no BR (roic+safety+fcf) → BR bem-coberto (3/3) sai ILESO (w=1). HOLDING usa o
+        # crivo próprio (dividendo+safety). Mesmo _qmkt usado depois no guardrail Bug D.
+        _qmkt = "HOLDING" if is_holding else ("BR" if is_br else "US")
         quality, qb = S.compute_quality_blend(
             beta=beta, max_dd_pct=dd, dividend_yield=dy, growth_5y=fund_growth,
             roe=fund.get("roe"), debt_to_equity=fund.get("debt_to_equity"),
             payout_ratio=fund.get("payout_ratio"), roic=fund.get("roic"),
             fcf_yield=fund.get("fcf_yield"), sharpe=shp, cagr=cagr, tsr_expected=tsr,
-            momentum=momentum, is_tatico=is_tatico,
+            momentum=momentum, is_tatico=is_tatico, market=_qmkt,
+            roic_history=fund.get("roic_history"),
             dy_avg10=dy_avg10, dy_worst=dy_worst, dd_recovery_mult=dd_recovery_mult,
             # ETF/commodity NÃO são empresas → fundamentos não se aplicam (renormaliza o termo
             # em vez de fingir 50). Ações (BR/US/Europa) mantêm o termo: são empresas — ausência
@@ -1436,7 +1441,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # como núcleo obtenível — uma holding bem-coberta NÃO é "dado fino" pelo guardrail de "<3
         # pilares operacionais" (que não se aplica a ela; o crivo de holding os substitui). Holding
         # sem o crivo (qb operacional magro) cai no critério BR/US e segue thin honestamente.
-        _qmkt = "HOLDING" if is_holding else ("BR" if is_br else "US")
+        # (_qmkt já definido acima, no call-site da compute_quality_blend — mesmo valor.)
         _quality_thin = False
         _quality_pilares = None
         if cat not in ("ETF", "COMMODITY", "CRYPTO"):

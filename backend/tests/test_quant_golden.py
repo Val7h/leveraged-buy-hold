@@ -105,7 +105,10 @@ def test_quality_crivo_compounder_low_yield_not_demoted():
     # RADL3 no crivo "normal": ROIC/FCF/ROE dominam; yield baixo NÃO derruba → nota ALTA
     n_radl, _ = S.score_quality_crivo("normal", roe=0.176, roic=0.228, fcf_yield=0.04,
                                       debt_to_equity=0.6, dividend_yield=1.0, growth_5y=12)
-    assert n_radl is not None and n_radl >= 75
+    # DES-SATURAÇÃO (curvas contínuas): RADL tem ROIC 22.8% (excelente, ~85) MAS FCF yield só 4%
+    # (medíocre, ~46) → nota ALTA porém não-elite (~72). Antes a saturação (ROIC≥15%→100, FCF≥8%→100)
+    # mascarava o FCF fraco e dava ≥75. O piso baixou p/ ≥70 (segue claramente ALTA, acima de WMT).
+    assert n_radl is not None and n_radl >= 70
 
     # ADBE: ROE 62%, ROIC 36%, FCF yield 13.5% (excelente E barata), yield ~0 → nota ALTA
     n_adbe, _ = S.score_quality_crivo("normal", roe=0.62, roic=0.36, fcf_yield=0.135,
@@ -264,7 +267,11 @@ def test_camada1_optional_pillars_renormalize_out_common_case():
     q_no_growth, bd2 = S.compute_quality_blend(
         roic=0.20, fcf_yield=0.08, debt_to_equity=0.4, growth_5y=None)
     assert "crescimento" not in bd2
-    assert q_no_growth >= 90                            # 3 pilares fortes → segue alta, não puxada p/ 50
+    # DES-SATURAÇÃO: 3 pilares BONS mas não-perfeitos (ROIC 20%≈82, FCF 8%≈70, D/E 0,4≈77) NÃO
+    # empatam mais em ~90+ (isso era o degrau: ROIC≥15%→100, FCF≥8%→100, D/E≤0,5→100). A nota fica
+    # ALTA (~77) sem o teto-100 falso; pilar ausente segue sem virar 50 (não puxa pro mediano).
+    assert q_no_growth >= 75                            # 3 pilares fortes → segue alta, não puxada p/ 50
+    assert q_no_growth < 90                             # mas NÃO satura em 100 (degrau morto)
 
 
 def test_is_falling_knife_15c():

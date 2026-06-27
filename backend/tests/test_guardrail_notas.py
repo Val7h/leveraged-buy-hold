@@ -44,18 +44,25 @@ def test_pilares_reais_dois_nucleo_e_media():
     assert S.quality_data_confidence(bd, q) == "MEDIA"
 
 
-def test_extremo_alto_com_dado_fino_eh_baixa_confianca():
-    # q estourado (1 pilar generoso → ~100) com dado fino carrega CONF BAIXA (sanity bound visível).
-    q, bd = S.compute_quality_blend(roic=0.40)    # 1 só pilar, ROIC altíssimo → nota ~100
-    assert q >= 95
+def test_extremo_alto_com_dado_fino_encolhe_pro_prior_e_baixa_confianca():
+    # DES-SATURAÇÃO + SHRINKAGE: ANTES, 1 pilar generoso (ROIC 40%) estourava em ~100 (saturação) e
+    # o guardrail só rebaixava a CONFIANÇA. AGORA o SHRINKAGE morde a NOTA: 1 de 3 obteníveis →
+    # w=(1/3)^1.5≈0,19 → a nota encolhe PERTO do prior 60 (trava de sanidade k≤1 → Q≤55). Não há
+    # mais "Q100 de 1 pilar" na decisão de compra. Confiança segue BAIXA. (Sem alavancagem: é só a
+    # nota de qualidade refletir honestamente que 1 pilar não comprova um compounder.)
+    q, bd = S.compute_quality_blend(roic=0.40)    # 1 só pilar, ROIC altíssimo
+    assert q <= 55                                # shrinkage + trava k≤1 → perto do prior, NÃO ~100
     assert S.quality_pilares_reais(bd) == 1
     assert S.quality_data_confidence(bd, q) == "BAIXA"
 
 
-def test_extremo_baixo_com_dado_fino_eh_baixa_confianca():
-    # q estourado p/ baixo (ITSA4 q3) com dado fino → CONF BAIXA.
+def test_extremo_baixo_com_dado_fino_vira_neutro_e_baixa_confianca():
+    # CASO TIMS3 (TIM, ROIC real 24% que veio quebrado): ANTES a nota saía ~3 (q≤10) e enganava o
+    # veredito como ESPECULATIVO. AGORA a trava de DADO QUEBRADO (k<K e Q_raw≤12) zera o direcional:
+    # a nota vira o prior NEUTRO (60, capado a 55 por 1 pilar) + flag "_quebrado". Confiança BAIXA.
     q, bd = S.compute_quality_blend(roe=0.01)
-    assert q <= 10
+    assert bd.get("_quebrado") is True            # flag p/ o consumidor tratar como neutro
+    assert 50 <= q <= 60                          # neutro típico (não o q3 direcional de antes)
     assert S.quality_data_confidence(bd, q) == "BAIXA"
 
 

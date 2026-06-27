@@ -797,6 +797,42 @@ def _q_growth_conditional(growth_5y: Optional[float], roic: Optional[float]) -> 
     return min(g, 40.0)                # ROIC≤WACC: crescer destrói capital → não premia
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# DES-SATURAÇÃO — SHRINKAGE NA NOTA, TRAVAS DE SANIDADE, CICLICIDADE. Desenho TRAVADO.
+# ──────────────────────────────────────────────────────────────────────────────
+# ESTA É A CAMADA 1 (mérito do NEGÓCIO). Junto com a Camada 2 (Momento) forma a DECISÃO DE
+# COMPRA À VISTA (rank + veredito) — TOTALMENTE INDEPENDENTE de alavancagem. Alavancagem é só a
+# Camada 3 (overlay opcional: σ/gap/beta/regime), que entra DEPOIS. Aqui NÃO há lógica de
+# sobrevivência/ruína: o único objetivo é a nota refletir HONESTAMENTE a qualidade do negócio,
+# pra a indicação de compra à vista ficar correta.
+#
+# SHRINKAGE (empirical-Bayes; admitir ignorância, NÃO fabricar): a nota renormalizada de POUCOS
+# pilares é frágil → puxamos pro PRIOR na proporção da COBERTURA real. Q_final = w·Q_raw+(1−w)·PRIOR,
+# w=(k_real/K)^1.5. O PRIOR é o TÍPICO do universo curado (mediana honesta ≈60) — sob dado fino o
+# palpite honesto é o ativo MEDIANO do país, nem premia nem pune (NÃO é o 50 "conservador", que era
+# viés de alavancagem e não se aplica à Camada 1). BR 3/3 → w=1 (ILESA); BR 1/3 → w≈0,19 (perto de 60).
+_QUALITY_PRIOR = 60.0          # prior honesto = mediana típica do universo curado (empirical Bayes)
+_SHRINK_EXP = 1.5              # convexidade do shrinkage (penaliza cobertura parcial)
+
+# TRAVAS DE SANIDADE NA NOTA (depois do shrinkage; coerentes com o prior 60 — perto da mediana):
+#   k<K  → Q ≤ 65  (sub-cobertura não vira nota de elite; fica perto da mediana, não de topo)
+#   k≤1  → Q ≤ 55  (1 pilar não sustenta convicção — abaixo da mediana)
+#   k<K and Q_raw≤12 → DADO QUEBRADO: nota = prior + flag (não pontua direcional; caso TIMS3).
+_SANITY_CAP_SUBCOVER = 65.0
+_SANITY_CAP_ONEPILLAR = 55.0
+_SANITY_BROKEN_Q = 12.0        # nota ≤ isto com sub-cobertura = artefato (dado quebrado), não mérito
+
+# CICLICIDADE (ratificado) — é mérito de QUALIDADE honesto, NÃO survival: retorno de PICO de ciclo
+# não é qualidade DURÁVEL (verdade de Camada 1, cega a alavancagem). Cíclica/commodity (is_tatico)
+# tem ROIC de PICO enganoso:
+#   Q ≤ 65 (o pico não vira nota de compounder durável)
+#   E o score inteiro é MULTIPLICADO pela ESTABILIDADE do roic_history (ROIC que oscila
+#   5%→30%→8% NÃO é durável → derruba a nota): mult = 1 − min(disp/_CICLO_DISP_REF,1)·_CICLO_DISP_PEN.
+_CICLO_CAP = 65.0
+_CICLO_DISP_REF = 0.10         # dispersão (desvio-padrão) de ROIC de referência (10pp = bem errático)
+_CICLO_DISP_PEN = 0.35         # penalidade máxima por dispersão plena (×0.65 no pior caso)
+
+
 def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
                           growth_5y=None, roe=None, debt_to_equity=None,
                           payout_ratio=None, roic=None, fcf_yield=None,
@@ -804,7 +840,8 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
                           momentum=None, is_tatico=False,
                           dy_avg10=None, dy_worst=None, dd_recovery_mult=1.0,
                           fundamentals_apply=True,
-                          roiic=None, roic_history=None, margin_stability=None):
+                          roiic=None, roic_history=None, margin_stability=None,
+                          market=None):
     """
     CAMADA 1 — QUALIDADE DO NEGÓCIO (0-100). Mede SÓ o NEGÓCIO, independente de preço.
 
@@ -872,8 +909,54 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
             breakdown[k] = round(s)
 
     wsum = sum(w for _, w in comps)
-    q = (sum(s * w for s, w in comps) / wsum) if wsum > 0 else 50.0
-    return round(_clamp(q), 1), breakdown
+    q_raw = (sum(s * w for s, w in comps) / wsum) if wsum > 0 else 50.0
+    q_raw = _clamp(q_raw)
+
+    # ETF/COMMODITY (sem pilares de negócio): caminho próprio (score_etf_vehicle_quality) — aqui
+    # só devolvemos o neutro 50, SEM shrinkage/sanidade/ciclicidade (não se aplica a veículo).
+    if not fundamentals_apply or not comps:
+        return round(q_raw, 1), breakdown
+
+    # ── SHRINKAGE NA NOTA (admitir ignorância, não fabricar) ──
+    # Q_final = w·Q_raw + (1−w)·PRIOR, com w=(k_real/K)^1.5. Reaproveita a contagem-núcleo existente
+    # (quality_pilares_reais) e o piso de mercado (_market_min_pilares). BR 3/3 sai ILESA (w=1);
+    # BR 1/3 encolhe perto do prior. NÃO mexe nos pesos — opera DEPOIS da renormalização.
+    k_real = quality_pilares_reais(breakdown, market)
+    K = _market_min_pilares(market)
+    w = 1.0 if k_real >= K else (k_real / float(K)) ** _SHRINK_EXP
+    q = w * q_raw + (1.0 - w) * _QUALITY_PRIOR
+
+    # ── TRAVAS DE SANIDADE NA NOTA (movidas de "só confiança" p/ a NOTA) ──
+    broken = False
+    if k_real < K:
+        # nota ≤12 nascida de sub-cobertura = artefato de renormalização magra (caso TIMS3, TIM
+        # ROIC real 24% que veio q3 por dado quebrado): NÃO pontua direcional → vira prior neutro.
+        if q_raw <= _SANITY_BROKEN_Q:
+            broken = True
+            q = _QUALITY_PRIOR
+        q = min(q, _SANITY_CAP_SUBCOVER)            # sub-cobertura não vira nota de elite (fica ~mediana)
+    if k_real <= 1:
+        q = min(q, _SANITY_CAP_ONEPILLAR)           # 1 pilar não sustenta convicção
+
+    # ── CICLICIDADE (ratificado: cap 65 + penalidade por dispersão do roic_history) ──
+    # is_tatico chega na assinatura e até hoje era IGNORADO no score. Agora morde: cíclica/commodity
+    # tem ROIC de PICO de ciclo enganoso → cap 65, E o score inteiro é multiplicado pela ESTABILIDADE
+    # do histórico de ROIC (oscilou muito = NÃO é qualidade durável = derruba a nota). Marcopolo/
+    # CSN Min./Vale: o retorno de PICO não vira nota de compounder durável (verdade de mérito, não
+    # de alavancagem — a Camada 1 ignora alavancagem).
+    if is_tatico:
+        if roic_history is not None:
+            hist = [h for h in roic_history if h is not None]
+            if len(hist) >= 3:
+                disp = float(np.std(hist))
+                mult = 1.0 - min(disp / _CICLO_DISP_REF, 1.0) * _CICLO_DISP_PEN
+                q = q * mult
+        q = min(q, _CICLO_CAP)
+
+    q = round(_clamp(q), 1)
+    if broken:
+        breakdown["_quebrado"] = True          # flag p/ o consumidor tratar como neutro (não direcional)
+    return q, breakdown
 
 
 # ─────────────── GUARDRAIL: QUALIDADE DE DADO FINO NÃO LIDERA VEREDITO FORTE (Bug D) ───────────────
@@ -1384,32 +1467,62 @@ def crivo_piso(confidence: str = "ALTA") -> float:
     return _CRIVO_PISO_BASE - _CRIVO_CONF_ADJ.get(confidence, 0.0)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# CURVAS CONTÍNUAS DE QUALIDADE (DES-SATURAÇÃO — Camada 1). Desenho TRAVADO por painel.
+# ──────────────────────────────────────────────────────────────────────────────
+# O BUG: os TETOS DUROS antigos (ROIC≥15%→100, FCF≥8%→100, D/E≤0,5→100) eram função-DEGRAU
+# → ~12 ações BR (Assaí, Marcopolo, WEG, Ambev…) empatavam em Q100; a renormalização ainda
+# inflava 1-2 pilares finos pra 100. CORREÇÃO: curvas MONÓTONAS CONTÍNUAS onde 100 é RARO
+# (assintótico). 100 deixa de ser alcançável por um patamar fixo → empresas BOAS mas DIFERENTES
+# se SEPARAM (WEG ROIC~28% ≈ 88 ≠ empresa ROIC 15% ≈ 72). Sem percentil/z-score (ABSOLUTO,
+# decisão do dono). Sem mexer nos PESOS dos pilares (travados) — só na FORMA.
+#
+# Winsorize ANTES (anti-outlier de fonte suja): ROIC em ~p99 estrutural (60%), FCF em 30%,
+# D/E em 8 (alavancagem absurda não "melhora" a curva nem por baixo).
+
+_ROIC_WINSOR = 0.60     # ROIC realista de elite ~40-50%; acima disso é ruído de fonte → trava
+_FCF_WINSOR = 0.30      # FCF yield acima de 30% é quase sempre artefato (one-off) → trava
+_DEBT_WINSOR = 8.0      # D/E acima de 8 é estrutura quebrada; não piora mais a curva
+
+
 def _q_roic(v):
+    """ROIC → nota CONTÍNUA, 100 assintótico (RARO). ROIC≤0 → 0. Curva exponencial saturante
+    calibrada: 15%≈72 · 25%≈85 · 35%≈92 · 50%≈97 (→100 só no limite). Winsoriza em p99 antes.
+    Empresa ROIC 15% e WEG ROIC ~28% ficam SEPARADAS (≈72 vs ≈88), não empatadas em 100."""
     if v is None: return None
-    if v >= 0.15: return 100.0
     if v <= 0: return 0.0
-    return _clamp(v / 0.15 * 100)
+    v = min(v, _ROIC_WINSOR)
+    # 100·(1−exp(−ROIC/0.120)): tau=0.120 calibra 15%≈71, 25%≈88, 35%≈95, 50%≈98 (→100 só no limite).
+    return _clamp(100.0 * (1.0 - math.exp(-v / 0.120)))
 
 
 def _q_fcf(v):
+    """FCF yield → nota CONTÍNUA, nunca trava em 100. FCF≤0 → 10 (queima caixa). Calibrada:
+    8%≈70 · 12%≈83 · 16%≈90 · 25%≈97. Winsoriza em 30% antes (one-offs)."""
     if v is None: return None
-    if v >= 0.08: return 100.0
     if v <= 0: return 10.0
-    return _clamp(v / 0.08 * 100)
+    v = min(v, _FCF_WINSOR)
+    # 100·(1−exp(−FCF/0.0665)): tau=0.0665 calibra 8%→70, 12%→83, 16%→90.
+    return _clamp(100.0 * (1.0 - math.exp(-v / 0.0665)))
 
 
 def _q_roe(v):
+    """ROE → nota CONTÍNUA (só fallback fraco de ROIC). 20%≈79 · 30%≈89 · 40%≈94. 100 assintótico."""
     if v is None: return None
-    if v >= 0.20: return 100.0
     if v <= 0: return 0.0
-    return _clamp(v / 0.20 * 100)
+    v = min(v, _ROIC_WINSOR)
+    # tau=0.131: 20%≈78, 30%≈90, 40%≈95 (ROE um pouco mais "generoso" que ROIC, é fallback).
+    return _clamp(100.0 * (1.0 - math.exp(-v / 0.131)))
 
 
 def _q_debt(v):
+    """D/E (safety) → nota CONTÍNUA, MELHOR conforme D/E cai, PIOR conforme sobe. Sem teto-degrau:
+    D/E 0→92 · 0,5≈75 · 1,0≈61 · 2,0≈40 · 3,0≈26 · ≥5≈min. Winsoriza em 8 antes.
+    Empresa caixa-líquido (D/E~0) ≈92 ≠ empresa D/E 0,5 ≈75 (não empatam em 100)."""
     if v is None: return None
-    if v <= 0.5: return 100.0
-    if v >= 3.0: return 10.0
-    return _clamp(100 - ((v - 0.5) / 2.5) * 90)
+    v = min(max(v, 0.0), _DEBT_WINSOR)
+    # 92·exp(−D/E/2.4): 92 no zero, ~75 em 0,5, ~61 em 1,0, decaindo suave (monótono), piso 8.
+    return _clamp(92.0 * math.exp(-v / 2.4), 8.0, 100.0)
 
 
 def score_quality_crivo(tipo, roe=None, roic=None, fcf_yield=None, debt_to_equity=None,
