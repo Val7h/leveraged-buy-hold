@@ -891,52 +891,105 @@ _QUALITY_BONUS_PILLARS = ("roiic", "moat")
 # Mínimo de pilares-núcleo reais p/ a Qualidade ser "comprovada" (libera FORTE/alavancagem alta).
 # < isto = dado fino → CONF BAIXA + veredito capado. 3 de 4 núcleo é o piso ratificado (survival).
 QUALITY_MIN_PILARES_REAIS = 3
+
+# ─── LIMIAR DO GUARDRAIL POR-MERCADO (anti-90%-da-bolsa-BR-em-CONF-BAIXA) ───
+# O limiar fixo "3-de-4 núcleo" assume que os 4 pilares são ESTRUTURALMENTE obteníveis. Isso vale
+# p/ US (Finnhub traz roic+safety+fcf+crescimento). Mas o BR estruturalmente NÃO tem crescimento
+# real da EMPRESA via fonte grátis (sem Finnhub p/ BR; só preço, que NÃO entra na Camada 1) → uma
+# ação BR BEM coberta (roic+safety+fcf reais via Fundamentus/brapi) ficava com 3 núcleo só PORQUE
+# o 4º (crescimento) é inalcançável, e era injustamente carimbada como "dado fino"/CONF BAIXA.
+#
+# CORREÇÃO (não afrouxa, REALINHA): contamos os pilares reais contra os que DEVERIAM existir NAQUELE
+# mercado. Pra BR, "crescimento" sai da expectativa-núcleo → o piso BR exige os 3 OBTENÍVEIS
+# (roic+safety+fcf) reais p/ CONF MÉDIA/ALTA. Ação BR bem-coberta (3 reais) deixa de ser thin;
+# ação BR com dado REALMENTE faltando (só-ROE-fallback, ITSA4 q3) segue thin/CONF BAIXA.
+# US mantém o critério atual (4 obteníveis, piso 3) → ZERO regressão.
+#
+# Pilares estruturalmente OBTENÍVEIS por mercado (subconjunto dos CORE). Mercado desconhecido/US
+# → todos os 4 (comportamento legado). NÃO mexe nos pesos nem no score; só na CONTAGEM/limiar.
+_QUALITY_CORE_BY_MARKET = {
+    "BR": ("roic_nivel", "safety", "fcf"),                       # crescimento indisponível (grátis)
+    "US": ("roic_nivel", "safety", "fcf", "crescimento"),
+}
+# Piso de pilares-núcleo reais p/ NÃO ser "dado fino", por mercado. BR exige os 3 obteníveis; US 3.
+_QUALITY_MIN_BY_MARKET = {"BR": 3, "US": QUALITY_MIN_PILARES_REAIS}
+
+
+def _market_core_pillars(market: Optional[str]):
+    """Tupla de pilares-núcleo ESTRUTURALMENTE obteníveis no mercado. Default (None/desconhecido)
+    = os 4 do legado (comportamento US) → zero regressão p/ chamadas antigas sem market."""
+    if market:
+        return _QUALITY_CORE_BY_MARKET.get(market.strip().upper(), _QUALITY_CORE_PILLARS)
+    return _QUALITY_CORE_PILLARS
+
+
+def _market_min_pilares(market: Optional[str]) -> int:
+    """Piso de pilares-núcleo reais p/ a Qualidade ser comprovada NAQUELE mercado."""
+    if market:
+        return _QUALITY_MIN_BY_MARKET.get(market.strip().upper(), QUALITY_MIN_PILARES_REAIS)
+    return QUALITY_MIN_PILARES_REAIS
 # Notas extremas com dado fino = bandeira vermelha (provável artefato de renormalização magra).
 _QUALITY_SANITY_LOW = 10.0
 _QUALITY_SANITY_HIGH = 100.0
 
 
-def quality_pilares_reais(breakdown: Optional[Dict]) -> int:
+def quality_pilares_reais(breakdown: Optional[Dict], market: Optional[str] = None) -> int:
     """Conta os pilares-NÚCLEO REAIS usados na Qualidade (Camada 1), a partir do breakdown que
     compute_quality_blend devolve (termo ausente NÃO está no breakdown — não fabrica). Bônus
     (ROIIC/Moat) contam por cima se vierem. ETF/COMMODITY (breakdown sem pilares de negócio) → 0.
-    Não muda o score; só MEDE de quantos pilares reais a nota nasceu."""
+    Não muda o score; só MEDE de quantos pilares reais a nota nasceu.
+
+    market (opcional): 'BR'/'US'. Conta só os pilares-núcleo ESTRUTURALMENTE obteníveis NAQUELE
+    mercado (BR não tem 'crescimento' grátis) → não pune o BR por um pilar inalcançável. Default
+    (None) = os 4 do legado (US) → zero regressão."""
     if not breakdown:
         return 0
-    core = sum(1 for k in _QUALITY_CORE_PILLARS if k in breakdown)
+    core_pillars = _market_core_pillars(market)
+    core = sum(1 for k in core_pillars if k in breakdown)
     bonus = sum(1 for k in _QUALITY_BONUS_PILLARS if k in breakdown)
     return core + bonus
 
 
-def quality_data_confidence(breakdown: Optional[Dict], quality: Optional[float] = None) -> str:
-    """Confiança do DADO por trás da Qualidade (ALTA/MEDIA/BAIXA), pela contagem de pilares reais.
-      • núcleo ≥ QUALITY_MIN_PILARES_REAIS (3) → ALTA (qualidade comprovada por dado real abundante).
-      • núcleo == 2 → MEDIA.
-      • núcleo ≤ 1 → BAIXA (nota nasceu de 1 pilar — frágil; ex ITSA4 só-ROE-fallback).
-    Nota EXTREMA (≤10 ou =100) com núcleo < 3 também rebaixa p/ no mínimo BAIXA: extremo magro =
-    provável artefato de renormalização, não convicção."""
+def quality_data_confidence(breakdown: Optional[Dict], quality: Optional[float] = None,
+                            market: Optional[str] = None) -> str:
+    """Confiança do DADO por trás da Qualidade (ALTA/MEDIA/BAIXA), pela contagem de pilares reais
+    OBTENÍVEIS no mercado.
+      • núcleo-obtenível ≥ piso do mercado → ALTA (qualidade comprovada por dado real abundante).
+      • núcleo == piso-1 → MEDIA.
+      • núcleo ≤ piso-2 → BAIXA (nota nasceu de pouquíssimos pilares — frágil; ex ITSA4 só-ROE).
+    Nota EXTREMA (≤10 ou =100) com núcleo < piso também rebaixa p/ no mínimo BAIXA: extremo magro =
+    provável artefato de renormalização, não convicção.
+
+    market='BR' faz o piso ser 3-de-3-obteníveis (roic+safety+fcf reais) → ação BR bem coberta volta
+    a ALTA. market='US'/None mantém 3-de-4 (legado) → zero regressão US."""
     if not breakdown:
         return "BAIXA"
-    core = sum(1 for k in _QUALITY_CORE_PILLARS if k in breakdown)
-    if core >= QUALITY_MIN_PILARES_REAIS:
+    core_pillars = _market_core_pillars(market)
+    core = sum(1 for k in core_pillars if k in breakdown)
+    min_core = _market_min_pilares(market)
+    if core >= min_core:
         conf = "ALTA"
-    elif core == 2:
+    elif core == min_core - 1:
         conf = "MEDIA"
     else:
         conf = "BAIXA"
-    if quality is not None and core < QUALITY_MIN_PILARES_REAIS:
+    if quality is not None and core < min_core:
         if quality <= _QUALITY_SANITY_LOW or quality >= _QUALITY_SANITY_HIGH:
             conf = "BAIXA"      # extremo nascido de dado fino → desconfia
     return conf
 
 
-def quality_data_thin(breakdown: Optional[Dict]) -> bool:
-    """True se a Qualidade veio de MENOS pilares-núcleo reais que o mínimo (QUALITY_MIN_PILARES_REAIS)
-    → nota frágil que NÃO pode liderar COMPRAR FORTE/ESPECULATIVO nem liberar alavancagem alta."""
+def quality_data_thin(breakdown: Optional[Dict], market: Optional[str] = None) -> bool:
+    """True se a Qualidade veio de MENOS pilares-núcleo reais OBTENÍVEIS que o piso do mercado
+    → nota frágil que NÃO pode liderar COMPRAR FORTE/ESPECULATIVO nem liberar alavancagem alta.
+
+    market='BR': conta contra os 3 obteníveis (roic+safety+fcf) → ação BR bem coberta NÃO é thin;
+    só-ROE-fallback (ITSA4) segue thin. market='US'/None = legado (3-de-4) → zero regressão."""
     if not breakdown:
         return True
-    core = sum(1 for k in _QUALITY_CORE_PILLARS if k in breakdown)
-    return core < QUALITY_MIN_PILARES_REAIS
+    core_pillars = _market_core_pillars(market)
+    core = sum(1 for k in core_pillars if k in breakdown)
+    return core < _market_min_pilares(market)
 
 
 def score_etf_vehicle_quality(dy_avg10=None, dy_worst=None, dividend_yield=None,

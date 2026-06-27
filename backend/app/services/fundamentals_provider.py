@@ -31,6 +31,7 @@ import ssl as _ssl
 import json as _json
 import time as _time
 import logging
+import tempfile as _tempfile
 import urllib.parse as _urlparse
 import urllib.request as _urlreq
 
@@ -56,6 +57,71 @@ _CACHE_TTL = 6 * 3600  # 6h — fundamentos mudam devagar
 # cache em memória: { ticker_upper: (epoch_expira, dict_resultado) }
 _CACHE: dict[str, tuple[float, dict]] = {}
 
+# ───────────────────────── CACHE DO ÚLTIMO-BOM (anti-oscilação, em DISCO) ─────────────────────────
+# PROBLEMA: o dado fundamental BR é frágil — o scrape do Fundamentus oscila/falha e a brapi free
+# cobre poucos tickers. Quando a fonte FALHA (None) num ciclo, a ação caía pro fallback fraco/None,
+# perdia roic/safety/fcf e era carimbada "dado fino"/CONF BAIXA — embora MINUTOS antes tivesse o
+# dado bom. Solução: persistir em DISCO o ÚLTIMO valor BOM por ticker e, quando a coleta volta vazia,
+# REUSAR esse último-bom (dentro de um TTL de DIAS) em vez de descartar o que já tínhamos.
+#
+# IMPORTANTE: isto NÃO fabrica dado — só evita PERDER o que já foi coletado de verdade. A origem é
+# marcada (data_origin = fresh | cache | ausente) p/ auditoria. Fora do TTL o cache expira e some.
+#
+# Persistência: 1 JSON por ticker em FUNDAMENTALS_CACHE_DIR (default = <tmp>/lbh_fundamentals_cache).
+# Usa o diretório de cache de RUNTIME (mesmo padrão de market_data.YFINANCE_CACHE_DIR), NÃO o
+# backend/app/cache/ do código — aquele 'cache/' é gitignored p/ fontes (ver project_lbh_gitignore
+# _cache_gotcha); aqui é cache de runtime mesmo, gitignore é desejado (não versionar dado coletado).
+_LASTGOOD_TTL = int(os.environ.get("FUNDAMENTALS_LASTGOOD_TTL_DAYS", "7")) * 86400  # dias → seg
+_LASTGOOD_DIR = os.environ.get(
+    "FUNDAMENTALS_CACHE_DIR",
+    os.path.join(_tempfile.gettempdir(), "lbh_fundamentals_cache"))
+
+# Campos-NÚCLEO que definem "dado bom" o suficiente p/ valer cachear (≥1 pilar real de negócio).
+_LASTGOOD_CORE_FIELDS = ("roic", "roe", "fcf_yield", "debt_to_equity")
+
+
+def _lastgood_path(key: str) -> str:
+    safe = _re.sub(r"[^A-Za-z0-9._-]", "_", key)
+    return os.path.join(_LASTGOOD_DIR, f"{safe}.json")
+
+
+def _has_core_data(d: dict) -> bool:
+    """True se o dict traz ≥1 pilar-núcleo real de negócio (vale como 'bom' p/ cachear/reusar)."""
+    return any(d.get(k) is not None for k in _LASTGOOD_CORE_FIELDS)
+
+
+def _lastgood_write(key: str, result: dict) -> None:
+    """Persiste em disco o último-bom (só se tiver dado-núcleo real). Blindado: nunca lança."""
+    try:
+        if not _has_core_data(result):
+            return
+        os.makedirs(_LASTGOOD_DIR, exist_ok=True)
+        payload = {"saved_at": _time.time(), "data": result}
+        tmp = _lastgood_path(key) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(payload, f)
+        os.replace(tmp, _lastgood_path(key))   # escrita atômica
+    except Exception as e:
+        logger.warning(f"[FUNDAMENTALS] last-good write falhou {key}: {e}")
+
+
+def _lastgood_read(key: str) -> dict | None:
+    """Lê o último-bom do disco se ainda dentro do TTL (dias). None se ausente/expirado/corrompido."""
+    try:
+        path = _lastgood_path(key)
+        if not os.path.exists(path):
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            payload = _json.load(f)
+        saved_at = payload.get("saved_at", 0)
+        if (_time.time() - saved_at) > _LASTGOOD_TTL:
+            return None                        # expirou — não reusa (não cristaliza dado velho)
+        data = payload.get("data")
+        return dict(data) if isinstance(data, dict) else None
+    except Exception as e:
+        logger.warning(f"[FUNDAMENTALS] last-good read falhou {key}: {e}")
+        return None
+
 
 def _empty(source=None) -> dict:
     """Dict-padrão de retorno (shape estável). Nunca falta uma chave."""
@@ -77,6 +143,10 @@ def _empty(source=None) -> dict:
         "beta": None,
         "beta_note": None,
         "source": source,
+        # ORIGEM do dado p/ auditoria (anti-oscilação): "fresh" = coletado agora; "cache" = reusado
+        # do último-bom em disco pq a fonte falhou/voltou vazia; "ausente" = sem dado-núcleo. NÃO
+        # fabrica — só rastreia de onde veio. Preenchido em get_fundamentals.
+        "data_origin": None,
     }
 
 
@@ -94,25 +164,34 @@ def _to_float(v):
         return None
 
 
-def _http_json(url: str):
-    """GET → JSON, com fallback de SSL. None em falha. Nunca lança."""
-    try:
-        req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+def _http_json(url: str, _retries: int = 1):
+    """GET → JSON, com fallback de SSL e RETRY (robustez anti-oscilação). None em falha. Nunca lança.
+
+    _retries: nº de tentativas EXTRA em falha de rede (default 1 → até 2 tentativas). O scrape/brapi
+    BR oscila (timeouts esporádicos); um retry simples recupera boa parte sem fabricar nada nem
+    multiplicar chamadas pagas (só re-tenta o MESMO GET que falhou)."""
+    last_exc = None
+    for attempt in range(_retries + 1):
         try:
-            r = _urlreq.urlopen(req, timeout=_TIMEOUT, context=_CTX)
-        except Exception:
-            if not _ALLOW_INSECURE:
-                raise
-            # Fallback SEM verificação de cert — risco de MITM (dado forjado). NÃO é silencioso:
-            # loga ERRO para ser visível. Desligue setando ALLOW_INSECURE_SSL=0 no ambiente.
-            logger.error(f"[FUNDAMENTALS][SSL-INSEGURO] verificação TLS falhou; usando CERT_NONE "
-                         f"(risco MITM) p/ {url.split('?')[0]} — set ALLOW_INSECURE_SSL=0 p/ desligar")
-            r = _urlreq.urlopen(req, timeout=_TIMEOUT, context=_CTX_NOVERIFY)
-        with r:
-            return _json.loads(r.read())
-    except Exception as e:
-        logger.warning(f"[FUNDAMENTALS] HTTP falhou {url.split('?')[0]}: {e}")
-        return None
+            req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            try:
+                r = _urlreq.urlopen(req, timeout=_TIMEOUT, context=_CTX)
+            except Exception:
+                if not _ALLOW_INSECURE:
+                    raise
+                # Fallback SEM verificação de cert — risco de MITM (dado forjado). NÃO é silencioso:
+                # loga ERRO para ser visível. Desligue setando ALLOW_INSECURE_SSL=0 no ambiente.
+                logger.error(f"[FUNDAMENTALS][SSL-INSEGURO] verificação TLS falhou; usando CERT_NONE "
+                             f"(risco MITM) p/ {url.split('?')[0]} — set ALLOW_INSECURE_SSL=0 p/ desligar")
+                r = _urlreq.urlopen(req, timeout=_TIMEOUT, context=_CTX_NOVERIFY)
+            with r:
+                return _json.loads(r.read())
+        except Exception as e:
+            last_exc = e
+            if attempt < _retries:
+                continue   # re-tenta (falha esporádica de rede)
+    logger.warning(f"[FUNDAMENTALS] HTTP falhou {url.split('?')[0]}: {last_exc}")
+    return None
 
 
 # ───────────────────────────────── classificação de ticker ──────────────────────
@@ -460,7 +539,8 @@ def get_fundamentals(ticker: str) -> dict:
             return dict(hit[1])  # cópia defensiva
 
         # sem fundamentos (crypto/índice/câmbio)
-        if _is_no_fundamentals(key):
+        _no_fund = _is_no_fundamentals(key)
+        if _no_fund:
             result = _empty(None)
         elif key.endswith(".SA"):
             result = _from_brapi(key)
@@ -505,6 +585,25 @@ def get_fundamentals(ticker: str) -> dict:
                 if any(fmp.get(k) is not None for k in ("roe", "payout_ratio", "debt_to_equity",
                                                         "dividend_yield", "fcf_yield", "beta")):
                     result = fmp
+
+        # ── CACHE DO ÚLTIMO-BOM (anti-oscilação) — só p/ tickers que DEVERIAM ter fundamentos.
+        # Crypto/índice/câmbio (_no_fund) nunca têm pilares de negócio → não entram (None é correto).
+        if not _no_fund:
+            if _has_core_data(result):
+                # coleta FRESCA com dado real → marca origem e persiste como novo último-bom.
+                result["data_origin"] = "fresh"
+                _lastgood_write(key, result)
+            else:
+                # fonte falhou/voltou vazia: REUSA o último-bom em disco (dentro do TTL) em vez de
+                # cair pro None fraco. NÃO fabrica — recupera o que JÁ foi coletado de verdade.
+                cached = _lastgood_read(key)
+                if cached is not None and _has_core_data(cached):
+                    cached["data_origin"] = "cache"
+                    logger.info(f"[FUNDAMENTALS] {key}: fonte vazia → reusando último-bom em disco "
+                                f"(origem=cache, anti-oscilação)")
+                    result = cached
+                else:
+                    result["data_origin"] = "ausente"
 
         _CACHE[key] = (now + _CACHE_TTL, dict(result))
         return result

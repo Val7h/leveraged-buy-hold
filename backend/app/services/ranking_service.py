@@ -1377,11 +1377,15 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # CONF cai p/ BAIXA + veredito capado (não FORTE/ESPECULATIVO) + alavancagem não liberada.
         # SÓ vale p/ ações (a qualidade de NEGÓCIO); ETF/COMMODITY usam qualidade-de-veículo (logo
         # abaixo) e CRYPTO tem caminho próprio — esses NÃO sofrem o guardrail (zero regressão).
+        # LIMIAR POR-MERCADO: BR não tem crescimento real grátis (sem Finnhub p/ BR) → contamos
+        # contra os pilares-núcleo OBTENÍVEIS no mercado (BR: roic+safety+fcf; US: +crescimento).
+        # Ação BR bem-coberta (3 reais) deixa de ser injustamente "dado fino"; só-ROE-fallback segue.
+        _qmkt = "BR" if is_br else "US"
         _quality_thin = False
         _quality_pilares = None
         if cat not in ("ETF", "COMMODITY", "CRYPTO"):
-            _quality_pilares = S.quality_pilares_reais(qb)
-            _quality_thin = S.quality_data_thin(qb)
+            _quality_pilares = S.quality_pilares_reais(qb, market=_qmkt)
+            _quality_thin = S.quality_data_thin(qb, market=_qmkt)
 
         # ─────────────────── CAMADA 3 — APTIDÃO PRA ALAVANCAR (por-ativo) ───────────────────
         # σ TOTAL anualizada e GAP (pior salto diário) calculados do df de preço já buscado
