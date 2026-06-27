@@ -8,7 +8,12 @@ import { BarChart3, RefreshCw, Download, TrendingUp, Skull, Search } from "lucid
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import TickerLogo from "@/components/ui/TickerLogo";
 
-const DEFAULT_TICKERS = "NEE,SO,D,DUK,JNJ,PG,KO,PEP,MCD,T,VZ,O,MAIN,AFL,WM,MO,ABT,WEC,AEP,BRK-B";
+// Default ENXUTO (~7 tickers) p/ rodar rápido no cold start — o caminho óbvio
+// (abrir + comparar) não pode dar timeout. Presets maiores ficam a 1 clique.
+const DEFAULT_TICKERS = "NEE,JNJ,PG,KO,O,MO,BRK-B";
+
+// Acima disso, avisamos que a 1ª carga (cold start) pode demorar/expirar.
+const SLOW_TICKER_THRESHOLD = 10;
 
 const SHARPE_PRESETS: Record<string, { label: string; flag: string; tickers: string }> = {
   // ── EUA Defensivos ────────────────────────────────────────────────────────
@@ -142,6 +147,10 @@ export default function SharpeComparePage() {
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState("");
 
+  // Nº de tickers no campo (p/ avisar de cold-start lento quando há muitos).
+  const tickerCount = tickers.split(",").map((t) => t.trim()).filter(Boolean).length;
+  const manyTickers = tickerCount > SLOW_TICKER_THRESHOLD;
+
   const handleRun = async () => {
     setLoading(true);
     setError("");
@@ -203,6 +212,17 @@ export default function SharpeComparePage() {
               ))}
             </div>
           </div>
+
+          {/* Aviso de cold-start: muitos tickers podem demorar/expirar na 1ª carga. */}
+          {manyTickers && (
+            <div className="mb-3 flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2 text-xs text-warning">
+              <span className="shrink-0">⏳</span>
+              <span>
+                {tickerCount} tickers selecionados. Muitos ativos podem demorar — ou expirar — na 1ª
+                carga (cold start). Comece com menos ({SLOW_TICKER_THRESHOLD} ou menos) e amplie depois.
+              </span>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 mb-4">
             <div>

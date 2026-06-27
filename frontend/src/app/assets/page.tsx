@@ -153,18 +153,28 @@ function AssetsPageInner() {
     }
   }, [searchParams]);
 
-  const handleScreen = async () => {
+  // Recebe tickers opcionais (ex.: clique num preset) para evitar a corrida com
+  // o setState do campo. Sem argumento, usa o conteúdo atual do campo.
+  const handleScreen = async (overrideTickers?: string) => {
+    const t = (overrideTickers ?? tickers).toUpperCase();
     setLoading(true);
     setError("");
     setSelectedAssets(new Set()); // Clear selection on new screen
     try {
-      const res = await assetsApi.screen({ tickers: tickers.toUpperCase(), min_score: minScore });
+      const res = await assetsApi.screen({ tickers: t, min_score: minScore });
       setResult(res.data);
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Erro ao buscar ativos. Verifique os tickers.");
     } finally {
       setLoading(false);
     }
+  };
+
+  // Clique num preset: POPULA o campo de tickers (transparência do que será
+  // analisado) e já dispara o screening com esses mesmos tickers.
+  const applyPreset = (presetTickers: string) => {
+    setTickers(presetTickers);
+    handleScreen(presetTickers);
   };
 
   const toggleAssetSelection = (ticker: string) => {
@@ -322,14 +332,14 @@ function AssetsPageInner() {
           <div className="flex flex-wrap gap-2 mb-4">
             <span className="text-xs text-text-muted self-center">Presets:</span>
             {Object.entries(PRESET_LISTS).map(([key, val]) => (
-              <button key={key} onClick={() => setTickers(val.tickers)}
+              <button key={key} onClick={() => applyPreset(val.tickers)}
                 className="text-xs px-3 py-1 rounded-full border border-border hover:border-primary/50 hover:text-primary text-text-secondary transition-colors">
                 {val.flag && <span className="mr-1">{val.flag}</span>}{val.label}
               </button>
             ))}
           </div>
 
-          <button onClick={handleScreen} disabled={loading}
+          <button onClick={() => handleScreen()} disabled={loading}
             className="btn-primary flex items-center gap-2">
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
             {loading ? "Analisando..." : "Analisar Ativos"}

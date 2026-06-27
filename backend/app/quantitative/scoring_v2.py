@@ -910,9 +910,17 @@ QUALITY_MIN_PILARES_REAIS = 3
 _QUALITY_CORE_BY_MARKET = {
     "BR": ("roic_nivel", "safety", "fcf"),                       # crescimento indisponível (grátis)
     "US": ("roic_nivel", "safety", "fcf", "crescimento"),
+    # HOLDING (participações/equity-method, ex ITSA4/BRAP4/CXSE3): a Qualidade NÃO vem de pilares
+    # operacionais (ROIC/FCF dão ~0 na controladora) e sim do CRIVO DE HOLDING (score_holding_quality:
+    # dividendo consistente + safety da controladora). Esses pilares SUBSTITUEM os operacionais como
+    # "núcleo obtenível" → uma holding bem-coberta (dividendo+safety reais) NÃO é dado fino nem CONF
+    # BAIXA pelo guardrail de "<3 pilares operacionais" (que não se aplica a ela). resiliencia_queda
+    # é derivada de PREÇO (não prova mérito da holding) → fica como bônus, fora do núcleo.
+    "HOLDING": ("dividendos", "safety"),
 }
 # Piso de pilares-núcleo reais p/ NÃO ser "dado fino", por mercado. BR exige os 3 obteníveis; US 3.
-_QUALITY_MIN_BY_MARKET = {"BR": 3, "US": QUALITY_MIN_PILARES_REAIS}
+# HOLDING: os 2 do crivo de holding (dividendo+safety) reais → comprovada (não thin / não CONF BAIXA).
+_QUALITY_MIN_BY_MARKET = {"BR": 3, "US": QUALITY_MIN_PILARES_REAIS, "HOLDING": 2}
 
 
 def _market_core_pillars(market: Optional[str]):
@@ -1020,6 +1028,77 @@ def score_etf_vehicle_quality(dy_avg10=None, dy_worst=None, dividend_yield=None,
     wsum = sum(w for _, w in comps)
     q = (sum(s * w for s, w in comps) / wsum) if wsum > 0 else 50.0
     return round(_clamp(q), 1), bd
+
+
+# ─────────── QUALIDADE DE HOLDING (participações / equity-method) ───────────
+# Bug de MÉRITO (QA ao vivo): HOLDING de participações (Itaúsa, Bradespar, Caixa Seguridade,
+# Simpar) NÃO tem operação própria relevante — o VALOR está nas participadas (equity-method).
+# Avaliada pela Camada 1 (ROIC/FCF da CONTROLADORA), a holding leva nota ABSURDA (ITSA4 q3,
+# BRAP4/CXSE3 q0): a controladora "não opera", então ROIC/FCF parecem péssimos, e o ranking a
+# joga injustamente pro fundo. Caso ANÁLOGO ao ETF/COMMODITY (sem negócio operacional próprio):
+# a Qualidade NÃO pode vir de métricas operacionais ausentes — vem de fatores que fazem sentido
+# PARA UMA HOLDING. LEVERAGE-INDEPENDENTE, NÃO FABRICA (termo sem dado SAI e renormaliza).
+#
+# Pilares de holding (substituem os operacionais, não os fingem):
+#   • Dividendo consistente 45% — holding boa repassa o fluxo das participadas em PROVENTOS; o
+#     dividendo recorrente da holding é o melhor proxy do valor que ela de fato entrega.
+#   • Safety / alavancagem da CONTROLADORA 30% — D/E da PRÓPRIA holding (dívida na controladora
+#     sobre as participações = risco real da estrutura). É o D/E que ela publica (não operacional).
+#   • Resiliência de queda 25% — máxDD raso + recuperou = participação de qualidade que aguenta.
+# Sem NENHUM dado real (nem dividendo nem safety nem queda) → (None, {}): holding sem cobertura
+# segue HONESTAMENTE baixa/CONF BAIXA (não inventa nota). Itaúsa/Bradespar com dividendo+safety
+# reais voltam a uma Qualidade RAZOÁVEL (~55-75 conforme o que de fato têm), não 3/0.
+def score_holding_quality(dy_avg10=None, dy_worst=None, dividend_yield=None,
+                          debt_to_equity=None, max_dd_pct=None, dd_recovery_mult=1.0,
+                          roe=None, roic=None):
+    """QUALIDADE DE HOLDING (0-100) — participações (equity-method), sem operação própria.
+    Análoga a score_etf_vehicle_quality: a Qualidade vem de DIVIDENDO consistente + SAFETY da
+    controladora + RESILIÊNCIA de queda — NÃO de ROIC/FCF operacional (que dá ~0 na holding).
+    LEVERAGE-INDEPENDENTE, NUNCA fabrica (termo sem dado SAI e renormaliza).
+
+    Breakdown usa as MESMAS chaves dos pilares-núcleo de holding (dividendos · safety ·
+    resiliencia_queda) p/ o guardrail por-mercado contar os pilares REAIS da holding como
+    "núcleo obtenível" (a holding tem seu próprio conjunto de pilares, que substitui os
+    operacionais — ver _QUALITY_CORE_BY_MARKET['HOLDING']).
+
+    Retorna (None, {}) se NENHUM pilar tem dado real → holding sem cobertura segue baixa/thin."""
+    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield, roe=roe, roic=roic)
+             if (dy_avg10 is not None or dividend_yield is not None) else None)
+    s_safety = _q_debt(debt_to_equity)
+    s_dd = (_clamp(score_maxdd_quality(max_dd_pct) * dd_recovery_mult)
+            if max_dd_pct is not None else None)
+    comps = []
+    bd = {}
+    for s, w, k in ((s_div, 0.45, "dividendos"), (s_safety, 0.30, "safety"),
+                    (s_dd, 0.25, "resiliencia_queda")):
+        if s is not None:
+            comps.append((s, w))
+            bd[k] = round(s)
+    wsum = sum(w for _, w in comps)
+    if wsum <= 0:
+        return None, {}                 # holding sem NENHUM dado real → não fabrica (segue thin)
+    raw = sum(s * w for s, w in comps) / wsum
+
+    # CALIBRAÇÃO DA BANDA DE HOLDING (survival-first, não-descaracterizar): a Qualidade de uma holding
+    # é EMPRESTADA das participadas e diluída pelo desconto-de-holding e pela alavancagem da
+    # controladora — ela NÃO deve se passar por um compounder operacional de elite (ROIC líder da
+    # Camada 1). Mapeia o composto bruto p/ uma banda RAZOÁVEL: holding boa (dividendo+safety reais)
+    # cai em ~55-75; holding fraca de verdade segue baixa (a banda preserva a ORDEM — melhor dividendo/
+    # safety ⇒ nota maior — só comprime o teto). _HOLDING_Q_FLOOR..CEIL define a banda; abaixo do
+    # piso bruto (holding ruim) NÃO sobe (passa direto). NÃO infla artificialmente: reflete o real.
+    if raw <= _HOLDING_Q_FLOOR_RAW:
+        q = raw                                        # holding ruim de verdade: segue baixa, sem piso
+    else:
+        frac = (raw - _HOLDING_Q_FLOOR_RAW) / (100.0 - _HOLDING_Q_FLOOR_RAW)
+        q = _HOLDING_Q_FLOOR + frac * (_HOLDING_Q_CEIL - _HOLDING_Q_FLOOR)
+    return round(_clamp(q), 1), bd
+
+
+# Banda de Qualidade da holding: composto bruto ≥ _RAW mapeia p/ [FLOOR..CEIL] (razoável, não elite).
+# Holding com dividendo+safety reais cai em ~55-75; nunca masca um compounder operacional de topo.
+_HOLDING_Q_FLOOR_RAW = 40.0    # composto bruto abaixo disto = holding fraca → segue baixa (sem piso)
+_HOLDING_Q_FLOOR = 50.0        # piso da banda razoável (holding apenas-ok)
+_HOLDING_Q_CEIL = 75.0         # teto da banda (holding excelente em dividendo+safety, mas não-elite)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1339,6 +1418,7 @@ def score_quality_crivo(tipo, roe=None, roic=None, fcf_yield=None, debt_to_equit
     """Nota do CRIVO (0-100) por TIPO, sobre fundamentos REAIS presentes. Retorna (nota, n_termos);
     (None, 0) se < 2 termos reais (crivo NÃO opina — falta de dado não barra).
       - financeira: ROE pilar; IGNORA roic/fcf/D-E (D/E alto é o modelo do banco, não risco).
+      - holding: dividendo (repasse das participadas) + D/E da controladora; IGNORA roic/fcf (≈0).
       - ciclica (is_tatico): D/E pilar; ROIC com TETO 70 (pico de ciclo engana); crescimento meio-peso.
       - normal: roic+fcf+dividendo+D/E+roe+crescimento."""
     s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield, roe=roe, roic=roic)
@@ -1354,7 +1434,12 @@ def score_quality_crivo(tipo, roe=None, roic=None, fcf_yield=None, debt_to_equit
     _compounder_low_yield = (_is_compounder(roe, roic) and _div_yield is not None
                              and 0 <= _div_yield < _COMPOUNDER_LOW_YIELD)
 
-    if tipo == "financeira":
+    if tipo == "holding":
+        # HOLDING (participações/equity-method): ROIC/FCF da controladora não fazem sentido (≈0). O
+        # crivo julga o que a holding de fato entrega: DIVIDENDO consistente (repasse das participadas)
+        # + SAFETY/alavancagem da controladora (D/E). IGNORA roic/fcf operacionais. Análogo a financeira.
+        comps = [(s_div, 0.55), (s_de, 0.30), (s_gro, 0.15)]
+    elif tipo == "financeira":
         comps = [(s_roe, 0.45), (s_div, 0.30), (s_gro, 0.25)]
     elif tipo == "ciclica":
         s_roic_cap = min(s_roic, 70.0) if s_roic is not None else None   # ROIC de pico não "compra 100"

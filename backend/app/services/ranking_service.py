@@ -824,6 +824,41 @@ _FINANCEIRAS = {
     "HSBC", "SAN", "BBVA", "UBS", "ING",
 }
 
+# HOLDINGS de participações (equity-method): o valor está nas PARTICIPADAS, não em operação própria
+# da controladora → ROIC/FCF da controladora dão ~0 e a Camada 1 operacional dava nota ABSURDA (ITSA4
+# q3, BRAP4/CXSE3 q0), jogando a holding pro fundo do ranking injustamente. Crivo análogo ao de
+# ETF/financeira: a Qualidade vem de DIVIDENDO consistente + SAFETY da controladora (score_holding_quality),
+# não de métricas operacionais ausentes. Set CURADO e explícito (mesmo padrão de _FINANCEIRAS/_TATICO_US)
+# — holding não é detectável com segurança só por dado de fonte grátis; a curadoria evita falso-positivo
+# (zero regressão p/ operacional normal). Detecção secundária por setor/indústria "Holding"/"Participações"
+# quando a fonte trouxer (ver _is_holding).
+_HOLDINGS = {
+    "ITSA4.SA", "ITSA3.SA",     # Itaúsa (Itaú, Alpargatas, Dexco, Aegea...)
+    "BRAP4.SA", "BRAP3.SA",     # Bradespar (participação na Vale)
+    "CXSE3.SA",                 # Caixa Seguridade (holding de seguros da Caixa)
+    "SIMH3.SA",                 # Simpar (Movida, JSL, Vamos, Automob...)
+    "SIMH4.SA",
+    "PEAB4.SA", "PEAB3.SA",     # Participações Industriais (Votorantim/Hejoassu) — quando no universo
+    "MOAR3.SA",                 # Monteiro Aranha (participação em Klabin/3M...)
+}
+
+# Termos de setor/indústria que caracterizam holding pura de participações (detecção secundária,
+# só quando a fonte de fundamentos trouxer setor/indústria — não fabrica).
+_HOLDING_SECTOR_HINTS = ("holding", "participaç", "participac", "diversified holding")
+
+
+def _is_holding(ticker: str, fund: dict) -> bool:
+    """True se o ativo é uma HOLDING de participações (equity-method) — set CURADO (explícito) OU,
+    como rede secundária, setor/indústria 'Holding'/'Participações' vindo da fonte (quando houver).
+    Conservador: na ausência de dado de setor, decide SÓ pela whitelist (zero falso-positivo)."""
+    if ticker.upper() in _HOLDINGS:
+        return True
+    try:
+        meta = " ".join(str(fund.get(k, "") or "") for k in ("sector", "industry")).lower()
+        return any(h in meta for h in _HOLDING_SECTOR_HINTS) if meta.strip() else False
+    except Exception:
+        return False
+
 
 def regime(idx: Optional[np.ndarray]) -> str:
     if idx is None or len(idx) < 210:
@@ -1356,6 +1391,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             divergence=divergence, rel_momentum_percentile=None,
             estrutura=estrutura,
         )
+        # HOLDING de participações (equity-method, ex ITSA4/BRAP4/CXSE3): o valor está nas
+        # participadas, NÃO em operação própria → ROIC/FCF da controladora dão ~0 e a Camada 1
+        # operacional dava nota ABSURDA (ITSA4 q3, BRAP4/CXSE3 q0), afundando a holding no ranking.
+        # Crivo de HOLDING (análogo ao ETF/financeira): a Qualidade vem de dividendo consistente +
+        # safety da controladora — não de métricas operacionais ausentes. Set CURADO (_is_holding).
+        is_holding = (cat not in ("ETF", "COMMODITY", "CRYPTO")) and _is_holding(tk, fund)
         quality, qb = S.compute_quality_blend(
             beta=beta, max_dd_pct=dd, dividend_yield=dy, growth_5y=fund_growth,
             roe=fund.get("roe"), debt_to_equity=fund.get("debt_to_equity"),
@@ -1368,6 +1409,17 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             # de dado é falta de cobertura, não estrutura (não julgar empresa só pelo preço).
             fundamentals_apply=(cat not in ("ETF", "COMMODITY")),
         )
+        # Substitui a Qualidade OPERACIONAL pela QUALIDADE DE HOLDING (leverage-independente, NÃO
+        # fabrica). Itaúsa/Bradespar com dividendo+safety reais voltam a uma Qualidade RAZOÁVEL
+        # (~55-75) em vez de 3/0. Holding sem NENHUM dado real → (None, {}) → mantém a nota
+        # operacional magra (segue honestamente baixa/CONF BAIXA, não inventa nota).
+        if is_holding:
+            _hq, _hqb = S.score_holding_quality(
+                dy_avg10=dy_avg10, dy_worst=dy_worst, dividend_yield=dy,
+                debt_to_equity=fund.get("debt_to_equity"), max_dd_pct=dd,
+                dd_recovery_mult=dd_recovery_mult, roe=fund.get("roe"), roic=fund.get("roic"))
+            if _hq is not None:
+                quality, qb = _hq, _hqb
 
         # ─── GUARDRAIL Bug D: QUALIDADE DE DADO FINO NÃO LIDERA VEREDITO FORTE NEM ALAVANCA ───
         # Quando o scrape fundamental BR quebra, a Qualidade da Camada 1 nasce de POUCOS pilares
@@ -1380,7 +1432,11 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # LIMIAR POR-MERCADO: BR não tem crescimento real grátis (sem Finnhub p/ BR) → contamos
         # contra os pilares-núcleo OBTENÍVEIS no mercado (BR: roic+safety+fcf; US: +crescimento).
         # Ação BR bem-coberta (3 reais) deixa de ser injustamente "dado fino"; só-ROE-fallback segue.
-        _qmkt = "BR" if is_br else "US"
+        # Mercado p/ o guardrail: HOLDING conta os pilares do crivo de holding (dividendo+safety)
+        # como núcleo obtenível — uma holding bem-coberta NÃO é "dado fino" pelo guardrail de "<3
+        # pilares operacionais" (que não se aplica a ela; o crivo de holding os substitui). Holding
+        # sem o crivo (qb operacional magro) cai no critério BR/US e segue thin honestamente.
+        _qmkt = "HOLDING" if is_holding else ("BR" if is_br else "US")
         _quality_thin = False
         _quality_pilares = None
         if cat not in ("ETF", "COMMODITY", "CRYPTO"):
@@ -1447,8 +1503,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             # CRIVO DE QUALIDADE-REAL POR TIPO (#15b): porteira de fundamentos da EMPRESA (não preço).
             # Rebaixa 1 degrau se a qualidade-real não passa o piso (afrouxado pela confiança). Falta de
             # dado NÃO barra (crivo não opina). Tipo: financeira (whitelist)/cíclica (is_tatico)/normal.
-            tipo_crivo = ("financeira" if tk.upper() in _FINANCEIRAS
-                          else ("ciclica" if is_tatico else "normal"))
+            # HOLDING tem precedência sobre financeira (ITSA4/CXSE3 estão em ambos os sets): o crivo
+            # de holding julga dividendo+D/E da controladora, não ROE operacional (que o equity-method
+            # distorce). Senão: financeira (ROE) / cíclica (D/E) / normal (ROIC+FCF).
+            tipo_crivo = ("holding" if is_holding
+                          else ("financeira" if tk.upper() in _FINANCEIRAS
+                                else ("ciclica" if is_tatico else "normal")))
             crivo_nota, _crivo_n = S.score_quality_crivo(
                 tipo_crivo, roe=fund.get("roe"), roic=fund.get("roic"),
                 fcf_yield=fund.get("fcf_yield"), debt_to_equity=fund.get("debt_to_equity"),

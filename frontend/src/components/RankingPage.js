@@ -629,6 +629,18 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy, s
             </div>
             <div className="text-base font-mono font-bold text-primary leading-tight">{fmtNum(displayRank, 1)}</div>
           </div>
+          {/* Botão explícito de gráfico — abre o AssetChartModal (afford. visível). */}
+          <span
+            role="button"
+            title="Ver gráfico de preço"
+            onClick={(e) => {
+              e.stopPropagation();
+              onLogoClick && onLogoClick(asset.ticker);
+            }}
+            className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-surface-2 border border-border text-text-secondary hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer whitespace-nowrap"
+          >
+            📈 gráfico
+          </span>
           <span className="text-text-muted">
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </span>

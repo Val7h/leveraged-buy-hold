@@ -51,7 +51,7 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
         "card hover:border-primary/40 hover:shadow-card-lg hover:bg-surface/80 transition-all cursor-pointer group duration-300 relative",
         selected && "border-primary/50 bg-primary/5 shadow-glow"
       )}
-      onClick={() => { onSelect?.(asset.ticker); setShowChart(true); }}
+      onClick={() => { onSelect?.(asset.ticker); }}
     >
       {/* Selection Checkbox */}
       {onToggleSelect && (
@@ -70,6 +70,24 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
           />
         </div>
       )}
+
+      {/* Botão explícito de gráfico — abre o AssetChartModal sem mexer na seleção. */}
+      <button
+        type="button"
+        title="Ver gráfico de preço (RSI semanal, stop, zona de compra, dividendos)"
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowChart(true);
+        }}
+        className={cn(
+          "absolute z-10 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold",
+          "bg-surface-2 border border-border text-text-secondary",
+          "hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-colors",
+          onToggleSelect ? "top-3 right-10" : "top-3 right-3"
+        )}
+      >
+        📈 Gráfico
+      </button>
 
       {/* ── Header ──────────────────────────────────────── */}
       <div className="flex items-start justify-between mb-5 pb-4 border-b border-border/40">
