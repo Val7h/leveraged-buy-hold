@@ -871,6 +871,12 @@ def _verdict_from_momentum(momentum: float, st: dict, cat: str) -> str:
             verdict = "JUSTO"
     if st.get("conf_baixa") and verdict == "COMPRAR FORTE":
         verdict = "COMPRAR"
+    # GUARDRAIL Bug D (espelha _analyze): qualidade de dado fino não vira FORTE nem ESPECULATIVO falso.
+    if st.get("quality_thin"):
+        if verdict == "COMPRAR FORTE":
+            verdict = "COMPRAR"
+        elif verdict == "ESPECULATIVO" and not st.get("knife"):
+            verdict = "JUSTO"
     if st.get("gold_override"):
         verdict = "COMPRAR FORTE"
     return verdict
@@ -1363,6 +1369,20 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             fundamentals_apply=(cat not in ("ETF", "COMMODITY")),
         )
 
+        # ─── GUARDRAIL Bug D: QUALIDADE DE DADO FINO NÃO LIDERA VEREDITO FORTE NEM ALAVANCA ───
+        # Quando o scrape fundamental BR quebra, a Qualidade da Camada 1 nasce de POUCOS pilares
+        # reais e RENORMALIZA — não fabrica, mas a nota fica FRÁGIL e pode estourar (ITSA4 q3 por
+        # só-ROE-fallback; vários q100 por 1 pilar generoso). Contamos os pilares-NÚCLEO reais de
+        # que a nota nasceu; abaixo do mínimo (QUALITY_MIN_PILARES_REAIS) o ativo é "dado fino" →
+        # CONF cai p/ BAIXA + veredito capado (não FORTE/ESPECULATIVO) + alavancagem não liberada.
+        # SÓ vale p/ ações (a qualidade de NEGÓCIO); ETF/COMMODITY usam qualidade-de-veículo (logo
+        # abaixo) e CRYPTO tem caminho próprio — esses NÃO sofrem o guardrail (zero regressão).
+        _quality_thin = False
+        _quality_pilares = None
+        if cat not in ("ETF", "COMMODITY", "CRYPTO"):
+            _quality_pilares = S.quality_pilares_reais(qb)
+            _quality_thin = S.quality_data_thin(qb)
+
         # ─────────────────── CAMADA 3 — APTIDÃO PRA ALAVANCAR (por-ativo) ───────────────────
         # σ TOTAL anualizada e GAP (pior salto diário) calculados do df de preço já buscado
         # (janela recente ~6a). Série curta → None → o termo renormaliza / o teto não entra no MIN.
@@ -1398,6 +1418,11 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         elif _has_fund or _beta_pub:
             confidence = "MEDIA"
         else:
+            confidence = "BAIXA"
+        # GUARDRAIL Bug D: a Qualidade nasceu de pilares-núcleo de MENOS (dado fino) → desconfia da
+        # nota (mesmo que algum beta/payout solto tenha dado "MEDIA"): CONF cai p/ BAIXA. Não fabrica
+        # — só reflete que a Camada 1 não tem base real p/ liderar uma compra forte.
+        if _quality_thin:
             confidence = "BAIXA"
 
         _knife = False
@@ -1436,6 +1461,18 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             if confidence == "BAIXA" and verdict == "COMPRAR FORTE":
                 verdict = "COMPRAR"
 
+            # GUARDRAIL Bug D — veredito FORTE/ESPECULATIVO NÃO pode nascer de qualidade frágil:
+            #   • COMPRAR FORTE → COMPRAR (a pechincha vale, mas sem o talo de "qualidade comprovada").
+            #   • ESPECULATIVO de qualidade EXTREMA-baixa (≤45) com dado fino é um ALARME FALSO (ITSA4
+            #     q3 por só-ROE-fallback) → vira JUSTO ("dados insuficientes", cauteloso) em vez de
+            #     marcar faca sobre uma nota fabricada-baixa. Faca de VERDADE (knife/crivo) já rebaixou
+            #     acima; aqui só impedimos que a CEGUEIRA do provedor vire um veredito direcional forte.
+            if _quality_thin:
+                if verdict == "COMPRAR FORTE":
+                    verdict = "COMPRAR"
+                elif verdict == "ESPECULATIVO" and not _knife:
+                    verdict = "JUSTO"
+
         # REGRA DO OURO: ouro em capitulação do mercado de ações → hedge → COMPRAR FORTE (override).
         _gold_override = (tk.upper() in ("GLD", "GC=F")
                           and equity_regime in ("CAPITULACAO", "CAPIT.EXTREMA"))
@@ -1456,6 +1493,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             leverage = min(leverage, 2.0)
         elif verdict == "COMPRAR" and quality is not None and quality < 50:
             leverage = min(leverage, 3.0)
+        # GUARDRAIL Bug D — qualidade de DADO FINO não libera alavancagem alta por "qualidade não
+        # comprovada". A nota pode estar estourada (q100 de 1 pilar) → não dá p/ alavancar no talo
+        # sobre ela. Teto 2x (mesmo patamar do ESPECULATIVO/beta-alto). NÃO exclui o ativo (segue no
+        # ranking, participando da pechincha pelo MOMENTO), só nega o talo de alavancagem sem base.
+        if _quality_thin:
+            leverage = min(leverage, 2.0)
         # TRAVA DE ALAVANCAGEM POR BETA ALTO (#3) — REGRA Nº1 = SOBREVIVÊNCIA. beta ≥ 1.45 já é
         # ~1,5x de sensibilidade ao mercado; 3x×1,5 = ~4,5x de exposição EFETIVA num drawdown =
         # risco de LIQUIDAÇÃO (B3SA3 1,48, ADBE 1,46). O 2x topo/3x neutro/4-5x capitulação do
@@ -1534,6 +1577,10 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "rank_alavancado": rank_alavancado,
             "quality_breakdown": qb,
             "momentum_breakdown": mb,
+            # GUARDRAIL Bug D — transparência: de quantos pilares-núcleo REAIS a Qualidade nasceu e se
+            # é "dado fino" (frágil). O frontend já mostra a confiança; estes sinalizam o PORQUÊ.
+            "quality_pilares_reais": _quality_pilares,
+            "quality_data_thin": _quality_thin,
             "ma200_slope_weekly": _round_or_none(ma200_slope_wk, 1),
             "leverage_teto_tendencia": teto_lev_tendencia,
             # ── Camada 2 — insumos p/ o 2º passo do MOMENTUM RELATIVO (cross-sectional).
@@ -1551,6 +1598,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 "crivo_rebaixa": _crivo_rebaixa, "conf_baixa": (confidence == "BAIXA"),
                 "gold_override": _gold_override, "sigma_total": sigma_total,
                 "leverage": leverage,
+                "quality_thin": _quality_thin,
             },
             "slow_stoch_weekly": _round_or_none(sstoch, 0),
             "stoch_k": _round_or_none(stoch_k, 1),
@@ -1602,6 +1650,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 "quality": quality,
                 "is_buy_candidate": is_buy_candidate,
                 "is_crypto": False,
+                "quality_thin": _quality_thin,
             },
             "regime": reg,
             "staggered_stops": {
@@ -1799,6 +1848,8 @@ def _rederive_leverage_for_profile(asset: dict, profile: str) -> Optional[float]
         leverage = min(leverage, 2.0)
     elif verdict == "COMPRAR" and quality is not None and quality < 50:
         leverage = min(leverage, 3.0)
+    if pin.get("quality_thin"):          # GUARDRAIL Bug D: dado fino não libera alavancagem alta
+        leverage = min(leverage, 2.0)
     if beta is not None and beta >= 1.45:
         leverage = min(leverage, 2.0)
     _teto_trend = pin.get("teto_lev_tendencia")

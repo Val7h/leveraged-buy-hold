@@ -36,6 +36,8 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
     price: number | null;
     total_value: number | null;
     leverage: number | null;
+    realized_pnl: number | null;
+    is_cash: boolean;
     executed_at: string;
     notes: string | null;
   }> = [];
@@ -53,6 +55,12 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
       price: e.price ?? null,
       total_value: e.totalValue ?? null,
       leverage: e.leverage ?? null,
+      realized_pnl: e.realizedPnl ?? null,
+      // isCash pode ser null em linhas pré-migração: deriva por ação (COMPRA/VENDA = caixa).
+      is_cash:
+        typeof e.isCash === "boolean"
+          ? e.isCash
+          : e.action === "COMPRA" || e.action === "VENDA",
       executed_at: e.executedAt.toISOString(),
       notes: e.notes ?? null,
     }));
@@ -62,10 +70,27 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
   }
 
   if (realEvents.length > 0) {
+    // SÓ eventos de CAIXA contam como volume/operações reais.
+    // Classificação (SEMENTE/CICLO/AJUSTE-flag) não infla volume.
+    const cashEvents = realEvents.filter((e) => e.is_cash);
+
     // total_invested = soma das COMPRAS (entradas de capital).
-    const totalInvested = realEvents
+    const totalInvested = cashEvents
       .filter((e) => e.action === "COMPRA")
       .reduce((s, e) => s + (e.total_value ?? 0), 0);
+    const totalSold = cashEvents
+      .filter((e) => e.action === "VENDA")
+      .reduce((s, e) => s + (e.total_value ?? 0), 0);
+
+    // P&L realizado: soma dos eventos de VENDA com exitPrice apurado.
+    const realizedPnl = cashEvents.reduce(
+      (s, e) => s + (e.realized_pnl ?? 0),
+      0
+    );
+    // honestidade: quantas vendas ficaram sem preço de saída.
+    const sellsMissingExit = cashEvents.filter(
+      (e) => e.action === "VENDA" && e.realized_pnl == null
+    ).length;
 
     return NextResponse.json(
       {
@@ -73,6 +98,10 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
         portfolio_name: portfolio.name,
         events: realEvents,
         total_invested: totalInvested,
+        total_sold: totalSold,
+        realized_pnl: realizedPnl,
+        sells_missing_exit: sellsMissingExit,
+        cash_event_count: cashEvents.length,
         event_count: realEvents.length,
       },
       { headers: { "Cache-Control": "no-store" } }
@@ -91,6 +120,8 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
       price: Number(p.avgPrice),
       total_value,
       leverage: Number(p.leverage),
+      realized_pnl: null,
+      is_cash: true,
       executed_at: p.createdAt.toISOString(),
       notes: "Posição registrada (histórico sintético)",
     };
@@ -102,6 +133,10 @@ export async function GET(_req: NextRequest, { params: { id } }: RouteCtx) {
       portfolio_name: portfolio.name,
       events,
       total_invested: events.reduce((s, e) => s + e.total_value, 0),
+      total_sold: 0,
+      realized_pnl: 0,
+      sells_missing_exit: 0,
+      cash_event_count: events.length,
       event_count: events.length,
     },
     { headers: { "Cache-Control": "no-store" } }

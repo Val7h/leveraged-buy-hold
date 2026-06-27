@@ -42,6 +42,7 @@ export async function PATCH(
         price: Number(updated.avgPrice),
         totalValue: Number(updated.quantity) * Number(updated.avgPrice),
         leverage: Number(updated.leverage),
+        isCash: false, // classificação (rótulo), não movimento de caixa — não conta como volume
         notes: nextSeed ? "Marcada como semente (on)" : "Semente desmarcada (off)",
       },
     });

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useMemo, memo } from "react";
 import dynamic from "next/dynamic";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Info } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
 const PortfolioChartRenderer = dynamic(
@@ -79,9 +79,25 @@ function PortfolioEquityCurve({
       {/* Header */}
       <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-text-primary">Curva de Patrimônio Real</h3>
+          <h3 className="text-sm font-semibold text-text-primary flex items-center gap-1.5">
+            Simulação — backtest dos ativos atuais
+            <span
+              className="inline-flex text-text-muted cursor-help"
+              title={
+                "NÃO é o seu histórico real. É um backtest dos ativos que você segura HOJE, " +
+                "rodado desde uma data fixa com alavancagem fixa.\n\n" +
+                "• Survivorship bias: só inclui ativos que sobreviveram até hoje (vencedores), " +
+                "ignorando os que você vendeu ou que quebraram.\n" +
+                "• Look-ahead bias: aplica a carteira de hoje ao passado, como se você já " +
+                "soubesse no que investir.\n\n" +
+                "Use como referência da estratégia, não como extrato da sua carteira."
+              }
+            >
+              <Info size={13} />
+            </span>
+          </h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Evolução do valor de mercado da carteira com alavancagem
+            Backtest dos ativos atuais com alavancagem fixa — não é o seu histórico real (survivorship/look-ahead)
           </p>
         </div>
         {/* Period selector */}

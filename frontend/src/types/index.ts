@@ -304,6 +304,8 @@ export interface TradeHistoryItem {
   price: number;
   leverage: number;
   total_value: number;
+  realized_pnl?: number | null;  // P&L realizado (só VENDA); null = preço de saída indisponível
+  is_cash?: boolean;             // true = movimento de caixa (COMPRA/VENDA); false = classificação
   notes?: string;
   executed_at: string;
 }

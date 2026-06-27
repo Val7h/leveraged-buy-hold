@@ -876,6 +876,69 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
     return round(_clamp(q), 1), breakdown
 
 
+# ─────────────── GUARDRAIL: QUALIDADE DE DADO FINO NÃO LIDERA VEREDITO FORTE (Bug D) ───────────────
+# Quando o scrape fundamental BR quebra (Fundamentus falha), a Qualidade da Camada 1 sai de POUCOS
+# pilares reais e RENORMALIZA — bom (não fabrica), MAS a nota fica FRÁGIL e pode estourar (ITSA4 q3
+# por só-ROE-fallback, ou vários q100 por 1 pilar generoso). Essa nota magra NÃO pode liderar um
+# veredito COMPRAR FORTE/ESPECULATIVO nem liberar alavancagem alta. A ideia é DESCONFIAR de nota
+# magra (rebaixar confiança + capar veredito), NÃO inventar dado.
+#
+# Pilares-NÚCLEO da Camada 1 (os que SEMPRE se tentam quando há fundamentos da empresa): ROIC nível,
+# Safety/D-E, FCF, Crescimento. ROIIC e Moat são OPCIONAIS (histórico multi-ano que provedor grátis
+# quase nunca dá) → contam como bônus se vierem, mas a contagem-núcleo é o que define "dado fino".
+_QUALITY_CORE_PILLARS = ("roic_nivel", "safety", "fcf", "crescimento")
+_QUALITY_BONUS_PILLARS = ("roiic", "moat")
+# Mínimo de pilares-núcleo reais p/ a Qualidade ser "comprovada" (libera FORTE/alavancagem alta).
+# < isto = dado fino → CONF BAIXA + veredito capado. 3 de 4 núcleo é o piso ratificado (survival).
+QUALITY_MIN_PILARES_REAIS = 3
+# Notas extremas com dado fino = bandeira vermelha (provável artefato de renormalização magra).
+_QUALITY_SANITY_LOW = 10.0
+_QUALITY_SANITY_HIGH = 100.0
+
+
+def quality_pilares_reais(breakdown: Optional[Dict]) -> int:
+    """Conta os pilares-NÚCLEO REAIS usados na Qualidade (Camada 1), a partir do breakdown que
+    compute_quality_blend devolve (termo ausente NÃO está no breakdown — não fabrica). Bônus
+    (ROIIC/Moat) contam por cima se vierem. ETF/COMMODITY (breakdown sem pilares de negócio) → 0.
+    Não muda o score; só MEDE de quantos pilares reais a nota nasceu."""
+    if not breakdown:
+        return 0
+    core = sum(1 for k in _QUALITY_CORE_PILLARS if k in breakdown)
+    bonus = sum(1 for k in _QUALITY_BONUS_PILLARS if k in breakdown)
+    return core + bonus
+
+
+def quality_data_confidence(breakdown: Optional[Dict], quality: Optional[float] = None) -> str:
+    """Confiança do DADO por trás da Qualidade (ALTA/MEDIA/BAIXA), pela contagem de pilares reais.
+      • núcleo ≥ QUALITY_MIN_PILARES_REAIS (3) → ALTA (qualidade comprovada por dado real abundante).
+      • núcleo == 2 → MEDIA.
+      • núcleo ≤ 1 → BAIXA (nota nasceu de 1 pilar — frágil; ex ITSA4 só-ROE-fallback).
+    Nota EXTREMA (≤10 ou =100) com núcleo < 3 também rebaixa p/ no mínimo BAIXA: extremo magro =
+    provável artefato de renormalização, não convicção."""
+    if not breakdown:
+        return "BAIXA"
+    core = sum(1 for k in _QUALITY_CORE_PILLARS if k in breakdown)
+    if core >= QUALITY_MIN_PILARES_REAIS:
+        conf = "ALTA"
+    elif core == 2:
+        conf = "MEDIA"
+    else:
+        conf = "BAIXA"
+    if quality is not None and core < QUALITY_MIN_PILARES_REAIS:
+        if quality <= _QUALITY_SANITY_LOW or quality >= _QUALITY_SANITY_HIGH:
+            conf = "BAIXA"      # extremo nascido de dado fino → desconfia
+    return conf
+
+
+def quality_data_thin(breakdown: Optional[Dict]) -> bool:
+    """True se a Qualidade veio de MENOS pilares-núcleo reais que o mínimo (QUALITY_MIN_PILARES_REAIS)
+    → nota frágil que NÃO pode liderar COMPRAR FORTE/ESPECULATIVO nem liberar alavancagem alta."""
+    if not breakdown:
+        return True
+    core = sum(1 for k in _QUALITY_CORE_PILLARS if k in breakdown)
+    return core < QUALITY_MIN_PILARES_REAIS
+
+
 def score_etf_vehicle_quality(dy_avg10=None, dy_worst=None, dividend_yield=None,
                               max_dd_pct=None, dd_recovery_mult=1.0, sharpe=None):
     """QUALIDADE DO VEÍCULO (0-100) — para ETF/COMMODITY, que NÃO têm negócio (sem ROIC/FCF).

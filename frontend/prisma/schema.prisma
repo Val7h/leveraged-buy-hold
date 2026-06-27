@@ -114,6 +114,8 @@ model PositionEvent {
   price       Float?
   totalValue  Float?
   leverage    Float?    @default(1)
+  realizedPnl Float?    // P&L realizado em eventos de VENDA = (exitPrice - avgPrice) * shares. null = preço de saída indisponível
+  isCash      Boolean   @default(true)  // true p/ COMPRA/VENDA (movimentos de caixa); false p/ SEMENTE/CICLO/AJUSTE-flag (classificação)
   notes       String?
   executedAt  DateTime  @default(now())
 
@@ -147,6 +149,10 @@ model SellEvent {
   id          String   @id @default(cuid())
   portfolioId String
   ticker      String
+  shares      Float?                      // cotas vendidas
+  avgPrice    Float?                      // preço médio de custo na saída
+  exitPrice   Float?                      // preço de mercado REAL na saída (null = fonte indisponível)
+  realizedPnl Float?                      // (exitPrice - avgPrice) * shares; null se exitPrice indisponível
   soldAt      DateTime @default(now())   // cooldown de recompra na rotação
 
   @@index([portfolioId, soldAt])

@@ -69,10 +69,18 @@ export default function HistoryPage() {
 
   const filtered = filter === "TODOS" ? history : history.filter(h => h.action === filter);
 
-  // Summary stats
-  const totalCompras = history.filter(h => h.action === "COMPRA").reduce((s, h) => s + h.total_value, 0);
-  const totalVendas  = history.filter(h => h.action === "VENDA").reduce((s, h) => s + h.total_value, 0);
+  // Summary stats — SÓ eventos de CAIXA (COMPRA/VENDA) contam como volume/operação.
+  // Classificação (SEMENTE/CICLO/AJUSTE) NÃO infla volume nem nº de operações.
+  // is_cash pode vir undefined em payloads antigos -> deriva por ação.
+  const isCash = (h: TradeHistoryItem) =>
+    typeof h.is_cash === "boolean" ? h.is_cash : (h.action === "COMPRA" || h.action === "VENDA");
+  const cashEvents = history.filter(isCash);
+  const totalCompras = cashEvents.filter(h => h.action === "COMPRA").reduce((s, h) => s + h.total_value, 0);
+  const totalVendas  = cashEvents.filter(h => h.action === "VENDA").reduce((s, h) => s + h.total_value, 0);
   const uniqueTickers = new Set(history.map(h => h.ticker)).size;
+  // P&L realizado: soma dos eventos de venda com preço de saída apurado.
+  const realizedPnl = cashEvents.reduce((s, h) => s + (h.realized_pnl ?? 0), 0);
+  const sellsMissingExit = cashEvents.filter(h => h.action === "VENDA" && (h.realized_pnl == null)).length;
 
   return (
     <AppShell>
@@ -99,16 +107,23 @@ export default function HistoryPage() {
 
         {/* Summary cards */}
         {history.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 mb-5">
             {[
-              { label: "Total de Operações", value: history.length.toString(), color: "text-text-primary" },
+              { label: "Operações de Caixa", value: cashEvents.length.toString(), color: "text-text-primary", hint: `${history.length} eventos no total (inclui classificação)` },
               { label: "Ativos Operados",    value: uniqueTickers.toString(),  color: "text-primary" },
               { label: "Volume Comprado",    value: formatCurrency(totalCompras, "USD", true), color: "text-success" },
               { label: "Volume Vendido",     value: formatCurrency(totalVendas, "USD", true),  color: "text-danger" },
+              {
+                label: "P&L Realizado",
+                value: (realizedPnl >= 0 ? "+" : "") + formatCurrency(realizedPnl, "USD", true),
+                color: realizedPnl >= 0 ? "text-success" : "text-danger",
+                hint: sellsMissingExit > 0 ? `${sellsMissingExit} venda(s) sem preço de saída — não computada(s)` : undefined,
+              },
             ].map(s => (
-              <div key={s.label} className="card-sm">
+              <div key={s.label} className="card-sm" title={s.hint}>
                 <p className="text-xs text-text-muted mb-1">{s.label}</p>
                 <p className={`text-base font-mono font-semibold ${s.color}`}>{s.value}</p>
+                {s.hint && <p className="text-[10px] text-text-muted mt-0.5">{s.hint}</p>}
               </div>
             ))}
           </div>
@@ -175,6 +190,7 @@ export default function HistoryPage() {
                     <th className="text-right px-4 py-3 text-xs text-text-muted font-medium">Cotas</th>
                     <th className="text-right px-4 py-3 text-xs text-text-muted font-medium">Preço Médio</th>
                     <th className="text-right px-4 py-3 text-xs text-text-muted font-medium">Valor Total</th>
+                    <th className="text-right px-4 py-3 text-xs text-text-muted font-medium">P&amp;L Realizado</th>
                     <th className="text-right px-4 py-3 text-xs text-text-muted font-medium">Alavancagem</th>
                     <th className="text-left px-4 py-3 text-xs text-text-muted font-medium">Notas</th>
                   </tr>
@@ -208,6 +224,19 @@ export default function HistoryPage() {
                         {item.total_value > 0
                           ? (item.action === "VENDA" ? "-" : "+") + formatCurrency(item.total_value)
                           : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">
+                        {item.action !== "VENDA" ? (
+                          <span className="text-text-muted">—</span>
+                        ) : item.realized_pnl == null ? (
+                          <span className="text-text-muted" title="Preço de saída indisponível no momento da venda — P&L não apurado">
+                            n/d
+                          </span>
+                        ) : (
+                          <span className={item.realized_pnl >= 0 ? "text-success font-semibold" : "text-danger font-semibold"}>
+                            {(item.realized_pnl >= 0 ? "+" : "") + formatCurrency(item.realized_pnl)}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs text-warning">
                         {item.leverage > 0 ? `${item.leverage.toFixed(2)}x` : "—"}
