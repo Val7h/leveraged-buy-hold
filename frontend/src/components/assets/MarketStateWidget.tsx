@@ -5,6 +5,30 @@ import type { MarketState } from "@/types";
 import { TrendingUp, TrendingDown, Minus, RefreshCw, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Perfil canônico (client-safe — NÃO importar de @/lib/auth, que puxa next/headers
+// e quebra o bundle do client). Espelha normalizeRiskProfile do servidor.
+type RiskProfile = "conservador" | "moderado" | "agressivo";
+function normalizeRiskProfile(raw: string | null | undefined): RiskProfile {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (v === "conservador" || v === "conservative") return "conservador";
+  if (v === "agressivo" || v === "aggressive") return "agressivo";
+  return "moderado";
+}
+
+// Multiplicador de APORTE por perfil × estado de mercado (presets do motor, valores EXATOS).
+// Espelha os presets: conservador 1/1/2/2 · moderado 2/2/3/3 · agressivo 2/3/4/5.
+// Mapa de estados do widget → buckets do preset:
+//   TOPO→topo · NORMAL→neutro · CORREÇÃO→capit · CAPITULAÇÃO→extrema
+const APORTE_PRESETS: Record<RiskProfile, Record<MarketState["state"], number>> = {
+  conservador: { TOPO: 1, NORMAL: 1, "CORREÇÃO": 2, "CAPITULAÇÃO": 2 },
+  moderado:    { TOPO: 2, NORMAL: 2, "CORREÇÃO": 3, "CAPITULAÇÃO": 3 },
+  agressivo:   { TOPO: 2, NORMAL: 3, "CORREÇÃO": 4, "CAPITULAÇÃO": 5 },
+};
+
+function aporteMultiplier(state: MarketState["state"], profile: RiskProfile): number {
+  return APORTE_PRESETS[profile][state] ?? APORTE_PRESETS[profile].NORMAL;
+}
+
 const STATE_CONFIG = {
   TOPO: {
     Icon:         TrendingUp,
@@ -77,7 +101,8 @@ function SignalPill({ label, value, unit = "", sign = false, lowGood = false }: 
   );
 }
 
-export default function MarketStateWidget() {
+export default function MarketStateWidget({ riskProfile }: { riskProfile?: string | null }) {
+  const profile = normalizeRiskProfile(riskProfile);
   const [state, setState]   = useState<MarketState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState(false);
@@ -172,10 +197,19 @@ export default function MarketStateWidget() {
             lowGood
           />
           <div className="w-px h-8 bg-border/50" />
+          {/* Regime = multiplicador legado do estado de mercado (indicador, não aporte). */}
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[10px] text-text-muted">Regime</span>
+            <span className={cn("text-base font-bold font-mono", cfg.multiplierColor)}>
+              {state.multiplier}x
+            </span>
+          </div>
+          <div className="w-px h-8 bg-border/50" />
+          {/* Próximo aporte = preset PERFIL × estado (bate com Screening/Aporte/Portfólio). */}
           <div className="flex flex-col items-center gap-1">
             <span className="text-[10px] text-text-muted">Próximo aporte</span>
             <span className={cn("text-base font-bold font-mono", cfg.multiplierColor)}>
-              {state.multiplier}x
+              {aporteMultiplier(state.state, profile)}x
             </span>
           </div>
           <button

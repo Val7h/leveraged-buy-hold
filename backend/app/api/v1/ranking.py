@@ -24,9 +24,16 @@ router = APIRouter(tags=["ranking"])
 
 
 @router.get("/api/ranking")
-def get_ranking(force: bool = Query(False, description="Ignora o cache e recalcula")):
+def get_ranking(
+    force: bool = Query(False, description="Ignora o cache e recalcula"),
+    profile: Optional[str] = Query(None, description="Perfil do assinante (conservador/moderado/agressivo)"),
+):
+    """Ranking por-perfil SEM re-fetch: o cache continua CANÔNICO (agressivo); o perfil do assinante é
+    aplicado RE-DERIVANDO a alavancagem de cada ativo dos tetos já computados (apply_profile_to_ranking).
+    profile None/agressivo → idêntico ao cache (zero regressão)."""
     try:
-        return R.compute_ranking(force=force)
+        prof = profiles.normalize_profile(profile)   # None → moderado (default seguro do assinante)
+        return R.apply_profile_to_ranking(R.compute_ranking(force=force), prof)
     except Exception as e:
         logger.exception("Erro ao computar ranking")
         return {"error": str(e), "categories": {}}

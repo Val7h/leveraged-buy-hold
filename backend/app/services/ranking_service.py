@@ -1016,7 +1016,8 @@ def _crypto_verdict(momentum: float, quality: float) -> str:
 
 def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
                     sstoch=None, stoch_k=None, stoch_d=None, dma=None,
-                    disc=None, rev=None, wclose=None, use_wk=False, idxc=None) -> Optional[dict]:
+                    disc=None, rev=None, wclose=None, use_wk=False, idxc=None,
+                    profile="agressivo") -> Optional[dict]:
     """
     Caminho dedicado de scoring p/ CRYPTO (framework ratificado Pal/Hayes/Woo).
     Fatores GRÁTIS: liquidez/marketcap/dominância (CoinGecko), Lindy (tabela estática),
@@ -1078,6 +1079,11 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
         if verdict == "ESPECULATIVO":
             leverage = min(leverage, 2.0)
         leverage = min(leverage, lev_cap)   # teto por ativo é inviolável
+        # TETO DURO DO PERFIL (produto): conservador=2 · moderado=3 · agressivo=5. Mantém o teto 3x
+        # de cripto e os caps por-ativo (BTC2x/ETH1.75x) via MIN — sobrevivência só DESCE. Agressivo
+        # (cap=5) não morde aqui (cripto já trava em ≤3x) → ZERO regressão p/ a doutrina do dono.
+        _prof_cap = int(profiles.profile_leverage_params(profile)["leverage_cap"])
+        leverage = min(leverage, float(_prof_cap))
 
         rank = quality * 0.45 + momentum * 0.55
         # rank duplo v2 (ver _analyze): crypto não calcula σ TOTAL anualizada aqui → sigma=None →
@@ -1136,6 +1142,19 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
             # número de SOBREVIVÊNCIA — round(…,1) faria 1.75→1.8 (parecer furar o teto).
             "leverage": round(leverage, 2),
             "regime": reg_display,
+            # ── INSUMOS BRUTOS p/ RE-DERIVAR a leverage de cripto POR-PERFIL sem refetch.
+            # A cripto não passa pelo MIN de tetos da Camada 3 (caminho próprio): a leverage é
+            # min(mult_regime[≤3x], lev_cap_ativo, 2x_se_ESPECULATIVO, teto_perfil). Guardamos os
+            # ingredientes p/ apply_profile_to_ranking refazer só o teto_perfil (≠agressivo).
+            "_profile_inputs": {
+                "regime": reg_display,
+                "mult": int(mult),
+                "lev_cap_asset": lev_cap,
+                "is_buy_candidate": is_buy_candidate,
+                "bucket": bucket,
+                "verdict": verdict,
+                "is_crypto": True,
+            },
             "staggered_stops": {
                 "stop_1_pct": stops.get("stop_1_pct"),
                 "stop_2_pct": stops.get("stop_2_pct"),
@@ -1246,7 +1265,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 tk, name, bucket, cat, df, a, a_long, current_price=float(a[-1]) if len(a) else None,
                 sstoch=sstoch, stoch_k=stoch_k, stoch_d=stoch_d, dma=dma,
                 disc=disc, rev=rev, wclose=wclose, use_wk=use_wk,
-                idxc=idxc)
+                idxc=idxc, profile=profile)
             if res is not None:
                 return res
             # Falha no caminho crypto → cai no genérico abaixo (blindagem; nunca derruba).
@@ -1564,6 +1583,26 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "leverage_teto_camada3": teto_lev,
             "leverage_teto_binding": teto_det.get("binding"),
             "leverage": round(leverage, 1),
+            # ── INSUMOS BRUTOS p/ RE-DERIVAR a leverage POR-PERFIL sem refetch (apply_profile_to_ranking).
+            # São os MESMOS inputs que o caminho ao vivo usa no MIN de tetos da Camada 3; guardados crus
+            # (não arredondados) p/ a re-derivação bater bit-a-bit com _analyze. Barato (~10 floats).
+            "_profile_inputs": {
+                "regime": reg,
+                "sigma_total": sigma_total,
+                "gap_pct": gap_pct,
+                "beta": beta,
+                "max_dd": dd,
+                "hist_curto": hist_curto,
+                "adv_dollar": _adv_dollar,
+                "gap_risk_extremo": (gap_pct is not None and abs(gap_pct) >= 20.0),
+                "distance_ma200": dma,
+                "teto_lev_tendencia": teto_lev_tendencia,
+                "verdict": verdict,
+                "bucket": bucket,
+                "quality": quality,
+                "is_buy_candidate": is_buy_candidate,
+                "is_crypto": False,
+            },
             "regime": reg,
             "staggered_stops": {
                 "stop_1_pct": stops.get("stop_1_pct"),
@@ -1705,6 +1744,137 @@ def _recompute_ranking_inner() -> dict:
     return result
 
 
+# ─────────────────────────── PERFIL no RANKING (re-derivação SEM refetch) ───────────────────────────
+# A aba Ranking servia o cache CANÔNICO (agressivo) a TODOS — incoerente com Screening/Aporte, que já
+# respeitam o perfil do assinante. Corrigimos RE-DERIVANDO a alavancagem de cada ativo a partir dos
+# tetos JÁ COMPUTADOS no payload cacheado (sigma/beta/gap/regime/etc., guardados crus em _profile_inputs
+# por _analyze/_analyze_crypto). Sem refazer fetch nem _analyze. Survival só DESCE (todo cap é MIN).
+# Agressivo/None → ranking idêntico ao cache (re-derivação NÃO dispara; só limpa _profile_inputs).
+
+def _strip_profile_inputs(asset: dict) -> dict:
+    """Cópia do ativo SEM a chave interna _profile_inputs (não vai no contrato da API)."""
+    out = dict(asset)
+    out.pop("_profile_inputs", None)
+    return out
+
+
+def _rederive_leverage_for_profile(asset: dict, profile: str) -> Optional[float]:
+    """Re-deriva a alavancagem de UM ativo para `profile` a partir dos insumos brutos cacheados
+    (_profile_inputs), reaplicando a MESMA cadeia de tetos de _analyze — SEM refetch. Retorna a nova
+    leverage (float) ou None quando não há insumos (mantém a do cache). Sobrevivência só DESCE."""
+    pin = asset.get("_profile_inputs")
+    if not pin:
+        return None
+    _plp = profiles.profile_leverage_params(profile)
+
+    # ── CRYPTO: caminho próprio (não passa pelo MIN da Camada 3). leverage =
+    #    min(mult_regime[≤3x], lev_cap_ativo, 2x_se_ESPECULATIVO, teto_perfil).
+    if pin.get("is_crypto"):
+        bucket = pin.get("bucket")
+        if not pin.get("is_buy_candidate") or bucket == "RESERVA":
+            lev = 1.0
+        else:
+            lev = float(pin.get("mult", 3))
+        lev = min(lev, float(pin.get("lev_cap_asset", lev)))
+        if pin.get("verdict") == "ESPECULATIVO":
+            lev = min(lev, 2.0)
+        lev = min(lev, float(pin.get("lev_cap_asset", lev)))
+        lev = min(lev, float(int(_plp["leverage_cap"])))
+        return round(lev, 2)
+
+    # ── AÇÕES/ETF/COMMODITY: replica a cadeia de leverage de _analyze (1428-1485) com o regime_mult
+    #    e os caps do perfil. mult_regime do perfil; is_buy_candidate/verdict/quality já decididos
+    #    (leverage-independentes); depois ESPECULATIVO/COMPRAR-baixa, beta≥1,45, gate de tendência e o
+    #    MIN da Camada 3 (teto_alavancagem_aptidao com leverage_cap + sigma_floor do perfil).
+    regime_name = pin.get("regime", "NEUTRO")
+    mult = profiles.regime_multiplier(profile, regime_name)
+    bucket = pin.get("bucket")
+    verdict = pin.get("verdict")
+    quality = pin.get("quality")
+    beta = pin.get("beta")
+    dma = pin.get("distance_ma200")
+
+    leverage = float(mult) if (pin.get("is_buy_candidate") and bucket != "RESERVA") else 1.0
+    if verdict == "ESPECULATIVO":
+        leverage = min(leverage, 2.0)
+    elif verdict == "COMPRAR" and quality is not None and quality < 50:
+        leverage = min(leverage, 3.0)
+    if beta is not None and beta >= 1.45:
+        leverage = min(leverage, 2.0)
+    _teto_trend = pin.get("teto_lev_tendencia")
+    if _teto_trend is not None:
+        leverage = min(leverage, _teto_trend)
+
+    sigma_total = pin.get("sigma_total")
+    gap_pct = pin.get("gap_pct")
+    teto_lev, _ = S.teto_alavancagem_aptidao(
+        max_dd_pct=pin.get("max_dd"), sigma_pct=sigma_total, gap_pct=gap_pct, beta=beta,
+        mult_regime=leverage,
+        hist_curto=pin.get("hist_curto", False), volume=pin.get("adv_dollar"),
+        gap_risk_extremo=bool(pin.get("gap_risk_extremo")),
+        leverage_cap=_plp["leverage_cap"], sigma_floor_min_pct=_plp["sigma_floor_min_pct"],
+    )
+    leverage = min(leverage, teto_lev)
+    return round(leverage, 1)
+
+
+def apply_profile_to_ranking(ranking: dict, profile: Optional[str] = None) -> dict:
+    """Aplica o PERFIL do assinante ao ranking CANÔNICO (agressivo) SEM refetch.
+
+    profile agressivo/None → retorna o ranking idêntico (só remove a chave interna _profile_inputs).
+    profile conservador/moderado → RE-DERIVA leverage/rank_alavancado de cada ativo a partir dos tetos
+    já computados no payload (via _profile_inputs), aplicando regime_multiplier(profile,…) + leverage_cap
+    + sigma_floor via o MESMO MIN de teto_alavancagem_aptidao (survival só desce). A ORDEM do ranking é
+    PRESERVADA (perfil só mexe na alavancagem, não no mérito de compra). Blindado: qualquer falha por
+    ativo mantém os valores do cache (nunca derruba/ fabrica)."""
+    prof = profiles.normalize_profile(profile)
+    cats_in = (ranking or {}).get("categories", {}) or {}
+    cats_out: Dict[str, dict] = {}
+    is_aggr = (prof == "agressivo")
+
+    for cat_name, cat in cats_in.items():
+        assets_out = []
+        for a in cat.get("assets", []):
+            if is_aggr:
+                assets_out.append(_strip_profile_inputs(a))   # ZERO regressão: idêntico ao cache
+                continue
+            try:
+                new_lev = _rederive_leverage_for_profile(a, prof)
+            except Exception as e:
+                logger.warning(f"[RANKING][PERFIL] {a.get('ticker')} re-derivação falhou: {e}")
+                new_lev = None
+            out = _strip_profile_inputs(a)
+            if new_lev is not None:
+                out["leverage"] = new_lev
+                # rank_alavancado coerente com a nova leverage (mesma fórmula v2; σ do cache).
+                pin = a.get("_profile_inputs") or {}
+                _sig = pin.get("sigma_total")   # None p/ cripto (mesmo comportamento do caminho ao vivo)
+                try:
+                    out["rank_alavancado"] = _rank_alavancado_v2(out.get("rank", 0.0), new_lev, _sig)
+                except Exception:
+                    pass
+                # stops escalonados coerentes com a nova leverage.
+                try:
+                    _st = S.staggered_stops(new_lev)
+                    out["staggered_stops"] = {
+                        "stop_1_pct": _st.get("stop_1_pct"),
+                        "stop_2_pct": _st.get("stop_2_pct"),
+                        "liquidation_pct": _st.get("liquidation_pct"),
+                    }
+                except Exception:
+                    pass
+            assets_out.append(out)
+        # multiplier do cabeçalho coerente com o perfil (cripto continua travada em ≤3x).
+        reg = cat.get("regime", "NEUTRO")
+        mult_display = profiles.regime_multiplier(prof, reg)
+        if cat_name == "CRYPTO":
+            mult_display = min(mult_display, 3)
+        cats_out[cat_name] = {**cat, "assets": assets_out, "multiplier": mult_display}
+
+    out = {**(ranking or {}), "categories": cats_out, "profile": prof}
+    return out
+
+
 # ─────────────────────────── SCREENING / WATCHLIST (motor REAL) ───────────────────────────
 # Screening e Watchlist pediam sinais a uma HEURÍSTICA no Node (lib/yfinance) — divergente do
 # motor REAL de 3 camadas (Qualidade/Momento/Aptidão) da aba Ranking. analyze_tickers roda o
@@ -1743,7 +1913,7 @@ def _find_in_ranking(ticker: str, ranking: dict) -> Optional[dict]:
         for cat in ranking.get("categories", {}).values():
             for a in cat.get("assets", []):
                 if (a.get("ticker") or "").upper() == tku:
-                    out = dict(a)
+                    out = _strip_profile_inputs(a)
                     out.setdefault("regime", cat.get("regime"))  # regime fica no nível da categoria
                     return out
     except Exception:
@@ -1788,18 +1958,28 @@ def analyze_tickers(tickers: List[str], profile: str = "agressivo") -> List[dict
             logger.warning(f"[SCREEN] _fetch_indices falhou: {e}")
             idxc, idxdm = {}, {}
 
-    for tk in tickers:
+    # Pré-resolve por índice: (a) reaproveita o cache (sem I/O); (b) marca os que precisam de
+    # _analyze AO VIVO. A ORDEM dos tickers pedidos é preservada (slot por índice).
+    results: List[Optional[dict]] = [None] * len(tickers)
+    live_jobs: List[Tuple[int, str, str, str, str]] = []   # (idx, tk, bucket, name, cat)
+    for i, tk in enumerate(tickers):
         tku = tk.upper()
         # a) no universo E já no ranking E perfil agressivo → reaproveita (mesmos números).
         res = _find_in_ranking(tk, ranking) if (_reuse_cache and tku in uni) else None
         if res is not None:
             res["failed"] = False
-            out.append(res)
+            results[i] = res
             continue
         # b) fora do universo / perfil não-agressivo → _analyze ao vivo COM o perfil.
         cat, row = uni.get(tku, (_infer_category(tk), None))
         bucket = (row or {}).get("bucket", "ACELERADOR")
         name = (row or {}).get("name", tk)
+        live_jobs.append((i, tk, bucket, name, cat))
+
+    # PARALELIZA o screen AO VIVO (mesmo padrão de _recompute_ranking_inner): N fetches em série
+    # estouravam o timeout do BFF (120s) p/ perfil≠agressivo. ThreadPoolExecutor(8) — I/O de rede.
+    def _live(job):
+        i, tk, bucket, name, cat = job
         try:
             res = _analyze(tk, bucket, name, cat, idxc or {}, idxdm or {}, equity_regime,
                            profile=profile)
@@ -1807,11 +1987,25 @@ def analyze_tickers(tickers: List[str], profile: str = "agressivo") -> List[dict
             logger.warning(f"[SCREEN] _analyze {tk} falhou: {e}")
             res = None
         if res is None:
-            out.append({"ticker": tk, "failed": True})  # sem dado → flag (não fabrica)
-        else:
-            res["failed"] = False
-            res.setdefault("category", cat)
-            out.append(res)
+            return i, {"ticker": tk, "failed": True}     # sem dado → flag (não fabrica)
+        res["failed"] = False
+        res.setdefault("category", cat)
+        return i, res
+
+    if live_jobs:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futures = [ex.submit(_live, job) for job in live_jobs]
+            for fut in as_completed(futures):
+                try:
+                    i, res = fut.result()
+                    results[i] = res
+                except Exception as e:
+                    logger.warning(f"[SCREEN] job paralelo falhou: {e}")
+
+    # Preenche eventuais slots vazios (falha rara no future) com flag de falha, na ordem pedida.
+    out = [r if r is not None else {"ticker": tickers[i], "failed": True}
+           for i, r in enumerate(results)]
     return out
 
 

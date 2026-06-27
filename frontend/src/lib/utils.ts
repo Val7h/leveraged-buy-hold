@@ -71,13 +71,21 @@ export function formatLargeNumber(value: number): string {
   return value.toFixed(0);
 }
 
-export function riskProfileLabel(profile: string): string {
+export function riskProfileLabel(profile?: string | null): string {
   const map: Record<string, string> = {
+    // Canônicos PT (contrato com o motor)
+    conservador: "Conservador",
+    moderado: "Moderado",
+    agressivo: "Agressivo",
+    // Legados EN → mesmos labels (moderado é o default/balanced)
     conservative: "Conservador",
-    balanced: "Balanceado",
+    balanced: "Moderado",
+    moderate: "Moderado",
     aggressive: "Agressivo",
   };
-  return map[profile] || profile;
+  const key = (profile ?? "").trim().toLowerCase();
+  // Fallback limpo: nunca exibe string crua minúscula — assume o default Moderado.
+  return map[key] || "Moderado";
 }
 
 export function sectorIcon(sector?: string): string {

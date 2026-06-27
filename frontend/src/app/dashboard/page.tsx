@@ -129,7 +129,7 @@ export default function DashboardPage() {
               {greeting}, {user?.fullName?.split(" ")[0] || "Investidor"} 👋
             </h1>
             <p className="text-sm text-text-secondary mt-0.5">
-              Perfil: <span className="text-primary font-medium">{riskProfileLabel(user?.riskProfile || "balanced")}</span>
+              Perfil: <span className="text-primary font-medium">{riskProfileLabel(user?.riskProfile)}</span>
               {" "}· Simulador Buy &amp; Hold Alavancado Adaptativo
             </p>
           </div>
@@ -147,7 +147,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ── Market State ──────────────────────────────────── */}
-        <MarketStateWidget />
+        <MarketStateWidget riskProfile={user?.riskProfile} />
 
         {/* ── No portfolio ──────────────────────────────────── */}
         {!portfolios.length && (
