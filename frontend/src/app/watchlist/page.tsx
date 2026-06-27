@@ -8,7 +8,7 @@ import type { WatchlistItem, AssetScore } from "@/types";
 import { getScoreColor } from "@/lib/utils";
 import {
   Bookmark, Plus, Trash2, RefreshCw, TrendingUp,
-  ArrowRight, Loader2, AlertCircle,
+  ArrowRight, Loader2, AlertCircle, Target, StickyNote, Check, X, Clock,
 } from "lucide-react";
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -17,6 +17,25 @@ const SIGNAL_COLORS: Record<string, string> = {
   red: "text-danger bg-danger/10 border-danger/30",
   gray: "text-text-muted bg-surface-2 border-border",
 };
+
+// "atualizado há X" a partir do cache do último sinal do motor (signalAt) — evita reanalisar.
+function agoLabel(iso?: string | null): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!isFinite(ms) || ms < 0) return null;
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  return `há ${Math.floor(h / 24)}d`;
+}
+
+function num(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : parseFloat(String(v));
+  return isFinite(n) ? n : null;
+}
 
 export default function WatchlistPage() {
   const router = useRouter();
@@ -28,6 +47,35 @@ export default function WatchlistPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
+  // Edição de nota/tese + alvo de entrada por item (o "quique" que a watchlist espera).
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNote, setEditNote] = useState("");
+  const [editTarget, setEditTarget] = useState("");
+  const [savingMeta, setSavingMeta] = useState(false);
+
+  const startEdit = (item: WatchlistItem) => {
+    setEditingId(item.id);
+    setEditNote(item.note ?? "");
+    const tp = num(item.targetPrice);
+    setEditTarget(tp != null ? String(tp) : "");
+  };
+
+  const saveMeta = async (id: string) => {
+    setSavingMeta(true);
+    try {
+      const tp = editTarget.trim() === "" ? null : parseFloat(editTarget);
+      await watchlistApi.update(id, {
+        note: editNote.trim() === "" ? null : editNote.trim(),
+        targetPrice: tp != null && isFinite(tp) ? tp : null,
+      });
+      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, note: editNote.trim() || null, targetPrice: tp } : i)));
+      setEditingId(null);
+    } catch {
+      setError("Não foi possível salvar a nota/alvo.");
+    } finally {
+      setSavingMeta(false);
+    }
+  };
 
   const fetchList = async () => {
     try {
@@ -172,9 +220,16 @@ export default function WatchlistPage() {
           <div className="space-y-3">
             {items.map((item) => {
               const score = scores[item.ticker];
+              const cur = num(score?.current_price);
+              const tgt = num(item.targetPrice);
+              const toTargetPct = cur != null && tgt != null && cur > 0 ? ((tgt - cur) / cur) * 100 : null;
+              const ago = agoLabel(item.signalAt);
+              const cachedVerdict = item.lastVerdict;
+              const cachedColor = item.lastSignalColor || "gray";
               return (
                 <div key={item.id}
-                  className="card flex items-center gap-4 group hover:border-primary/30 transition-colors">
+                  className="card group hover:border-primary/30 transition-colors">
+                 <div className="flex items-center gap-4">
                   {/* Ticker */}
                   <div className="flex items-center gap-3 w-44 flex-shrink-0">
                     <TickerLogo ticker={item.ticker} size={36} />
@@ -261,6 +316,76 @@ export default function WatchlistPage() {
                     title="Remover da watchlist">
                     <Trash2 size={14} />
                   </button>
+                 </div>
+
+                  {/* ── Sentinela: nota/tese + alvo de entrada + cache do sinal ── */}
+                  <div className="mt-3 pt-3 border-t border-border/40">
+                    {editingId === item.id ? (
+                      <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          <StickyNote size={12} className="text-text-muted flex-shrink-0" />
+                          <input
+                            className="input text-xs flex-1 py-1"
+                            placeholder="Tese / por que esperar este ativo (o quique)"
+                            value={editNote}
+                            onChange={(e) => setEditNote(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Target size={12} className="text-text-muted flex-shrink-0" />
+                          <input
+                            className="input text-xs font-mono w-28 py-1"
+                            type="number" step="0.01" placeholder="Alvo entrada $"
+                            value={editTarget}
+                            onChange={(e) => setEditTarget(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => saveMeta(item.id)} disabled={savingMeta}
+                            className="p-1 text-success hover:bg-success/10 rounded" title="Salvar">
+                            {savingMeta ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                          </button>
+                          <button onClick={() => setEditingId(null)}
+                            className="p-1 text-text-muted hover:bg-surface-2 rounded" title="Cancelar">
+                            <X size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 flex-wrap text-xs">
+                        {/* Cached signal + atualizado há X */}
+                        {cachedVerdict && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${SIGNAL_COLORS[cachedColor]}`}>
+                            {cachedVerdict}
+                          </span>
+                        )}
+                        {ago && (
+                          <span className="inline-flex items-center gap-1 text-text-muted">
+                            <Clock size={10} /> atualizado {ago}
+                          </span>
+                        )}
+                        {/* Falta X% pro alvo */}
+                        {toTargetPct != null && (
+                          <span className="inline-flex items-center gap-1 text-text-secondary">
+                            <Target size={11} className="text-primary" />
+                            {toTargetPct > 0
+                              ? `falta ${toTargetPct.toFixed(1)}% até o alvo (${tgt!.toFixed(2)})`
+                              : `${Math.abs(toTargetPct).toFixed(1)}% abaixo do alvo (${tgt!.toFixed(2)}) — quique`}
+                          </span>
+                        )}
+                        {tgt != null && cur == null && (
+                          <span className="inline-flex items-center gap-1 text-text-muted">
+                            <Target size={11} /> alvo {tgt.toFixed(2)}
+                          </span>
+                        )}
+                        {item.note && <span className="text-text-muted italic truncate max-w-[40%]">“{item.note}”</span>}
+                        <button onClick={() => startEdit(item)}
+                          className="ml-auto text-text-muted hover:text-primary transition-colors">
+                          {item.note || tgt != null ? "editar nota/alvo" : "+ nota/alvo"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}

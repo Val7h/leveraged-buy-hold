@@ -174,8 +174,20 @@ model Watchlist {
 
 model WatchlistItem {
   id          String    @id @default(cuid())
-  watchlistId String
   ticker      String
+  watchlistId String
+  // Tese / nota livre do investidor sobre o porquê de esperar este ativo (o "quique").
+  note        String?
+  // Preço-alvo de ENTRADA (não de venda) — "falta X% pro meu alvo" vs current_price.
+  targetPrice Decimal?  @db.Decimal(18, 4)
+  // Cache do último sinal do motor (evita reanalisar a cada abertura; "atualizado há X").
+  lastVerdict String?                       // COMPRAR FORTE | COMPRAR | JUSTO | ESTICADO | ESPECULATIVO | RESERVA
+  lastSignalColor String?                   // green | yellow | red | gray
+  lastLeverage Decimal? @db.Decimal(6, 2)
+  signalAt    DateTime?                      // quando o cache do sinal foi atualizado
+  // Anti-spam da transição de veredito (mesmo padrão notifiedAt do Alert): só notifica 1x
+  // a entrada em COMPRAR/COMPRAR FORTE; re-arma quando sai da zona de compra.
+  transitionNotifiedAt DateTime?
   createdAt   DateTime  @default(now())
 
   watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
@@ -193,11 +205,23 @@ model Alert {
   active    Boolean  @default(true)
   message   String?
   notifiedAt DateTime?              // última vez que disparou e notificou (anti-spam; re-arma ao limpar)
+  // ── CAMADA SENTINELA (alertas de SOBREVIVÊNCIA derivados da posição) ──
+  // kind: "price" = alerta de preço do usuário (legado, default). Os de survival são
+  // AUTO-gerenciados pelo sweep (não criados na mão) e re-ancoram sozinhos no PM real:
+  //   "stop_pm"  → queda -10/-20/-30% do PM da posição (escada). threshold = pct (ex 20).
+  //   "liq_near" → folga até a liquidação cruzou faixa (ex 25/15/8%). threshold = pct de folga.
+  kind      String   @default("price")
+  // PM (ou referência de liquidação) usado p/ derivar o gatilho. Re-ancorado quando o PM muda
+  // (novo aporte) — é o que torna o stop "ancorado na posição", não preço fixo de trader.
+  anchorPrice Decimal? @db.Decimal(18, 4)
+  // Severidade → escala o canal de entrega: "info" = só in-app; "critical" = in-app + e-mail.
+  severity  String   @default("info")
   createdAt DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@index([userId, kind])
   @@map("alerts")
 }
 

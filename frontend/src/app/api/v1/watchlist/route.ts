@@ -31,8 +31,22 @@ export async function GET() {
     include: { items: { orderBy: { createdAt: "desc" } } },
   });
 
+  // Ordena pela FORÇA do sinal cacheado (COMPRAR FORTE no topo) — a watchlist mostra primeiro
+  // o que está "quicando". Empate → mais recentemente sinalizado. Itens sem cache vão ao fim.
+  const RANK: Record<string, number> = {
+    "COMPRAR FORTE": 5, COMPRAR: 4, JUSTO: 3, ESTICADO: 2, ESPECULATIVO: 1, RESERVA: 0,
+  };
+  const items = (watchlist?.items ?? []).slice().sort((a, b) => {
+    const ra = RANK[a.lastVerdict ?? ""] ?? -1;
+    const rb = RANK[b.lastVerdict ?? ""] ?? -1;
+    if (rb !== ra) return rb - ra;
+    const ta = a.signalAt ? a.signalAt.getTime() : 0;
+    const tb = b.signalAt ? b.signalAt.getTime() : 0;
+    return tb - ta;
+  });
+
   // Achatamos para o shape antigo (lista de items) para preservar callers.
-  return NextResponse.json(watchlist?.items ?? []);
+  return NextResponse.json(items);
 }
 
 /**

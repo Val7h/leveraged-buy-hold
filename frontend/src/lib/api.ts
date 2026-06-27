@@ -133,6 +133,8 @@ export const watchlistApi = {
   add: (ticker: string) => api.post(`/api/v1/watchlist?ticker=${encodeURIComponent(ticker)}`),
   remove: (id: string) => api.delete(`/api/v1/watchlist/${id}`),
   getSignals: () => api.get("/api/v1/watchlist/signals"),
+  update: (id: string, data: { note?: string | null; targetPrice?: number | null }) =>
+    api.patch(`/api/v1/watchlist/${id}`, data),
 };
 
 // Alerts

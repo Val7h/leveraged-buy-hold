@@ -48,9 +48,10 @@ export async function DELETE(_req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // Get all active alerts
+  // Só alertas de PREÇO (kind "price"). Os de SOBREVIVÊNCIA re-armam sozinhos e não devem
+  // ser "dispensados" manualmente por esta ação.
   const alerts = await prisma.alert.findMany({
-    where: { userId: user.id, active: true },
+    where: { userId: user.id, active: true, kind: "price" },
   });
 
   if (!alerts.length) {

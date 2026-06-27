@@ -192,7 +192,15 @@ export interface Position {
 export interface WatchlistItem {
   id: string;
   ticker: string;
-  added_at: string;
+  added_at?: string;
+  createdAt?: string;
+  // Camada Sentinela — nota/tese + alvo de entrada + cache do último sinal do motor.
+  note?: string | null;
+  targetPrice?: number | string | null;
+  lastVerdict?: string | null;
+  lastSignalColor?: string | null;
+  lastLeverage?: number | string | null;
+  signalAt?: string | null;
 }
 
 export interface Portfolio {

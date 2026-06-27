@@ -18,6 +18,9 @@ export type { PasswordResetEmailInput } from "./templates/password-reset";
 export { alertTriggeredEmail } from "./templates/alert-triggered";
 export type { AlertTriggeredEmailInput, AlertType } from "./templates/alert-triggered";
 
+export { survivalAlertEmail } from "./templates/survival-alert";
+export type { SurvivalAlertEmailInput, SurvivalAlertKind } from "./templates/survival-alert";
+
 export { paymentConfirmedEmail } from "./templates/payment-confirmed";
 export type { PaymentConfirmedEmailInput } from "./templates/payment-confirmed";
 

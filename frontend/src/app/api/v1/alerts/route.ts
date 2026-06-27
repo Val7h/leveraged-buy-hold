@@ -20,8 +20,10 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Só alertas de PREÇO do usuário. Os de SOBREVIVÊNCIA (kind stop_pm / liq_near) são
+  // auto-gerenciados pelo sweep e surgem como Notification in-app, fora desta lista.
   const alerts = await prisma.alert.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, kind: "price" },
     orderBy: { createdAt: "desc" },
   });
 

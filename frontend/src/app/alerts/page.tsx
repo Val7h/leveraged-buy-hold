@@ -165,6 +165,19 @@ export default function AlertsPage() {
           </div>
         </div>
 
+        {/* Camada Sentinela — explicação dos alertas de sobrevivência (chegam por notificação/e-mail) */}
+        <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 mb-5">
+          <p className="text-xs text-text-secondary leading-relaxed">
+            <span className="text-primary font-semibold">Sentinela de sobrevivência:</span>{" "}
+            além dos alertas de preço abaixo, o sistema vigia suas posições sozinho e avisa por
+            notificação (e e-mail nos casos críticos) quando: o preço cai{" "}
+            <span className="font-semibold">-10/-20/-30% do PM real</span> da posição (stop ancorado,
+            re-âncora a cada aporte) ou quando a{" "}
+            <span className="font-semibold">folga até a liquidação</span> encolhe (25/15/8%).
+            Posições <span className="text-warning font-semibold">🔒 Semente</span> nunca viram alerta de venda.
+          </p>
+        </div>
+
         {/* Create form */}
         {showForm && (
           <div className="card mb-6 border-primary/20">
