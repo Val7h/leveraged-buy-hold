@@ -535,10 +535,111 @@ def get_cvm_fundamentals(ticker: str) -> dict | None:
         return None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#  DIAGNÓSTICO (observabilidade do ETL ao vivo — Render não expõe logs p/ mim)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def cvm_status() -> dict:
+    """Estado do cache CVM (sem download): nº de empresas cacheadas, amostra, mapa."""
+    out = {"cache_dir": CVM_CACHE_DIR, "n_cached": 0, "map_size": 0,
+           "sample": None, "allow_insecure_ssl": _ALLOW_INSECURE,
+           "years": list(range(CURRENT_YEAR - DFP_YEARS + 1, CURRENT_YEAR + 1))}
+    try:
+        out["map_size"] = len(load_ticker_map())
+    except Exception as e:
+        out["map_error"] = str(e)
+    try:
+        if os.path.isdir(CVM_CACHE_DIR):
+            files = [f for f in os.listdir(CVM_CACHE_DIR) if f.endswith(".json")]
+            out["n_cached"] = len(files)
+        out["sample_petr4"] = get_cvm_fundamentals("PETR4.SA")
+    except Exception as e:
+        out["cache_error"] = str(e)
+    return out
+
+
+def probe_cvm(year: int = 2024) -> dict:
+    """Sonda LEVE ao vivo: baixa 1 ZIP DFP (ano publicado), reporta tamanho, lista de
+    arquivos, e o parse p/ PETR4 (cd_cvm 9512). Surfaceia EXATAMENTE onde quebra
+    (download? nome do CSV? parse de conta?). Síncrono — usar com ano já publicado."""
+    import zipfile as _zf, io as _io
+    res = {"year": year}
+    try:
+        url = f"{CVM_BASE}/DFP/DADOS/dfp_cia_aberta_{year}.zip"
+        res["url"] = url
+        blob = _http_get_bytes(url)
+        res["download_ok"] = blob is not None
+        res["blob_bytes"] = (len(blob) if blob else 0)
+        if not blob:
+            res["erro"] = "download retornou None (rede/SSL/timeout)"
+            return res
+        z = _zf.ZipFile(_io.BytesIO(blob))
+        names = z.namelist()
+        res["namelist_sample"] = names[:12]
+        res["names_esperados"] = [f"dfp_cia_aberta_{d}_con_{year}.csv"
+                                  for d in ("DRE", "BPA", "BPP", "DFC_MI", "DVA")]
+        res["nomes_batem"] = {n: (n in names) for n in res["names_esperados"]}
+        # parse p/ PETR4 (cd_cvm 9512)
+        rows = _read_consolidated_csvs(blob, "dfp_cia_aberta", year)
+        res["total_rows_parsed"] = len(rows)
+        petr = [r for r in rows if (r.get("cd_cvm", "").lstrip("0") == "9512")]
+        res["petr4_rows"] = len(petr)
+        if petr:
+            res["petr4_pillars"] = compute_company_pillars(petr, None)
+            res["petr4_sample_rows"] = petr[:3]
+    except Exception as e:
+        import traceback as _tb
+        res["exception"] = str(e)
+        res["traceback"] = _tb.format_exc()[-1500:]
+    return res
+
+
+def start_refresh_async() -> dict:
+    """Dispara refresh_cvm_cache numa THREAD (não bloqueia o request) + grava status."""
+    import threading as _th
+    status_path = os.path.join(CVM_CACHE_DIR, "_refresh_status.json")
+
+    def _job():
+        import traceback as _tb
+        st = {"started_at": time.time(), "finished": False}
+        try:
+            os.makedirs(CVM_CACHE_DIR, exist_ok=True)
+            with open(status_path, "w") as f:
+                json.dump(st, f)
+            stats = refresh_cvm_cache()
+            st.update({"finished": True, "finished_at": time.time(), "stats": stats})
+        except Exception as e:
+            st.update({"finished": True, "error": str(e), "traceback": _tb.format_exc()[-1500:]})
+        try:
+            with open(status_path, "w") as f:
+                json.dump(st, f)
+        except Exception:
+            pass
+
+    _th.Thread(target=_job, daemon=True).start()
+    return {"started": True}
+
+
+def refresh_status() -> dict:
+    """Lê o status do último refresh_async (started/finished/stats/error)."""
+    p = os.path.join(CVM_CACHE_DIR, "_refresh_status.json")
+    try:
+        if os.path.exists(p):
+            with open(p) as f:
+                return json.load(f)
+    except Exception as e:
+        return {"read_error": str(e)}
+    return {"status": "nenhum refresh disparado ainda"}
+
+
 __all__ = [
     "refresh_cvm_cache",
     "get_cvm_fundamentals",
     "compute_company_pillars",
     "compute_roic",
     "parse_cvm_csv",
+    "cvm_status",
+    "probe_cvm",
+    "start_refresh_async",
+    "refresh_status",
 ]

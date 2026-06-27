@@ -16,11 +16,47 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from app.services import ranking_service as R
+from app.services import cvm_fundamentals as CVM
 from app.quantitative import profiles
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["ranking"])
+
+
+# ── DIAGNÓSTICO DO ETL DA CVM (observabilidade ao vivo; Render não expõe logs) ──
+@router.get("/api/cvm/status")
+def cvm_status():
+    try:
+        return CVM.cvm_status()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/api/cvm/probe")
+def cvm_probe(year: int = Query(2024, description="Ano DFP já publicado p/ sondar")):
+    """Sonda leve: baixa 1 ZIP DFP e mostra onde quebra (download/nome/parse)."""
+    try:
+        return CVM.probe_cvm(year)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/api/cvm/refresh")
+def cvm_refresh():
+    """Dispara o refresh completo numa thread (não bloqueia). Veja /api/cvm/refresh-status."""
+    try:
+        return CVM.start_refresh_async()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.get("/api/cvm/refresh-status")
+def cvm_refresh_status():
+    try:
+        return CVM.refresh_status()
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @router.get("/api/ranking")
