@@ -166,6 +166,237 @@ def _empty_metrics() -> Dict:
 PORTFOLIO_TARGETS = {"ANCORA": 55.0, "GERADOR": 30.0, "ACELERADOR": 15.0}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# COCKPIT DE SOBREVIVÊNCIA — 6 blocos que os investidores sênior pediram p/ o Dashboard.
+# Doutrina: B&H ALAVANCADO PREVIDENCIÁRIO (10-15a), survival-first. TUDO aqui responde
+# "ajuda o aporte certo OU a não quebrar em 15 anos?". É SÓ EXPOR/CALCULAR dado de
+# sobrevivência — nada de sinal de curto prazo, nada de market-timing. Survival só DESCE:
+# faltou dado → status/coverage honesto, NUNCA número fabricado. Tudo blindado.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Faixas de status da DISTÂNCIA até a liquidação (folga = quanto a cesta ainda pode cair
+# antes de liquidar). Survival: folga pequena = perto da ruína. distance_pct é NEGATIVO
+# (queda necessária p/ liquidar); usamos o valor absoluto (a folga) p/ classificar.
+_LIQWATCH_CRITICO_PCT = 15.0   # folga < 15% até liquidar = crítico (beira da ruína)
+_LIQWATCH_ALERTA_PCT = 25.0    # folga < 25% = alerta
+
+# Estrutura-alvo POR PERFIL (Âncora/Gerador/Acelerador + Reserva). Conservador carrega mais
+# Âncora+Reserva; agressivo mais Acelerador. A Reserva (SHY) vem do reserve_pct do perfil
+# (profiles), e o restante (1-reserva) é distribuído nos 3 buckets de risco. Survival: o
+# alvo do perfil é só o ESPELHO p/ comparar com o real — não força nada.
+# Frações de risco (somam 1.0) ANTES de descontar a reserva.
+_STRUCTURE_RISK_SPLIT = {
+    "conservador": {"ANCORA": 0.65, "GERADOR": 0.27, "ACELERADOR": 0.08},
+    "moderado":    {"ANCORA": 0.55, "GERADOR": 0.30, "ACELERADOR": 0.15},
+    "agressivo":   {"ANCORA": 0.45, "GERADOR": 0.30, "ACELERADOR": 0.25},
+}
+
+
+def _coverage(rows: List[dict], cov_series: Optional[Dict]) -> Dict:
+    """BLOCO 6 — COVERAGE das médias ponderadas: beta/CAGR são média de X de N ativos (alguns
+    falham no ranking); correlação/risco cobrem só os ativos com SÉRIE confiável. Exibir média
+    de carteira PARCIAL como se fosse a inteira engana. Survival = honestidade: reporta a
+    fração coberta. Ex: {"beta": "5/7", "pct_notional_coberto": 0.82}.
+
+    pct_notional_coberto = (notional dos ativos com o dado) / (notional total). NÃO fabrica:
+    só conta o que existe em `rows`."""
+    n = len(rows)
+    total_notional = sum(float(r.get("notional") or 0.0) for r in rows) or 0.0
+
+    def _frac(field):
+        have = [r for r in rows if r.get(field) is not None]
+        cov_notional = sum(float(r.get("notional") or 0.0) for r in have)
+        return {
+            "count": f"{len(have)}/{n}",
+            "pct_notional_coberto": round(cov_notional / total_notional, 2) if total_notional > 0 else None,
+        }
+
+    # Correlação/risco cobrem só os ativos que tiveram série confiável (cov._series).
+    series_tk = set((cov_series or {}).keys())
+    corr_have = [r for r in rows if r["ticker"] in series_tk]
+    corr_notional = sum(float(r.get("notional") or 0.0) for r in corr_have)
+
+    beta_cov = _frac("beta")
+    cagr_cov = _frac("cagr")
+    return {
+        "beta": beta_cov["count"],
+        "cagr": cagr_cov["count"],
+        "dividend_yield": _frac("dividend_yield")["count"],
+        "tsr_expected": _frac("tsr_expected")["count"],
+        "correlacao": f"{len(corr_have)}/{n}",
+        # campo agregado pedido no contrato: cobertura de notional da média principal (beta).
+        "pct_notional_coberto": beta_cov["pct_notional_coberto"],
+        "pct_notional_coberto_correlacao": (round(corr_notional / total_notional, 2)
+                                            if total_notional > 0 else None),
+        "n_ativos": n,
+    }
+
+
+def _liquidation_watch(rows: List[dict], equity: Optional[float],
+                       risk_block: Optional[Dict]) -> Dict:
+    """BLOCO 1 — LIQUIDATION WATCH (o item nº1 da doutrina: 'vigiar a liq. price').
+    Por posição alavancada E AGREGADO, a distância % até a liquidação (queda que zera o
+    equity, regra Quantfury: perda = equity alocado, com buffer de slippage).
+
+    distance_pct é a queda (NEGATIVA) que a posição/cesta ainda aguenta antes de liquidar:
+      por posição: a posição NÃO tem leverage individual no modelo Quantfury (notional =
+      shares×preço, leverage é MEDIDA no agregado). Então a 'distância' por posição é
+      reportada relativa à alavancagem AGREGADA da carteira (cada ativo de risco compartilha
+      o mesmo equity comum) — é onde a ruína mora. status por faixa de FOLGA.
+
+    AGREGADO reaproveita liquidation_distance_pct que o bloco `risk` já calcula (queda da
+    cesta de risco que liquida). Sem equity / sem alavancagem → status 'indisponivel',
+    NÃO fabrica número."""
+    out: Dict = {"aggregate": None, "por_posicao": [], "status": "indisponivel",
+                 "faixas": {"critico_folga_pct": _LIQWATCH_CRITICO_PCT,
+                            "alerta_folga_pct": _LIQWATCH_ALERTA_PCT}}
+    risk_rows = [r for r in rows if not r.get("is_shy")]
+    risk_notional = sum(float(r.get("notional") or 0.0) for r in risk_rows)
+    if not equity or equity <= 0 or risk_notional <= 0 or not risk_rows:
+        out["nota"] = ("Sem equity ou sem exposição de risco — impossível medir distância de "
+                       "liquidação sem fabricar. Survival: status indisponível, não número falso.")
+        return out
+    L = risk_notional / equity
+
+    def _status(folga_abs: float) -> str:
+        if folga_abs < _LIQWATCH_CRITICO_PCT:
+            return "critico"
+        if folga_abs < _LIQWATCH_ALERTA_PCT:
+            return "alerta"
+        return "ok"
+
+    # AGREGADO: usa a distância que o bloco risk já reconstruiu (cesta ponderada). Fallback
+    # honesto: _LIQ_EQUITY_PCT / L (mesma fórmula do risk) se o risk não veio.
+    agg_dist = None
+    if risk_block and risk_block.get("liquidation_distance_pct") is not None:
+        agg_dist = float(risk_block["liquidation_distance_pct"])
+    elif L > 0:
+        agg_dist = round(_LIQ_EQUITY_PCT / L, 1)
+    if agg_dist is not None:
+        distance_pct = -abs(agg_dist)   # queda NEGATIVA até liquidar
+        st = _status(abs(distance_pct))
+        out["aggregate"] = {"distance_pct": round(distance_pct, 1),
+                            "leverage": round(L, 2), "status": st}
+        out["status"] = st
+
+    # POR POSIÇÃO: a folga compartilhada (mesma alavancagem agregada). Reportamos a distância
+    # agregada por ativo de risco — todas as posições de risco partilham o equity comum, então
+    # a liquidação é um evento da CARTEIRA, não isolado. (Survival: não inventa leverage por
+    # posição que o modelo Quantfury não tem.)
+    if agg_dist is not None:
+        for r in risk_rows:
+            out["por_posicao"].append({
+                "ticker": r["ticker"],
+                "leverage": round(L, 2),
+                "distance_pct": round(-abs(agg_dist), 1),
+                "status": _status(abs(agg_dist)),
+            })
+    return out
+
+
+def _aporte_vs_agregado(aporte_regime: Dict, leverage_agregado: Dict) -> Dict:
+    """BLOCO 2 — APORTE vs AGREGADO: cruza o multiplicador sugerido p/ o próximo aporte com
+    a alavancagem efetiva atual vs o teto agregado (cap C.3). Survival: se o aporte sugerido
+    FURARIA o teto, sinaliza (headroom=False). Reaproveita max_lev_novo_fluxo (o VETO que o
+    agregado já calcula) — NÃO inventa nova regra de market-timing.
+
+    headroom=True → o aporte Nx cabe sem estourar o teto; False → estouraria (o cap já o
+    teria segurado). Sem dados → headroom=None com nota honesta."""
+    mult_sugerido = (aporte_regime or {}).get("multiplier")
+    mult_regime = (aporte_regime or {}).get("multiplier_regime")
+    efetiva = (leverage_agregado or {}).get("effective_leverage")
+    efetiva_corr = (leverage_agregado or {}).get("effective_leverage_corr")
+    teto = (leverage_agregado or {}).get("cap")
+    cap_novo = (leverage_agregado or {}).get("max_lev_novo_fluxo")
+
+    out: Dict = {
+        "mult_sugerido": mult_sugerido,        # já com veto do agregado E disjuntor
+        "mult_regime": mult_regime,            # o que o regime sozinho pediria
+        "max_lev_novo_fluxo": cap_novo,        # teto DURO que o agregado impõe ao fluxo
+        "efetiva_atual": efetiva,
+        "efetiva_corr": efetiva_corr,
+        "teto": teto,
+        "headroom": None,
+        "nota": "",
+    }
+    # headroom: o multiplicador que o REGIME queria caberia sem o cap puxar pra baixo?
+    if mult_regime is not None and cap_novo is not None:
+        cabe = mult_regime <= cap_novo
+        out["headroom"] = bool(cabe)
+        if cabe:
+            out["nota"] = (f"Aporte {int(mult_regime)}x cabe no teto agregado "
+                           f"(cap de fluxo {cap_novo:.0f}x).")
+        else:
+            out["nota"] = (f"Aporte {int(mult_regime)}x ESTOURARIA o teto agregado — "
+                           f"o cap segurou para {int(mult_sugerido or 1)}x "
+                           f"(cap de fluxo {cap_novo:.0f}x; carteira já alavancada).")
+    else:
+        out["nota"] = ("Sem base p/ medir headroom (equity/cap agregado indisponível). "
+                       "Survival default: tratar como sem folga.")
+    return out
+
+
+def _structure_targets(profile: str) -> Dict:
+    """BLOCO 3 — STRUCTURE TARGETS por PERFIL: o alvo 55/30/15 deixa de ser constante global
+    e varia por perfil (conservador = mais Âncora+Reserva; agressivo = mais Acelerador). A
+    Reserva (SHY) vem do reserve_pct do perfil; os 3 buckets de risco repartem o (1-reserva).
+    Survival: é só o ESPELHO p/ o bloco `buckets` comparar alvo×real — não força rotação."""
+    prof = profiles.normalize_profile(profile)
+    try:
+        reserve = float(profiles.profile_leverage_params(prof).get("reserve_pct") or 0.0)
+    except Exception:
+        reserve = 0.0
+    reserve = max(0.0, min(0.5, reserve))
+    split = _STRUCTURE_RISK_SPLIT.get(prof, _STRUCTURE_RISK_SPLIT["moderado"])
+    risk_share = 1.0 - reserve
+    targets = {bk: round(frac * risk_share * 100.0, 1) for bk, frac in split.items()}
+    targets["RESERVA"] = round(reserve * 100.0, 1)
+    return {
+        "profile": prof,
+        "reserve_pct": round(reserve * 100.0, 1),
+        "targets": targets,     # {ANCORA, GERADOR, ACELERADOR, RESERVA} em % do capital total
+    }
+
+
+def _equity_stale(equity: Optional[float], risk_notional: float, shy_notional: float,
+                  invested: float) -> Dict:
+    """BLOCO 5 — EQUITY STALE: flag quando o currentEquity (manual) está inconsistente com o
+    notional das posições. TODO o painel de sobrevivência depende do equity certo — se o
+    equity manual está velho, liquidation_watch / efetiva / stress ficam errados.
+
+    Gatilhos (survival = falso positivo ok):
+      • equity ausente/zero → não dá p/ medir nada.
+      • equity << soma das posições (invested): no modelo Quantfury à vista, equity ≈ valor
+        das posições + caixa. Se equity é muito MENOR que o notional investido, ou é alavancado
+        de verdade (ok) OU o equity manual está desatualizado. Sinalizamos p/ o usuário conferir.
+    NÃO fabrica: só compara dois números que já existem; se não dá p/ comparar → stale=None."""
+    out: Dict = {"stale": None, "motivo": "", "equity": equity,
+                 "invested": round(invested, 2) if invested else 0.0,
+                 "risk_notional": round(risk_notional, 2) if risk_notional else 0.0}
+    if not equity or equity <= 0:
+        out["stale"] = True
+        out["motivo"] = ("Equity manual ausente ou zero — todo o painel de sobrevivência "
+                         "(liquidação, alavancagem, stress) depende dele. Preencha o equity atual.")
+        return out
+    if invested <= 0:
+        out["stale"] = False
+        out["motivo"] = "Sem posições para comparar — nada a sinalizar."
+        return out
+    # equity muito menor que o investido → ou alavancagem real alta OU equity velho.
+    # Limiar conservador: equity < 30% do notional investido = suspeito de desatualização
+    # (alavancagem efetiva > ~3.3x só de posições à vista é improvável sem ser erro de equity).
+    ratio = equity / invested
+    if ratio < 0.30:
+        out["stale"] = True
+        out["motivo"] = (f"Equity (US${equity:,.0f}) é só {ratio*100:.0f}% do notional investido "
+                         f"(US${invested:,.0f}) — equity manual pode estar desatualizado vs notional. "
+                         "Confira antes de confiar no painel de sobrevivência.")
+    else:
+        out["stale"] = False
+        out["motivo"] = "Equity consistente com o notional das posições."
+    return out
+
+
 def _flatten_ranking() -> Dict[str, dict]:
     """ticker(upper) -> asset do ranking (cacheado)."""
     from app.services.ranking_service import compute_ranking
@@ -1133,15 +1364,19 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
     for r in rows:
         real_by_bucket[r["bucket"]] = real_by_bucket.get(r["bucket"], 0.0) + r["weight"]
         risk_by_bucket[r["bucket"]] = risk_by_bucket.get(r["bucket"], 0.0) + (r.get("risk_contribution") or 0.0)
+    # Alvos POR PERFIL (bloco 3): o 55/30/15 deixa de ser constante global. RESERVA também
+    # ganha alvo (reserve_pct do perfil). Survival: só espelho alvo×real, não força nada.
+    _st = _structure_targets(profile)
+    _profile_targets = _st["targets"]   # {ANCORA, GERADOR, ACELERADOR, RESERVA}
     buckets = []
-    for bk, target in PORTFOLIO_TARGETS.items():
+    for bk, target in _profile_targets.items():
         real = round(real_by_bucket.get(bk, 0.0), 1)
         drift = round(real - target, 1)
         buckets.append({"bucket": bk, "target": target, "real": real, "drift": drift,
                         "risk_pct": round(risk_by_bucket.get(bk, 0.0), 1),
                         "status": ("ok" if abs(drift) <= 5 else ("acima" if drift > 0 else "abaixo"))})
-    for bk, real in real_by_bucket.items():       # buckets fora do alvo (TATICO/RESERVA/—)
-        if bk not in PORTFOLIO_TARGETS:
+    for bk, real in real_by_bucket.items():       # buckets fora do alvo (TATICO/—)
+        if bk not in _profile_targets:
             buckets.append({"bucket": bk, "target": None, "real": round(real, 1),
                             "risk_pct": round(risk_by_bucket.get(bk, 0.0), 1),
                             "drift": None, "status": "extra"})
@@ -1278,6 +1513,10 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                 for r, wi in zip(rrows, wv):
                     portr = portr + np.diff(np.log([series[r["ticker"]][d] for d in commonr])) * wi
                 var_d = float(-np.percentile(portr, 5))
+                # CVaR 95% (Expected Shortfall): perda MÉDIA nos 5% piores dias — a cauda que
+                # o VaR esconde. Mais honesto p/ carteira alavancada (item 4 do cockpit).
+                p5r = np.percentile(portr, 5)
+                cvar_d = float(-portr[portr <= p5r].mean()) if (portr <= p5r).any() else var_d
                 cumr = np.cumprod(1 + portr); rmr = np.maximum.accumulate(cumr)
                 maxdd_b = float(((cumr - rmr) / rmr).min() * 100)
                 # σ anualizada da cesta de risco (alimenta ¼·Kelly e teto_maxdd do agregado).
@@ -1289,6 +1528,9 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
                 risk = {
                     "leverage": round(L, 2),
                     "var95_equity_daily": round(var_d * 100 * L, 2),       # VaR diário em % do EQUITY
+                    "cvar95_equity_daily": round(cvar_d * 100 * L, 2),     # CVaR/ES diário em % do EQUITY (cauda)
+                    "var95_basket_daily": round(var_d * 100, 2),           # VaR da cesta (sem alavancar)
+                    "cvar95_basket_daily": round(cvar_d * 100, 2),         # CVaR da cesta (perda média na cauda)
                     "maxdd_basket": round(maxdd_b, 1),                      # pior tombo da cesta (3a)
                     "maxdd_equity": round(max(maxdd_b * L, -100.0), 1),     # como isso bate no equity
                     "liquidation_distance_pct": liq_dist,                  # queda da cesta que liquida (Quantfury: perda=equity)
@@ -1463,6 +1705,38 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
     except Exception:
         pass
 
+    # ── COCKPIT DE SOBREVIVÊNCIA — 6 blocos (sênior). Cada um blindado: faltou dado →
+    # status/coverage honesto, NUNCA derruba o payload nem fabrica número. ──────────
+    try:
+        liquidation_watch = _liquidation_watch(rows, eq, risk)
+    except Exception as e:
+        logger.warning(f"[COCKPIT] liquidation_watch falhou: {e}")
+        liquidation_watch = {"aggregate": None, "por_posicao": [], "status": "indisponivel"}
+    try:
+        aporte_vs_agregado = _aporte_vs_agregado(aporte_regime, leverage_agregado)
+    except Exception as e:
+        logger.warning(f"[COCKPIT] aporte_vs_agregado falhou: {e}")
+        aporte_vs_agregado = {"headroom": None, "nota": "indisponível"}
+    try:
+        structure_targets = _structure_targets(profile)
+    except Exception as e:
+        logger.warning(f"[COCKPIT] structure_targets falhou: {e}")
+        structure_targets = {"profile": profiles.normalize_profile(profile), "targets": {}}
+    try:
+        equity_stale = _equity_stale(eq, risk_notional, shy_notional, invested)
+    except Exception as e:
+        logger.warning(f"[COCKPIT] equity_stale falhou: {e}")
+        equity_stale = {"stale": None, "motivo": "indisponível"}
+    try:
+        coverage = _coverage(rows, (cov or {}).get("_series"))
+    except Exception as e:
+        logger.warning(f"[COCKPIT] coverage falhou: {e}")
+        coverage = {"beta": f"0/{len(rows)}", "pct_notional_coberto": None}
+    # CVaR no payload de totais (ao lado do VaR) — bloco 4. Vem do `risk` (cesta de risco).
+    if risk:
+        totals["cvar95_basket_daily"] = risk.get("cvar95_basket_daily")
+        totals["cvar95_equity_daily"] = risk.get("cvar95_equity_daily")
+
     import datetime as _dt
     totals.pop("_sigma_basket_pct", None)        # interno (alimentou Kelly/máxDD) — não vaza
     return {
@@ -1471,6 +1745,12 @@ def portfolio_analytics(positions: List[dict], equity: Optional[float] = None,
         "survival_stops": survival_stops, "risk": risk,
         "aporte": aporte, "aporte_regime": aporte_regime,
         "stress": stress, "deleverage": deleverage,
+        # ── COCKPIT DE SOBREVIVÊNCIA (6 blocos sênior) ──
+        "liquidation_watch": liquidation_watch,
+        "aporte_vs_agregado": aporte_vs_agregado,
+        "structure_targets": structure_targets,
+        "equity_stale": equity_stale,
+        "coverage": coverage,
         # C.2 — DISJUNTOR DE FLUXOS CONSECUTIVOS (a trava do CRO):
         "disjuntor_fluxos": disjuntor_fluxos,
         # C.3 — CAP AGREGADO DE ALAVANCAGEM (o bloqueante que FORÇA):

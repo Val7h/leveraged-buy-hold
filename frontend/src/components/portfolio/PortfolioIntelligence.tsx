@@ -27,6 +27,12 @@ type Analytics = {
   leverage_agregado?: any;
   // C.2 — disjuntor de fluxos consecutivos:
   disjuntor_fluxos?: any;
+  // Cockpit de sobrevivência (6 blocos):
+  liquidation_watch?: any;
+  aporte_vs_agregado?: any;
+  structure_targets?: any;
+  equity_stale?: any;
+  coverage?: any;
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -85,6 +91,42 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const disj = analytics.disjuntor_fluxos || null;
   const disjAfetados = (disj && disj.afetados) || [];
 
+  // ── Cockpit de sobrevivência ────────────────────────────────
+  // 1. Vigília de liquidação (survival-crítico nº1)
+  const liqWatch = analytics.liquidation_watch || null;
+  const liqAgg = liqWatch?.aggregate || null;
+  const liqPos = (liqWatch?.por_posicao || []) as any[];
+  const liqStatus: string = liqWatch?.status || "indisponivel";
+  const liqStatusCls =
+    liqStatus === "critico" ? "text-danger"
+    : liqStatus === "alerta" ? "text-amber-400"
+    : liqStatus === "indisponivel" ? "text-text-muted"
+    : "text-success";
+  const liqSectionCls =
+    liqStatus === "critico" ? "bg-danger/5 border-danger/40"
+    : liqStatus === "alerta" ? "bg-amber-500/5 border-amber-500/40"
+    : "bg-surface border-border";
+  const liqPosStatusCls = (st: string) =>
+    st === "critico" ? "text-danger"
+    : st === "alerta" ? "text-amber-400"
+    : "text-success";
+
+  // 4. CVaR (cauda) ao lado do VaR
+  const cvarEquity = risk.cvar95_equity_daily ?? t.cvar95_equity_daily ?? null;
+
+  // 5. Equity manual desatualizado — todo o painel de sobrevivência depende dele
+  const equityStale = analytics.equity_stale || null;
+  const isStale = equityStale?.stale === true;
+
+  // 6. Cobertura das médias (beta/CAGR/correlação calculados sobre N/M ativos)
+  const coverage = analytics.coverage || null;
+  const coveredPct = coverage?.pct_notional_coberto ?? null;
+  const coverageIncomplete =
+    coverage != null && coveredPct != null && Number(coveredPct) < 100;
+
+  // 3. Estrutura alvo por perfil (label do perfil + reserva)
+  const structTargets = analytics.structure_targets || null;
+
   const levStatus: string = levAgg?.status || "ok";
   const levStatusCls =
     levStatus === "estourado" ? "text-danger"
@@ -99,6 +141,85 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
 
   return (
     <div className="space-y-4">
+      {/* EQUITY DESATUALIZADO — todo o painel de sobrevivência depende do equity real */}
+      {isStale && (
+        <div className="bg-amber-500/10 rounded-xl border border-amber-500/40 px-4 py-3 flex items-start gap-2">
+          <span className="text-amber-400 text-sm shrink-0">⚠</span>
+          <div className="text-[12px] text-amber-300">
+            <b>Equity manual pode estar desatualizado</b> — atualize o equity da Quantfury na aba Portfólio.
+            Toda a vigília de sobrevivência (liquidação, alavancagem efetiva, cap de aporte) depende dele.
+            {equityStale?.motivo && <span className="text-amber-400/80"> ({equityStale.motivo})</span>}
+          </div>
+        </div>
+      )}
+
+      {/* VIGÍLIA DE LIQUIDAÇÃO (pilar nº1 da doutrina — survival-crítico, topo) */}
+      {liqWatch && (
+        <section className={`rounded-xl border p-4 ${liqSectionCls}`}>
+          <h3 className="text-sm font-semibold text-text-primary mb-1">Vigília de liquidação</h3>
+          <p className="text-[11px] text-text-muted mb-3">
+            Distância de queda da cesta até a liquidação forçada. O item nº1: sobreviver 10-15 anos é tudo.
+          </p>
+
+          {liqStatus === "indisponivel" ? (
+            <div className="text-[12px] text-text-muted">
+              {liqWatch?.nota || "Indisponível — informe o equity da Quantfury para calcular a distância até a liquidação."}
+            </div>
+          ) : (
+            <>
+              {/* Distância agregada — número grande, cor por status */}
+              {liqAgg && (
+                <div className="flex items-end gap-4 mb-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-text-muted">Distância até liquidar (carteira)</div>
+                    <div className={`text-3xl font-bold leading-none ${liqStatusCls}`}>
+                      {liqAgg.distance_pct != null ? `-${fmt(liqAgg.distance_pct, "%", 0)}` : "—"}
+                    </div>
+                  </div>
+                  <div className="pb-1">
+                    <div className="text-[10px] text-text-muted">alav. {fmt(liqAgg.leverage, "x", 2)}</div>
+                    <div className={`text-xs font-semibold ${liqStatusCls}`}>
+                      {liqAgg.status === "critico" ? "Crítico" : liqAgg.status === "alerta" ? "Alerta" : "OK"}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Por posição alavancada */}
+              {liqPos.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[10px] uppercase tracking-wider text-text-muted">Por posição alavancada</div>
+                  {liqPos.map((p: any) => (
+                    <div key={p.ticker} className="flex items-center gap-2 text-xs">
+                      <span className="font-semibold text-text-primary w-20 shrink-0">{p.ticker}</span>
+                      <span className="text-text-muted font-mono w-14 shrink-0">{fmt(p.leverage, "x", 2)}</span>
+                      <div className="flex-1 h-2 bg-surface-2 rounded overflow-hidden">
+                        <div
+                          className={`h-full ${p.status === "critico" ? "bg-danger/70" : p.status === "alerta" ? "bg-amber-500/70" : "bg-success/70"}`}
+                          style={{ width: `${Math.min(Math.max(Number(p.distance_pct) || 0, 0), 100)}%` }}
+                        />
+                      </div>
+                      <span className={`font-mono shrink-0 w-16 text-right ${liqPosStatusCls(p.status)}`}>
+                        {p.distance_pct != null ? `-${fmt(p.distance_pct, "%", 0)}` : "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {liqStatus === "critico" && (
+                <div className="mt-2 text-[11px] text-danger">
+                  ⚠ Distância crítica até a liquidação — reduza exposição ou suba o equity. Não tolerar ruína (princípio nº1).
+                </div>
+              )}
+              {liqWatch?.nota && liqStatus !== "critico" && (
+                <div className="mt-2 text-[10px] text-text-muted italic">{liqWatch.nota}</div>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
       {/* C.3 — CAP AGREGADO DE ALAVANCAGEM (survival-crítico) */}
       {levAgg && (
         <section className={`rounded-xl border p-4 ${levSectionCls}`}>
@@ -303,9 +424,12 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
       {risk.liquidation_distance_pct != null && (
         <section className={`rounded-xl border p-4 ${risk.liquidated_in_worst ? "bg-danger/5 border-danger/40" : "bg-surface border-border"}`}>
           <h3 className="text-sm font-semibold text-text-primary mb-3">Risco alavancado & liquidação</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2">
             <Stat label="Alavancagem" value={fmt(risk.leverage, "x", 2)} />
             <Stat label="VaR 95% (dia, equity)" value={fmt(risk.var95_equity_daily, "%", 1)} hint="perda diária provável" />
+            {cvarEquity != null && (
+              <Stat label="CVaR 95% (dia, equity)" value={fmt(cvarEquity, "%", 1)} hint="perda média na cauda (além do VaR)" />
+            )}
             <Stat label="Liquida a" value={`-${fmt(risk.liquidation_distance_pct, "%", 0)}`} hint="queda da cesta até a margem (~-85% do equity)" />
             <Stat label="Pior tombo (cesta)" value={fmt(risk.maxdd_basket, "%", 0)} hint={`no equity ≈ ${fmt(risk.maxdd_equity, "%", 0)}`} />
           </div>
@@ -443,13 +567,36 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
             {t.shy_over_limit && <> ⚠ acima do limite de US$ {fmt(t.shy_limit, "", 0)} da Quantfury</>}
           </div>
         )}
+        {coverageIncomplete && (
+          <div className="mt-2 text-[10px] text-text-muted italic">
+            Médias (beta/CAGR/correlação) calculadas sobre {coverage.beta || coverage.cagr || `${coverage.n_ativos ?? "?"}`} ativos
+            {coveredPct != null && <> ({fmt(coveredPct, "%", 0)} do notional)</>} — faltam dados em alguns ativos.
+          </div>
+        )}
       </section>
 
-      {/* 2. Estrutura ALVO × REAL */}
+      {/* 2. Estrutura ALVO × REAL (alvos por perfil, vindos do backend) */}
       <section className="bg-surface rounded-xl border border-border p-4">
-        <h3 className="text-sm font-semibold text-text-primary mb-1">Estrutura — alvo × real</h3>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold text-text-primary">Estrutura — alvo × real</h3>
+          {structTargets?.profile && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-primary font-semibold uppercase tracking-wider">
+              perfil {structTargets.profile}
+            </span>
+          )}
+        </div>
         <p className="text-[11px] text-text-muted mb-3">
-          Âncoras 55% · Geradores 30% · Aceleradores 15% (banda ±5%). Desvio &gt; 5% sugere rebalanceamento.
+          {structTargets?.targets ? (
+            <>
+              {Object.entries(structTargets.targets).map(([k, v]: any, i: number) => (
+                <span key={k}>{i > 0 ? " · " : ""}{BUCKET_LABEL[k] || k} {fmt(v, "%", 0)}</span>
+              ))}
+              {structTargets.reserve_pct != null && <> · reserva {fmt(structTargets.reserve_pct, "%", 0)}</>}
+              {" "}(banda ±5%). Desvio &gt; 5% sugere rebalanceamento.
+            </>
+          ) : (
+            <>Âncoras 55% · Geradores 30% · Aceleradores 15% (banda ±5%). Desvio &gt; 5% sugere rebalanceamento.</>
+          )}
         </p>
         <div className="space-y-2">
           {buckets.map((b: any) => {

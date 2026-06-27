@@ -33,6 +33,14 @@ const SIGNAL_COLORS: Record<string, string> = {
   "EVITAR":                     "text-danger bg-danger/8 border-danger/20",
 };
 
+const BUCKET_LABEL_SHORT: Record<string, string> = {
+  ANCORA: "Âncoras",
+  GERADOR: "Geradores",
+  ACELERADOR: "Aceleradores",
+  TATICO: "Táticos",
+  RESERVA: "Reserva",
+};
+
 function SignalCard({ s, onBuy }: { s: any; onBuy: (ticker: string, leverage: number) => void }) {
   const display = s.is_tokenized ? (s.underlying_ticker ?? s.ticker.replace("ONUSDT","")) : s.ticker;
   const rsi = s.rsi_weekly ?? s.rsi;
@@ -66,7 +74,7 @@ function SignalCard({ s, onBuy }: { s: any; onBuy: (ticker: string, leverage: nu
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { activePortfolioId, metrics, positions, portfolios, fetchPortfolios, fetchMetrics, fetchPositions } = usePortfolioStore();
+  const { activePortfolioId, metrics, positions, portfolios, analytics, fetchPortfolios, fetchMetrics, fetchPositions, fetchAnalytics } = usePortfolioStore();
   const { opportunities, avoid, awaiting, opportunityCount, checkedAt, loading: signalLoading, setSignals, setLoading } = useSignalStore();
   const [creatingPortfolio, setCreatingPortfolio] = useState(false);
   const [signalError, setSignalError] = useState(false);
@@ -76,6 +84,7 @@ export default function DashboardPage() {
     if (activePortfolioId) {
       fetchMetrics(activePortfolioId);
       fetchPositions(activePortfolioId);
+      fetchAnalytics(activePortfolioId);
     }
   }, [activePortfolioId]);
 
@@ -118,6 +127,65 @@ export default function DashboardPage() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
 
+  // ── Cockpit de sobrevivência (deriva do payload analytics — NÃO inventa sinal) ──
+  const liqAgg = analytics?.liquidation_watch?.aggregate ?? null;
+  const liqStatus: string = analytics?.liquidation_watch?.status ?? "indisponivel";
+  const aporteVsAgg = analytics?.aporte_vs_agregado ?? null;
+  // Próximo aporte cruzado com o cap agregado: se headroom===false, o cap limita.
+  const capLimita = aporteVsAgg?.headroom === false;
+  const multSugerido = aporteVsAgg?.mult_sugerido ?? null;
+  const multRegime = aporteVsAgg?.mult_regime ?? null;
+  const maxLevNovo = aporteVsAgg?.max_lev_novo_fluxo ?? null;
+
+  const liqStatusCls =
+    liqStatus === "critico" ? "text-danger"
+    : liqStatus === "alerta" ? "text-amber-400"
+    : liqStatus === "indisponivel" ? "text-text-muted"
+    : "text-success";
+  const liqWidgetCls =
+    liqStatus === "critico" ? "border-danger/30 bg-danger/5"
+    : liqStatus === "alerta" ? "border-amber-500/30 bg-amber-500/5"
+    : "border-border/40";
+
+  // Fila de ação do dia — derivada SÓ de dados que o analytics já traz:
+  //  • desalavancar: ciclos ESTICADOS / sinais de VENDER da rotação (semente nunca entra)
+  //  • rebalancear: buckets fora do alvo±banda (status "rebalancear"/drift>banda)
+  //  • liquidação: status alerta/critico da vigília
+  type Acao = { kind: "liquidacao" | "desalavancar" | "rebalancear"; label: string; detail: string };
+  const filaAcao: Acao[] = [];
+  if (analytics) {
+    if (liqStatus === "critico" || liqStatus === "alerta") {
+      filaAcao.push({
+        kind: "liquidacao",
+        label: liqStatus === "critico" ? "Liquidação crítica" : "Liquidação em alerta",
+        detail: liqAgg?.distance_pct != null
+          ? `carteira a -${Number(liqAgg.distance_pct).toFixed(0)}% da liquidação — reduzir exposição ou subir equity`
+          : "distância até liquidar em zona de risco",
+      });
+    }
+    const rot = analytics.rotation || {};
+    const sells = (rot.signals || []).filter((s: any) => s.action === "VENDER" && !s.is_seed);
+    for (const s of sells) {
+      filaAcao.push({ kind: "desalavancar", label: `Girar ${s.ticker}`, detail: s.reason || "ciclo esticado — realizar e rotacionar" });
+    }
+    const esticados = (rot.signals || []).filter(
+      (s: any) => s.action === "MANTER" && s.verdict === "ESTICADO" && !s.is_seed && (s.weeks_esticado ?? 0) >= 2
+    );
+    for (const s of esticados) {
+      filaAcao.push({ kind: "desalavancar", label: `Observar ${s.ticker}`, detail: `esticado há ${Number(s.weeks_esticado).toFixed(0)} sem. — candidato a girar` });
+    }
+    const rebal = (analytics.buckets || []).filter(
+      (b: any) => b.status === "rebalancear" || (b.drift != null && Math.abs(Number(b.drift)) > 5)
+    );
+    for (const b of rebal) {
+      filaAcao.push({
+        kind: "rebalancear",
+        label: `Rebalancear ${BUCKET_LABEL_SHORT[b.bucket] || b.bucket}`,
+        detail: `${Number(b.real ?? 0).toFixed(0)}% real vs ${b.target != null ? Number(b.target).toFixed(0) + "% alvo" : "alvo"} (${Number(b.drift) > 0 ? "+" : ""}${Number(b.drift ?? 0).toFixed(0)})`,
+      });
+    }
+  }
+
   return (
     <AppShell>
       <div className="p-6 max-w-7xl mx-auto">
@@ -146,8 +214,105 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ── Vigília de liquidação (item nº1 da doutrina — topo) ── */}
+        {analytics?.liquidation_watch && (
+          <div className={cn("card mb-5 border", liqWidgetCls)}>
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0",
+                  liqStatus === "critico" ? "bg-danger/15" : liqStatus === "alerta" ? "bg-amber-500/15" : "bg-success/10")}>
+                  <Shield size={20} className={liqStatusCls} />
+                </div>
+                <div>
+                  <p className="text-[10px] text-text-muted uppercase tracking-wider mb-0.5">
+                    Vigília de liquidação · sobrevivência
+                  </p>
+                  {liqStatus === "indisponivel" ? (
+                    <p className="text-xs text-text-secondary max-w-md">
+                      {analytics.liquidation_watch?.nota || "Informe o equity da Quantfury na aba Portfólio para calcular a distância até a liquidação."}
+                    </p>
+                  ) : (
+                    <div className="flex items-baseline gap-2.5">
+                      <span className={cn("text-2xl font-bold font-mono leading-none", liqStatusCls)}>
+                        {liqAgg?.distance_pct != null ? `-${Number(liqAgg.distance_pct).toFixed(0)}%` : "—"}
+                      </span>
+                      <span className="text-xs text-text-muted">até liquidar · alav. {liqAgg?.leverage != null ? Number(liqAgg.leverage).toFixed(2) + "x" : "—"}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {liqStatus !== "indisponivel" && (
+                <div className="flex items-center gap-2">
+                  <span className={cn("px-2.5 py-1 rounded-full text-xs font-bold",
+                    liqStatus === "critico" ? "bg-danger text-white" : liqStatus === "alerta" ? "bg-amber-500 text-black" : "bg-success/15 text-success border border-success/30")}>
+                    {liqStatus === "critico" ? "CRÍTICO" : liqStatus === "alerta" ? "ALERTA" : "OK"}
+                  </span>
+                  <Link href="/portfolio" className="text-xs text-primary hover:underline flex items-center gap-1">
+                    Detalhes <ArrowRight size={11} />
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── Market State ──────────────────────────────────── */}
         <MarketStateWidget riskProfile={user?.riskProfile} />
+
+        {/* ── Cap agregado limita o próximo aporte (evita induzir over-leverage) ── */}
+        {capLimita && (
+          <div className="card mb-5 flex items-start gap-3 py-3 border-amber-500/25 bg-amber-500/5">
+            <div className="w-9 h-9 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
+              <Lock size={16} className="text-amber-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text-primary">
+                O cap agregado limita seu próximo aporte
+                {maxLevNovo != null && <> a <span className="font-mono text-amber-400">{Number(maxLevNovo).toFixed(2)}x</span></>}
+              </p>
+              <p className="text-xs text-text-muted">
+                O regime sugeriria {multRegime != null ? `${Number(multRegime).toFixed(1)}x` : "mais"}
+                {multSugerido != null && <>, mas a alavancagem efetiva da carteira foi capada para {Number(multSugerido).toFixed(2)}x</>}
+                . Aportar acima fura o teto de segurança.
+                {aporteVsAgg?.nota && <span className="text-amber-400/80"> {aporteVsAgg.nota}</span>}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Fila de ação do dia (derivada do analytics — sem inventar sinal) ── */}
+        {filaAcao.length > 0 && (
+          <div className="card mb-5 border-primary/20">
+            <div className="flex items-center gap-2 mb-3">
+              <Target size={15} className="text-primary" />
+              <h2 className="text-sm font-semibold text-text-primary">Fila de ação do dia</h2>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary font-bold">
+                {filaAcao.length}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {filaAcao.map((a, i) => {
+                const cfg = a.kind === "liquidacao"
+                  ? { tag: "LIQUIDAÇÃO", cls: "text-danger bg-danger/10 border-danger/30" }
+                  : a.kind === "desalavancar"
+                  ? { tag: "DESALAVANCAR", cls: "text-amber-400 bg-amber-500/10 border-amber-500/30" }
+                  : { tag: "REBALANCEAR", cls: "text-primary bg-primary/10 border-primary/30" };
+                return (
+                  <div key={i} className="flex items-start gap-2.5 text-xs p-2.5 bg-surface-2 rounded-lg">
+                    <span className={cn("px-1.5 py-0.5 rounded border font-semibold text-[10px] shrink-0", cfg.cls)}>{cfg.tag}</span>
+                    <div className="min-w-0">
+                      <span className="font-semibold text-text-primary">{a.label}</span>
+                      <span className="text-text-muted"> — {a.detail}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-text-muted/70 mt-3 leading-tight">
+              Derivada da inteligência da carteira (rotação, buckets fora do alvo, vigília de liquidação). Semente nunca entra como venda. Não é recomendação — CVM Of-Circ 04/2023.
+            </p>
+          </div>
+        )}
 
         {/* ── No portfolio ──────────────────────────────────── */}
         {!portfolios.length && (
