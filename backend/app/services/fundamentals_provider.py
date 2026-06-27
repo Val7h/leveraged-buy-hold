@@ -544,6 +544,28 @@ def get_fundamentals(ticker: str) -> dict:
             result = _empty(None)
         elif key.endswith(".SA"):
             result = _from_brapi(key)
+            # FONTE PRIMÁRIA BR: CVM Dados Abertos (ETL local, cache em disco).
+            # Cobre os pilares fundamentalistas reais (roic + histórico, fcf, D/E,
+            # crescimento, payout, roe) que o brapi free achata. O brapi fica só
+            # p/ preço/DY corrente. ZERO regressão: se a CVM não tiver o ticker
+            # (sem mapa / sem cache), segue o fluxo brapi+fundamentus+fmp intacto.
+            try:
+                from app.services.cvm_fundamentals import get_cvm_fundamentals
+                cvm = get_cvm_fundamentals(key)
+                if cvm:
+                    for k in ("roe", "roic", "roic_history", "fcf", "fcf_over_assets",
+                              "fcf_capex_found", "debt_to_equity", "payout_ratio",
+                              "rev_growth_5y", "eps_growth_5y", "rev_growth_ttm",
+                              "eps_growth_ttm"):
+                        if cvm.get(k) is not None:
+                            result[k] = cvm[k]
+                    if any(cvm.get(k) is not None for k in ("roe", "roic", "fcf")):
+                        result["data_origin"] = "cvm"
+                        result["source"] = (
+                            (result.get("source") + "+cvm")
+                            if result.get("source") else "cvm")
+            except Exception as e:
+                logger.warning(f"[FUNDAMENTALS] CVM primária BR falhou p/ {key}: {e}")
             # brapi free cobre poucos tickers B3 (PETR4, ITUB4…); resto retorna 403.
             # Fallback 1: fundamentus.com.br — cobertura total B3, sem token.
             if (result.get("roe") is None or result.get("roic") is None):
@@ -591,7 +613,9 @@ def get_fundamentals(ticker: str) -> dict:
         if not _no_fund:
             if _has_core_data(result):
                 # coleta FRESCA com dado real → marca origem e persiste como novo último-bom.
-                result["data_origin"] = "fresh"
+                # Preserva data_origin="cvm" (fonte primária BR já marcada acima).
+                if result.get("data_origin") != "cvm":
+                    result["data_origin"] = "fresh"
                 _lastgood_write(key, result)
             else:
                 # fonte falhou/voltou vazia: REUSA o último-bom em disco (dentro do TTL) em vez de

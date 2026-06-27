@@ -1,0 +1,362 @@
+{
+  "ITUB4.SA": {
+    "cd_cvm": 19348,
+    "cnpj": "60872504000123",
+    "nome": "ITAU UNIBANCO HOLDING S.A."
+  },
+  "BBDC4.SA": {
+    "cd_cvm": 906,
+    "cnpj": "60746948000112",
+    "nome": "BANCO BRADESCO S.A."
+  },
+  "BBDC3.SA": {
+    "cd_cvm": 906,
+    "cnpj": "60746948000112",
+    "nome": "BANCO BRADESCO S.A."
+  },
+  "BBAS3.SA": {
+    "cd_cvm": 1023,
+    "cnpj": "00000000000191",
+    "nome": "BANCO DO BRASIL S.A."
+  },
+  "BPAC11.SA": {
+    "cd_cvm": 22616,
+    "cnpj": "30306294000145",
+    "nome": "BANCO BTG PACTUAL S/A"
+  },
+  "SANB11.SA": {
+    "cd_cvm": 20532,
+    "cnpj": "90400888000142",
+    "nome": "BANCO SANTANDER (BRASIL) S.A."
+  },
+  "ITSA4.SA": {
+    "cd_cvm": 7617,
+    "cnpj": "61532644000115",
+    "nome": "ITAUSA S.A."
+  },
+  "B3SA3.SA": {
+    "cd_cvm": 21610,
+    "cnpj": "09346601000125",
+    "nome": "B3 S.A. - BRASIL, BOLSA, BALCAO"
+  },
+  "BBSE3.SA": {
+    "cd_cvm": 23159,
+    "cnpj": "17344597000194",
+    "nome": "BB SEGURIDADE PARTICIPACOES S.A."
+  },
+  "PSSA3.SA": {
+    "cd_cvm": 16659,
+    "cnpj": "02149205000169",
+    "nome": "PORTO SEGURO SA"
+  },
+  "CXSE3.SA": {
+    "cd_cvm": 23795,
+    "cnpj": "22543331000100",
+    "nome": "CAIXA SEGURIDADE PARTICIPACOES S.A."
+  },
+  "ABCB4.SA": {
+    "cd_cvm": 20958,
+    "cnpj": "28195667000106",
+    "nome": "BANCO ABC BRASIL S/A"
+  },
+  "BRSR6.SA": {
+    "cd_cvm": 1210,
+    "cnpj": "92702067000196",
+    "nome": "BANCO DO ESTADO DO RIO GRANDE DO SUL SA"
+  },
+  "TAEE11.SA": {
+    "cd_cvm": 20257,
+    "cnpj": "07859971000130",
+    "nome": "TRANSMISSORA ALIANCA DE ENERGIA ELETRICA S.A."
+  },
+  "EGIE3.SA": {
+    "cd_cvm": 17329,
+    "cnpj": "02474103000119",
+    "nome": "ENGIE BRASIL ENERGIA S.A."
+  },
+  "CMIG4.SA": {
+    "cd_cvm": 2453,
+    "cnpj": "17155730000164",
+    "nome": "CIA ENERG MINAS GERAIS - CEMIG"
+  },
+  "CPLE6.SA": {
+    "cd_cvm": 14311,
+    "cnpj": "76483817000120",
+    "nome": "COMPANHIA PARANAENSE DE ENERGIA COPEL"
+  },
+  "EQTL3.SA": {
+    "cd_cvm": 25577,
+    "cnpj": "01543032000104",
+    "nome": "EQUATORIAL GOIAS DISTRIBUIDORA DE ENERGIA S.A."
+  },
+  "ELET3.SA": {
+    "cd_cvm": 2437,
+    "cnpj": "00001180000126",
+    "nome": "CENTRAIS ELETRICAS BRASILEIRAS S.A. - ELETROBRAS"
+  },
+  "SBSP3.SA": {
+    "cd_cvm": 14443,
+    "cnpj": "43776517000180",
+    "nome": "CIA SANEAMENTO BASICO ESTADO SAO PAULO"
+  },
+  "SAPR11.SA": {
+    "cd_cvm": 18627,
+    "cnpj": "76484013000145",
+    "nome": "CIA. DE SANEAMENTO DO PARANA - SANEPAR"
+  },
+  "ENEV3.SA": {
+    "cd_cvm": 21237,
+    "cnpj": "04423567000121",
+    "nome": "ENEVA S.A."
+  },
+  "CPFE3.SA": {
+    "cd_cvm": 18660,
+    "cnpj": "02429144000193",
+    "nome": "CPFL ENERGIA SA"
+  },
+  "NEOE3.SA": {
+    "cd_cvm": 15539,
+    "cnpj": "01083200000118",
+    "nome": "NEOENERGIA S.A"
+  },
+  "AURE3.SA": {
+    "cd_cvm": 26620,
+    "cnpj": "28594234000123",
+    "nome": "AUREN ENERGIA S.A"
+  },
+  "ALUP11.SA": {
+    "cd_cvm": 21490,
+    "cnpj": "08364948000138",
+    "nome": "ALUPAR INVESTIMENTO S/A"
+  },
+  "CSMG3.SA": {
+    "cd_cvm": 2453,
+    "cnpj": "17155730000164",
+    "nome": "CIA ENERG MINAS GERAIS - CEMIG"
+  },
+  "ENGI11.SA": {
+    "cd_cvm": 5576,
+    "cnpj": "15413826000150",
+    "nome": "ENERGISA MATO GROSSO DO SUL - DIST DE ENERGIA S.A."
+  },
+  "VALE3.SA": {
+    "cd_cvm": 4170,
+    "cnpj": "33592510000154",
+    "nome": "VALE S.A."
+  },
+  "PETR4.SA": {
+    "cd_cvm": 9512,
+    "cnpj": "33000167000101",
+    "nome": "PETROLEO BRASILEIRO S.A. - PETROBRAS"
+  },
+  "PRIO3.SA": {
+    "cd_cvm": 22187,
+    "cnpj": "10629105000168",
+    "nome": "PRIO S.A."
+  },
+  "SUZB3.SA": {
+    "cd_cvm": 9067,
+    "cnpj": "60651809000105",
+    "nome": "SUZANO HOLDING S.A."
+  },
+  "GGBR4.SA": {
+    "cd_cvm": 3980,
+    "cnpj": "33611500000119",
+    "nome": "GERDAU S.A."
+  },
+  "KLBN11.SA": {
+    "cd_cvm": 12653,
+    "cnpj": "89637490000145",
+    "nome": "KLABIN S.A."
+  },
+  "CSNA3.SA": {
+    "cd_cvm": 4030,
+    "cnpj": "33042730000104",
+    "nome": "CIA SIDERURGICA NACIONAL"
+  },
+  "USIM5.SA": {
+    "cd_cvm": 14320,
+    "cnpj": "60894730000105",
+    "nome": "USINAS SID DE MINAS GERAIS S.A.-USIMINAS"
+  },
+  "CMIN3.SA": {
+    "cd_cvm": 25585,
+    "cnpj": "08902291000115",
+    "nome": "CSN MINERACAO S.A."
+  },
+  "BRAP4.SA": {
+    "cd_cvm": 18724,
+    "cnpj": "03847461000192",
+    "nome": "BRADESPAR S/A"
+  },
+  "DXCO3.SA": {
+    "cd_cvm": 21091,
+    "cnpj": "97837181000147",
+    "nome": "DEXCO S.A."
+  },
+  "ABEV3.SA": {
+    "cd_cvm": 23264,
+    "cnpj": "07526557000100",
+    "nome": "AMBEV S.A."
+  },
+  "WEGE3.SA": {
+    "cd_cvm": 5410,
+    "cnpj": "84429695000111",
+    "nome": "WEG SA"
+  },
+  "RADL3.SA": {
+    "cd_cvm": 5258,
+    "cnpj": "61585865000151",
+    "nome": "RAIA DROGASIL S.A."
+  },
+  "RENT3.SA": {
+    "cd_cvm": 24813,
+    "cnpj": "02286479000108",
+    "nome": "LOCALIZA FLEET S.A."
+  },
+  "LREN3.SA": {
+    "cd_cvm": 8133,
+    "cnpj": "92754738000162",
+    "nome": "LOJAS RENNER SA"
+  },
+  "VIVT3.SA": {
+    "cd_cvm": 17671,
+    "cnpj": "02558157000162",
+    "nome": "TELEFONICA BRASIL S.A."
+  },
+  "TOTS3.SA": {
+    "cd_cvm": 19992,
+    "cnpj": "53113791000122",
+    "nome": "TOTVS S.A"
+  },
+  "EMBR3.SA": {
+    "cd_cvm": 20087,
+    "cnpj": "07689002000189",
+    "nome": "EMBRAER S.A."
+  },
+  "RDOR3.SA": {
+    "cd_cvm": 24821,
+    "cnpj": "06047087000139",
+    "nome": "REDE D'OR SAO LUIZ S.A."
+  },
+  "ASAI3.SA": {
+    "cd_cvm": 25372,
+    "cnpj": "06057223000171",
+    "nome": "SENDAS DISTRIBUIDORA S.A."
+  },
+  "NTCO3.SA": {
+    "cd_cvm": 19550,
+    "cnpj": "71673990000177",
+    "nome": "NATURA COSMETICOS SA"
+  },
+  "HYPE3.SA": {
+    "cd_cvm": 21431,
+    "cnpj": "02932074000191",
+    "nome": "HYPERA S/A"
+  },
+  "FLRY3.SA": {
+    "cd_cvm": 21881,
+    "cnpj": "60840055000131",
+    "nome": "FLEURY SA"
+  },
+  "SMTO3.SA": {
+    "cd_cvm": 20516,
+    "cnpj": "51466860000156",
+    "nome": "SAO MARTINHO SA"
+  },
+  "CRFB3.SA": {
+    "cd_cvm": 24171,
+    "cnpj": "75315333000109",
+    "nome": "ATACADAO S.A."
+  },
+  "TIMS3.SA": {
+    "cd_cvm": 21490,
+    "cnpj": "08364948000138",
+    "nome": "ALUPAR INVESTIMENTO S/A"
+  },
+  "UGPA3.SA": {
+    "cd_cvm": 18465,
+    "cnpj": "33256439000139",
+    "nome": "ULTRAPAR PARTICIPACOES SA"
+  },
+  "VBBR3.SA": {
+    "cd_cvm": 24295,
+    "cnpj": "34274233000102",
+    "nome": "VIBRA ENERGIA S/A"
+  },
+  "RAIZ4.SA": {
+    "cd_cvm": 23230,
+    "cnpj": "08070508000178",
+    "nome": "RAIZEN ENERGIA S.A."
+  },
+  "GMAT3.SA": {
+    "cd_cvm": 25186,
+    "cnpj": "24990777000109",
+    "nome": "GRUPO MATEUS S.A."
+  },
+  "PETZ3.SA": {
+    "cd_cvm": 25089,
+    "cnpj": "18328118000109",
+    "nome": "PET CENTER COMERCIO E PARTICIPACOES S.A."
+  },
+  "LWSA3.SA": {
+    "cd_cvm": 24910,
+    "cnpj": "02351877000152",
+    "nome": "LOCAWEB SERVICOS DE INTERNET S.A. (LWSA S.A.)"
+  },
+  "JBSS3.SA": {
+    "cd_cvm": 20575,
+    "cnpj": "02916265000160",
+    "nome": "JBS SA"
+  },
+  "BRFS3.SA": {
+    "cd_cvm": 16292,
+    "cnpj": "01838723000127",
+    "nome": "BRF S.A."
+  },
+  "MRFG3.SA": {
+    "cd_cvm": 20788,
+    "cnpj": "03853896000140",
+    "nome": "MARFRIG GLOBAL FOODS SA"
+  },
+  "SLCE3.SA": {
+    "cd_cvm": 20745,
+    "cnpj": "89096457000155",
+    "nome": "SLC AGRICOLA SA"
+  },
+  "RAIL3.SA": {
+    "cd_cvm": 26484,
+    "cnpj": "33572408000197",
+    "nome": "RUMO MALHA CENTRAL S.A."
+  },
+  "CCRO3.SA": {
+    "cd_cvm": 18821,
+    "cnpj": "02846056000197",
+    "nome": "CCR S.A. (MOTIVA S.A.)"
+  },
+  "POMO4.SA": {
+    "cd_cvm": 13854,
+    "cnpj": "93828986000173",
+    "nome": "CEMEPE INVESTIMENTOS SA"
+  },
+  "CYRE3.SA": {
+    "cd_cvm": 14460,
+    "cnpj": "73178600000118",
+    "nome": "CYRELA BRAZIL REALTY S.A.EMPREEND E PART"
+  },
+  "MRVE3.SA": {
+    "cd_cvm": 20915,
+    "cnpj": "08343492000120",
+    "nome": "MRV ENGENHARIA E PARTICIPACOES S/A"
+  },
+  "MULT3.SA": {
+    "cd_cvm": 20982,
+    "cnpj": "07816890000153",
+    "nome": "MULTIPLAN - EMPREEND IMOBILIARIOS S.A."
+  },
+  "DIRR3.SA": {
+    "cd_cvm": 21350,
+    "cnpj": "16614075000100",
+    "nome": "DIRECIONAL ENGENHARIA SA"
+  }
+}

@@ -24,7 +24,16 @@ NODE_PID=$!
     sleep "${ALERT_SWEEP_SECONDS:-600}"
   done ) &
 
-echo "[start.sh] uvicorn(pid=$UVICORN_PID) + next(pid=$NODE_PID) + alert-sweep no ar"
+# 5) ETL CVM Dados Abertos (fundamentos B3) — baixa os ZIPs e popula o cache em disco.
+#    Roda no boot (após uvicorn subir) e re-roda SEMANALMENTE (dado CVM muda trimestral).
+#    Subshell blindado: nunca sai, engole erros → não derruba o container.
+( sleep 120
+  while true; do
+    ( cd /app/backend && python -c "from app.services.cvm_fundamentals import refresh_cvm_cache; refresh_cvm_cache()" ) 2>&1 | sed 's/^/[cvm-refresh] /' || true
+    sleep "${CVM_REFRESH_SECONDS:-604800}"
+  done ) &
+
+echo "[start.sh] uvicorn(pid=$UVICORN_PID) + next(pid=$NODE_PID) + alert-sweep + cvm-refresh no ar"
 
 # Espera o primeiro processo terminar; encerra o outro e propaga o exit code.
 wait -n
