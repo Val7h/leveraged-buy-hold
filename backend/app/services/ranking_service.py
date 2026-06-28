@@ -1697,7 +1697,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         #     alavancar é convite a margin-call (LREN3 -86%). Sem alavancagem, independente do rank.
         if _quality_thin:
             leverage = 1.0
-        if dd is not None and dd <= _MAXDD_KILL_LEVERAGE:
+        _mdds = [v for v in (dd, dd_full) if v is not None]
+        if _mdds and min(_mdds) <= _MAXDD_KILL_LEVERAGE:
             leverage = 1.0
 
         # RANK DUPLO (decisão do dono): a indicação de compra/venda (rank base + veredito) depende
@@ -1794,6 +1795,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 "gap_pct": gap_pct,
                 "beta": beta,
                 "max_dd": dd,
+                "max_dd_full": dd_full,      # pior tombo histórico (kill-switch survival-first)
                 "hist_curto": hist_curto,
                 "adv_dollar": _adv_dollar,
                 "gap_risk_extremo": (gap_pct is not None and abs(gap_pct) >= 20.0),
@@ -2007,8 +2009,13 @@ def _rederive_leverage_for_profile(asset: dict, profile: str) -> Optional[float]
         leverage = min(leverage, 2.0)
     elif verdict == "COMPRAR" and quality is not None and quality < 50:
         leverage = min(leverage, 3.0)
-    if pin.get("quality_thin"):          # GUARDRAIL Bug D: dado fino não libera alavancagem alta
-        leverage = min(leverage, 2.0)
+    # TRAVAS SURVIVAL-FIRST (painel CRO) — espelham as de _analyze também na re-derivação por perfil
+    # (este é o caminho que produz a leverage EXIBIDA p/ moderado/conservador). Antes só capava em 2x.
+    if pin.get("quality_thin"):          # dado fino/CONF BAIXA NÃO alavanca — só à vista até comprovar
+        leverage = 1.0
+    _mdds = [v for v in (pin.get("max_dd"), pin.get("max_dd_full")) if v is not None]
+    if _mdds and min(_mdds) <= _MAXDD_KILL_LEVERAGE:   # pior tombo histórico extremo → sem alavancagem
+        leverage = 1.0
     if beta is not None and beta >= 1.45:
         leverage = min(leverage, 2.0)
     _teto_trend = pin.get("teto_lev_tendencia")
