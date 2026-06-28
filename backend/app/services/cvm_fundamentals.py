@@ -120,19 +120,33 @@ def _scale_factor(escala: str) -> float:
     return 1.0
 
 
-def parse_cvm_csv(text: str) -> list[dict]:
+def parse_cvm_csv(text: str, wanted_cd: set | None = None) -> list[dict]:
     """Parse PURO de um CSV da CVM (já decodificado p/ str).
 
     Retorna lista de linhas-dict NORMALIZADAS, contendo só ORDEM_EXERC == 'ÚLTIMO':
         {cd_cvm, cnpj, dt_refer, dt_fim, cd_conta, ds_conta, valor(float já
          escalado p/ unidades), year(int do exercício)}
+
+    wanted_cd: se passado (conjunto de CD_CVM já normalizados sem zeros à
+        esquerda), descarta DURANTE o parse toda linha de empresa fora do
+        conjunto. CRÍTICO p/ memória no Render: o CSV bruto tem ~150k linhas;
+        filtrando p/ as ~72 empresas do mapa, o pico de RAM despenca (evita OOM).
     Blindado: linha malformada é pulada. NÃO faz I/O.
     """
+    return _parse_cvm_reader(csv.DictReader(io.StringIO(text), delimiter=";"), wanted_cd)
+
+
+def _parse_cvm_reader(reader, wanted_cd: set | None = None) -> list[dict]:
+    """Núcleo do parse a partir de um csv.DictReader (str-source OU streaming do
+    ZIP). Mesma lógica/contrato de parse_cvm_csv. Streaming evita materializar o
+    CSV decodificado inteiro (memória-safe no Render)."""
     out: list[dict] = []
-    reader = csv.DictReader(io.StringIO(text), delimiter=";")
     for row in reader:
         try:
             if (row.get("ORDEM_EXERC") or "").strip().upper() != "ÚLTIMO":
+                continue
+            cd_cvm = (row.get("CD_CVM") or "").strip()
+            if wanted_cd is not None and (cd_cvm.lstrip("0") or "0") not in wanted_cd:
                 continue
             valor = _to_float(row.get("VL_CONTA"))
             if valor is None:
@@ -143,7 +157,7 @@ def parse_cvm_csv(text: str) -> list[dict]:
             if len(dt_fim) >= 4 and dt_fim[:4].isdigit():
                 year = int(dt_fim[:4])
             out.append({
-                "cd_cvm": (row.get("CD_CVM") or "").strip(),
+                "cd_cvm": cd_cvm,
                 "cnpj": (row.get("CNPJ_CIA") or "").strip(),
                 "dt_refer": (row.get("DT_REFER") or "").strip(),
                 "dt_fim": dt_fim,
@@ -380,10 +394,14 @@ def _http_get_bytes(url: str) -> bytes | None:
         return None
 
 
-def _read_consolidated_csvs(zip_bytes: bytes, prefix: str, year: int) -> list[dict]:
+def _read_consolidated_csvs(zip_bytes: bytes, prefix: str, year: int,
+                            wanted_cd: set | None = None) -> list[dict]:
     """Extrai e faz parse dos CSVs consolidados (DRE/BPA/BPP/DFC_MI/DVA) de um
     ZIP em memória. prefix = 'dfp_cia_aberta' | 'itr_cia_aberta'. PURO exceto a
     abertura do ZIP. Decodifica latin-1. Junta as linhas de todas as demonstrações.
+
+    wanted_cd: repassado a parse_cvm_csv p/ filtrar empresas DURANTE o parse
+        (memória-safe: evita materializar ~150k linhas/CSV no Render).
     """
     rows: list[dict] = []
     DEMOS = ("DRE", "BPA", "BPP", "DFC_MI", "DVA")
@@ -392,15 +410,20 @@ def _read_consolidated_csvs(zip_bytes: bytes, prefix: str, year: int) -> list[di
     except Exception as e:
         logger.warning(f"[CVM] ZIP inválido {prefix}_{year}: {e}")
         return rows
+    names = set(zf.namelist())
     with zf:
         for demo in DEMOS:
             name = f"{prefix}_{demo}_con_{year}.csv"
-            if name not in zf.namelist():
+            if name not in names:
                 continue
             try:
-                raw = zf.read(name)
-                text = raw.decode("latin-1", errors="replace")
-                rows.extend(parse_cvm_csv(text))
+                # Streaming: zf.open + TextIOWrapper → o CSV é lido em pedaços,
+                # nunca materializado inteiro em memória (anti-OOM no Render).
+                with zf.open(name) as fh:
+                    tw = io.TextIOWrapper(fh, encoding="latin-1", errors="replace",
+                                          newline="")
+                    rows.extend(_parse_cvm_reader(csv.DictReader(tw, delimiter=";"),
+                                                  wanted_cd))
             except Exception as e:
                 logger.warning(f"[CVM] parse {name}: {e}")
     return rows
@@ -458,33 +481,31 @@ def refresh_cvm_cache() -> dict:
 
         years = list(range(CURRENT_YEAR - DFP_YEARS + 1, CURRENT_YEAR + 1))
 
-        # ── DFP (anual, 5 anos): junta linhas por cd_cvm ──
+        import gc as _gc
+
+        # ── DFP (anual, 5 anos): junta linhas por cd_cvm. Filtra DURANTE o parse
+        #    (wanted) e libera o blob a cada ano → pico de RAM minúsculo (anti-OOM). ──
         dfp_by_cd: dict[str, list[dict]] = {}
         for y in years:
             url = f"{CVM_BASE}/DFP/DADOS/dfp_cia_aberta_{y}.zip"
             blob = _http_get_bytes(url)
             if blob is None:
                 continue
-            for r in _read_consolidated_csvs(blob, "dfp_cia_aberta", y):
-                cd = (r["cd_cvm"].lstrip("0") or "0")
-                if cd in wanted:
-                    dfp_by_cd.setdefault(cd, []).append(r)
+            for r in _read_consolidated_csvs(blob, "dfp_cia_aberta", y, wanted_cd=wanted):
+                dfp_by_cd.setdefault((r["cd_cvm"].lstrip("0") or "0"), []).append(r)
+            del blob
+            _gc.collect()
 
-        # ── ITR (último ano) p/ TTM YoY ──
+        # ── ITR (último ano + anterior) p/ TTM YoY ──
         itr_by_cd: dict[str, list[dict]] = {}
-        itr_blob = _http_get_bytes(f"{CVM_BASE}/ITR/DADOS/itr_cia_aberta_{CURRENT_YEAR}.zip")
-        if itr_blob is not None:
-            for r in _read_consolidated_csvs(itr_blob, "itr_cia_aberta", CURRENT_YEAR):
-                cd = (r["cd_cvm"].lstrip("0") or "0")
-                if cd in wanted:
-                    itr_by_cd.setdefault(cd, []).append(r)
-        # ITR do ano anterior tb ajuda o YoY (8 trimestres)
-        itr_prev = _http_get_bytes(f"{CVM_BASE}/ITR/DADOS/itr_cia_aberta_{CURRENT_YEAR-1}.zip")
-        if itr_prev is not None:
-            for r in _read_consolidated_csvs(itr_prev, "itr_cia_aberta", CURRENT_YEAR - 1):
-                cd = (r["cd_cvm"].lstrip("0") or "0")
-                if cd in wanted:
-                    itr_by_cd.setdefault(cd, []).append(r)
+        for iy in (CURRENT_YEAR, CURRENT_YEAR - 1):
+            itr_blob = _http_get_bytes(f"{CVM_BASE}/ITR/DADOS/itr_cia_aberta_{iy}.zip")
+            if itr_blob is None:
+                continue
+            for r in _read_consolidated_csvs(itr_blob, "itr_cia_aberta", iy, wanted_cd=wanted):
+                itr_by_cd.setdefault((r["cd_cvm"].lstrip("0") or "0"), []).append(r)
+            del itr_blob
+            _gc.collect()
 
         os.makedirs(CVM_CACHE_DIR, exist_ok=True)
         for cd, dfp_rows in dfp_by_cd.items():
