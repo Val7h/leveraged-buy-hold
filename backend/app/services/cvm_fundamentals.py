@@ -522,6 +522,14 @@ def refresh_cvm_cache() -> dict:
                 stats["erros"] += 1
                 logger.warning(f"[CVM] escrita cache cd={cd}: {e}")
 
+        # Invalida o cache em memória do provider: entradas FINAS (brapi-só)
+        # cacheadas ANTES do CVM popular sombreariam o dado fresco por até 6h.
+        try:
+            from app.services import fundamentals_provider as _FP
+            stats["provider_cache_limpo"] = _FP.clear_cache()
+        except Exception as e:
+            logger.warning(f"[CVM] clear_cache do provider falhou (seguindo): {e}")
+
         logger.info(f"[CVM] refresh OK: {stats}")
         return stats
     except Exception as e:

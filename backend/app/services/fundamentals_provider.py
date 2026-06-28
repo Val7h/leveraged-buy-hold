@@ -636,4 +636,15 @@ def get_fundamentals(ticker: str) -> dict:
         return _empty(None)
 
 
-__all__ = ["get_fundamentals"]
+def clear_cache() -> int:
+    """Esvazia o cache em memória (TTL 6h). Usado após o refresh da CVM popular o
+    disco: as entradas FINAS (brapi-só) cacheadas na janela de warm-up (antes do
+    CVM existir) sombreariam o dado CVM por até 6h. Limpar força o próximo
+    get_fundamentals a re-mesclar a CVM. Retorna nº de entradas removidas."""
+    n = len(_CACHE)
+    _CACHE.clear()
+    logger.info(f"[FUNDAMENTALS] cache em memória limpo ({n} entradas) — re-merge CVM no próximo fetch")
+    return n
+
+
+__all__ = ["get_fundamentals", "clear_cache"]
