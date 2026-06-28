@@ -43,6 +43,7 @@ import urllib.request as _urlreq
 logger = logging.getLogger(__name__)
 
 # ───────────────────────────── constantes / config ──────────────────────────────
+ETL_VERSION = "selfheal-1"           # marcador p/ saber qual código está live no Render
 CVM_BASE = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC"
 TAX_RATE = 0.34                      # IR+CSLL p/ NOPAT = EBIT × (1 − 0.34)
 DFP_YEARS = 5                        # janela DFP p/ ROIC histórico / CAGR 5a
@@ -572,6 +573,7 @@ def cvm_status() -> dict:
     """Estado do cache CVM (sem download): nº de empresas cacheadas, amostra, mapa."""
     out = {"cache_dir": CVM_CACHE_DIR, "n_cached": 0, "map_size": 0,
            "sample": None, "allow_insecure_ssl": _ALLOW_INSECURE,
+           "etl_version": ETL_VERSION,
            "years": list(range(CURRENT_YEAR - DFP_YEARS + 1, CURRENT_YEAR + 1))}
     try:
         out["map_size"] = len(load_ticker_map())
@@ -651,6 +653,20 @@ def lookup_ticker(ticker: str) -> dict:
             res["provider"] = {k: fu.get(k) for k in
                                ("source", "data_origin", "roe", "roic", "fcf",
                                 "fcf_yield", "debt_to_equity")}
+            # Simula o caminho do ranking: provider → compute_quality_blend → contagem de pilares.
+            try:
+                from app.quantitative import scoring_v2 as _S
+                _mkt = "BR" if key.endswith(".SA") else "US"
+                _q, _qb = _S.compute_quality_blend(
+                    roic=fu.get("roic"), roe=fu.get("roe"),
+                    debt_to_equity=fu.get("debt_to_equity"), fcf_yield=fu.get("fcf_yield"),
+                    payout_ratio=fu.get("payout_ratio"), roic_history=fu.get("roic_history"),
+                    growth_5y=fu.get("rev_growth_5y"), market=_mkt, fundamentals_apply=True)
+                res["sim_quality"] = round(_q, 1)
+                res["sim_pilares"] = _S.quality_pilares_reais(_qb, _mkt)
+                res["sim_breakdown_keys"] = list(_qb.keys())
+            except Exception as e:
+                res["sim_err"] = str(e)[:200]
         except Exception as e:
             res["provider_err"] = str(e)[:200]
     except Exception as e:
