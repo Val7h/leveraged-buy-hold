@@ -812,7 +812,9 @@ def _q_growth_conditional(growth_5y: Optional[float], roic: Optional[float]) -> 
 # palpite honesto é o ativo MEDIANO do país, nem premia nem pune (NÃO é o 50 "conservador", que era
 # viés de alavancagem e não se aplica à Camada 1). BR 3/3 → w=1 (ILESA); BR 1/3 → w≈0,19 (perto de 60).
 _QUALITY_PRIOR = 60.0          # prior honesto = mediana típica do universo curado (empirical Bayes)
-_SHRINK_EXP = 1.5              # convexidade do shrinkage (penaliza cobertura parcial)
+_SHRINK_EXP = 0.7              # CÔNCAVO (painel quant): recompensa o 1º/2º pilar e descomprime o
+                              # cluster artificial em Q≈55 (antes 1,5 convexo herdava ~81% do prior
+                              # com 1 pilar, censurando o sinal no miolo). 0,7 devolve discriminação.
 
 # TRAVAS DE SANIDADE NA NOTA (depois do shrinkage; coerentes com o prior 60 — perto da mediana):
 #   k<K  → Q ≤ 65  (sub-cobertura não vira nota de elite; fica perto da mediana, não de topo)
@@ -841,7 +843,7 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
                           dy_avg10=None, dy_worst=None, dd_recovery_mult=1.0,
                           fundamentals_apply=True,
                           roiic=None, roic_history=None, margin_stability=None,
-                          market=None):
+                          market=None, regulated=False):
     """
     CAMADA 1 — QUALIDADE DO NEGÓCIO (0-100). Mede SÓ o NEGÓCIO, independente de preço.
 
@@ -895,6 +897,12 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
     breakdown = {}
     comps = []
     # (score, peso, chave). Termos None NÃO entram (regra 3) e renormalizam.
+    # FLUXO CONTRATADO (utilities reguladas: RAP/concessão) — painel sênior 2/4. Transmissão/geração
+    # contratada/saneamento têm receita previsível IPCA+ e risco de demanda ~zero → previsibilidade é
+    # um PILAR REAL de qualidade defensiva que o ROIC contábil baixo (capital-intensivo regulado) não
+    # captura. Score fixo alto reflete a durabilidade contratada; NÃO fabrica (só p/ o set curado).
+    s_pred = 78.0 if (fundamentals_apply and regulated) else None
+
     pilares = [
         (s_roic, 0.22, "roic_nivel"),
         (s_roiic, 0.16, "roiic"),
@@ -902,6 +910,7 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
         (s_fcf, 0.16, "fcf"),
         (s_moat, 0.16, "moat"),
         (s_growth, 0.12, "crescimento"),
+        (s_pred, 0.22, "fluxo_contratado"),
     ]
     for s, w, k in pilares:
         if s is not None:
@@ -970,7 +979,7 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
 # Safety/D-E, FCF, Crescimento. ROIIC e Moat são OPCIONAIS (histórico multi-ano que provedor grátis
 # quase nunca dá) → contam como bônus se vierem, mas a contagem-núcleo é o que define "dado fino".
 _QUALITY_CORE_PILLARS = ("roic_nivel", "safety", "fcf", "crescimento")
-_QUALITY_BONUS_PILLARS = ("roiic", "moat")
+_QUALITY_BONUS_PILLARS = ("roiic", "moat", "fluxo_contratado")
 # Mínimo de pilares-núcleo reais p/ a Qualidade ser "comprovada" (libera FORTE/alavancagem alta).
 # < isto = dado fino → CONF BAIXA + veredito capado. 3 de 4 núcleo é o piso ratificado (survival).
 QUALITY_MIN_PILARES_REAIS = 3
@@ -1000,10 +1009,13 @@ _QUALITY_CORE_BY_MARKET = {
     # BAIXA pelo guardrail de "<3 pilares operacionais" (que não se aplica a ela). resiliencia_queda
     # é derivada de PREÇO (não prova mérito da holding) → fica como bônus, fora do núcleo.
     "HOLDING": ("dividendos", "safety"),
+    # FINANCEIRA (banco/seguradora): a Qualidade vem de ROE + dividendo (crivo financeiro), NÃO do
+    # ROIC industrial. roe_nivel+dividendos reais = comprovada (resiliencia_queda é bônus, vem de preço).
+    "FINANCIAL": ("roe_nivel", "dividendos"),
 }
 # Piso de pilares-núcleo reais p/ NÃO ser "dado fino", por mercado. BR exige os 3 obteníveis; US 3.
 # HOLDING: os 2 do crivo de holding (dividendo+safety) reais → comprovada (não thin / não CONF BAIXA).
-_QUALITY_MIN_BY_MARKET = {"BR": 3, "US": QUALITY_MIN_PILARES_REAIS, "HOLDING": 2}
+_QUALITY_MIN_BY_MARKET = {"BR": 3, "US": QUALITY_MIN_PILARES_REAIS, "HOLDING": 2, "FINANCIAL": 2}
 
 
 def _market_core_pillars(market: Optional[str]):
@@ -1182,6 +1194,38 @@ def score_holding_quality(dy_avg10=None, dy_worst=None, dividend_yield=None,
 _HOLDING_Q_FLOOR_RAW = 40.0    # composto bruto abaixo disto = holding fraca → segue baixa (sem piso)
 _HOLDING_Q_FLOOR = 50.0        # piso da banda razoável (holding apenas-ok)
 _HOLDING_Q_CEIL = 75.0         # teto da banda (holding excelente em dividendo+safety, mas não-elite)
+
+
+# ─────────── QUALIDADE FINANCEIRA (bancos / seguradoras) ───────────
+# Painel sênior 4/4 (verificado na web): o ROIC INDUSTRIAL NOPAT/(PL+dívida) é INVÁLIDO p/ o setor
+# financeiro — em banco o funding (depósitos) é INSUMO, não capital investido; em seguradora o float
+# é alavanca de retorno. A métrica certa é o ROE/ROAE. Sob a fórmula industrial o resultado virava
+# RUÍDO (ITUB4 ROE 22,9% → Q47; BPAC11 ROAE 28,1% → Q19; Banrisul fraco → Q80). Aqui a Qualidade vem
+# de ROE (âncora) + dividendo sustentável + resiliência de queda. NÃO usa safety=D/E (alavancagem é o
+# NEGÓCIO do banco, não risco) nem FCF (sem sentido p/ banco). LEVERAGE-INDEPENDENTE, não fabrica.
+# Ao contrário da holding (teto 75), um banco/seguradora de elite PODE ser compounder de topo → teto 92.
+def score_financial_quality(roe=None, dy_avg10=None, dy_worst=None, dividend_yield=None,
+                            max_dd_pct=None, dd_recovery_mult=1.0):
+    """QUALIDADE FINANCEIRA (0-100) p/ bancos/seguradoras. ROE-âncora + dividendo + resiliência.
+    Breakdown: 'roe_nivel' (núcleo) · 'dividendos' · 'resiliencia_queda'. (None,{}) se sem ROE nem
+    dividendo (segue thin honestamente). NÃO pune D/E (estrutural no setor)."""
+    s_roe = _q_roe(roe) if roe is not None else None
+    s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield, roe=roe, roic=None)
+             if (dy_avg10 is not None or dividend_yield is not None) else None)
+    s_dd = (_clamp(score_maxdd_quality(max_dd_pct) * dd_recovery_mult)
+            if max_dd_pct is not None else None)
+    comps = []
+    bd = {}
+    for s, w, k in ((s_roe, 0.55, "roe_nivel"), (s_div, 0.25, "dividendos"),
+                    (s_dd, 0.20, "resiliencia_queda")):
+        if s is not None:
+            comps.append((s, w))
+            bd[k] = round(s)
+    wsum = sum(w for _, w in comps)
+    if wsum <= 0:
+        return None, {}                 # sem ROE nem dividendo → não fabrica (segue thin)
+    q = sum(s * w for s, w in comps) / wsum
+    return round(_clamp(q), 1), bd
 
 
 # ══════════════════════════════════════════════════════════════════════════════

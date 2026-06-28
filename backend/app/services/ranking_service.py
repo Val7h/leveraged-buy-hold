@@ -846,6 +846,56 @@ _HOLDINGS = {
 # só quando a fonte de fundamentos trouxer setor/indústria — não fabrica).
 _HOLDING_SECTOR_HINTS = ("holding", "participaç", "participac", "diversified holding")
 
+# FINANCEIRAS (bancos + seguradoras operacionais) — painel sênior 4/4: o ROIC INDUSTRIAL
+# NOPAT/(PL+dívida) é INVÁLIDO p/ o setor (depósito/funding é insumo, não capital; float de
+# seguradora é alavanca de retorno). Resultado era ruído (ITUB4 Q47, BPAC11 Q19, BRSR6 Q80).
+# Estas usam a QUALIDADE FINANCEIRA (ROE-âncora + dividendo + resiliência). NÃO inclui holdings
+# (CXSE3 já é holding) nem a B3 (bolsa, ROIC industrial faz sentido).
+_FINANCIALS = {
+    "ITUB4.SA", "ITUB3.SA",     # Itaú
+    "BBDC4.SA", "BBDC3.SA",     # Bradesco
+    "BBAS3.SA",                 # Banco do Brasil
+    "SANB11.SA", "SANB4.SA", "SANB3.SA",  # Santander
+    "BPAC11.SA", "BPAC3.SA",    # BTG Pactual
+    "ABCB4.SA",                 # ABC Brasil
+    "BRSR6.SA", "BRSR3.SA",     # Banrisul
+    "BBSE3.SA",                 # BB Seguridade (seguradora)
+    "PSSA3.SA",                 # Porto Seguro
+    "BBSE3.SA",
+}
+
+# UTILITIES REGULADAS / FLUXO CONTRATADO (transmissão, geração contratada, saneamento) — painel
+# sênior 2/4: têm RAP/concessão contratada (IPCA+, risco de demanda ~zero, beta ~0,3) → são as MAIS
+# defensivas/previdenciárias da B3, mas o ROIC contábil baixo (capital-intensivo regulado) as jogava
+# em "ESPECULATIVO" Q35-42. Recebem um pilar de PREVISIBILIDADE (fluxo contratado) na Camada 1.
+_REGULATED_BR = {
+    "TAEE11.SA", "TAEE4.SA", "TAEE3.SA",  # Taesa (transmissão)
+    "ALUP11.SA", "ALUP4.SA",              # Alupar (transmissão)
+    "ISAE4.SA", "ISAE3.SA", "TRPL4.SA",   # ISA Energia/CTEEP (transmissão)
+    "EGIE3.SA",                           # Engie (geração contratada)
+    "NEOE3.SA",                           # Neoenergia (distribuição/transmissão regulada)
+    "EQTL3.SA",                           # Equatorial (distribuição regulada)
+    "CPFE3.SA",                           # CPFL (distribuição/geração regulada)
+    "ENGI11.SA", "ENGI4.SA",              # Energisa (distribuição regulada)
+    "CMIG4.SA", "CMIG3.SA",               # Cemig (G/T/D regulada)
+    "ALUP3.SA",
+    "SBSP3.SA",                           # Sabesp (saneamento concedido)
+    "SAPR11.SA", "SAPR4.SA",              # Sanepar (saneamento concedido)
+    "CSMG3.SA",                           # Copasa (saneamento concedido)
+}
+
+
+# Kill-switch de alavancagem por drawdown histórico extremo (painel CRO): pior que isto → só à vista.
+_MAXDD_KILL_LEVERAGE = -70.0
+
+
+def _is_financial(ticker: str) -> bool:
+    return ticker.upper() in _FINANCIALS
+
+
+def _is_regulated(ticker: str) -> bool:
+    return ticker.upper() in _REGULATED_BR
+
 
 def _is_holding(ticker: str, fund: dict) -> bool:
     """True se o ativo é uma HOLDING de participações (equity-method) — set CURADO (explícito) OU,
@@ -1397,10 +1447,15 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # Crivo de HOLDING (análogo ao ETF/financeira): a Qualidade vem de dividendo consistente +
         # safety da controladora — não de métricas operacionais ausentes. Set CURADO (_is_holding).
         is_holding = (cat not in ("ETF", "COMMODITY", "CRYPTO")) and _is_holding(tk, fund)
+        # FINANCEIRA (banco/seguradora) e REGULADA (utility de fluxo contratado) — painel sênior.
+        # Holding tem precedência (CXSE3 é holding de seguros, não vai p/ financeira).
+        is_financial = (not is_holding) and (cat not in ("ETF", "COMMODITY", "CRYPTO")) and _is_financial(tk)
+        is_regulated = (not is_holding and not is_financial) and _is_regulated(tk)
         # Mercado p/ o SHRINKAGE da nota (Camada 1): BR conta a cobertura contra os 3 pilares
-        # OBTENÍVEIS no BR (roic+safety+fcf) → BR bem-coberto (3/3) sai ILESO (w=1). HOLDING usa o
-        # crivo próprio (dividendo+safety). Mesmo _qmkt usado depois no guardrail Bug D.
-        _qmkt = "HOLDING" if is_holding else ("BR" if is_br else "US")
+        # OBTENÍVEIS no BR (roic+safety+fcf) → BR bem-coberto (3/3) sai ILESO (w=1). HOLDING/FINANCIAL
+        # usam o crivo próprio. Mesmo _qmkt usado depois no guardrail Bug D.
+        _qmkt = ("HOLDING" if is_holding else "FINANCIAL" if is_financial
+                 else ("BR" if is_br else "US"))
         # fcf_yield DERIVADO da CVM (cobre TODA a B3; brapi free não dá market cap): FCF absoluto
         # ÷ (preço × nº de ações ON+PN). Aproxima o market cap pelo preço-do-ticker × ações totais —
         # ON/PN andam juntos no BR; suficiente p/ o pilar fcf (bucketizado por limiares). SÓ se a
@@ -1422,6 +1477,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             # em vez de fingir 50). Ações (BR/US/Europa) mantêm o termo: são empresas — ausência
             # de dado é falta de cobertura, não estrutura (não julgar empresa só pelo preço).
             fundamentals_apply=(cat not in ("ETF", "COMMODITY")),
+            regulated=is_regulated,   # utility regulada → pilar de fluxo contratado (previsibilidade)
         )
         # Substitui a Qualidade OPERACIONAL pela QUALIDADE DE HOLDING (leverage-independente, NÃO
         # fabrica). Itaúsa/Bradespar com dividendo+safety reais voltam a uma Qualidade RAZOÁVEL
@@ -1434,6 +1490,15 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 dd_recovery_mult=dd_recovery_mult, roe=fund.get("roe"), roic=fund.get("roic"))
             if _hq is not None:
                 quality, qb = _hq, _hqb
+        # FINANCEIRA: ROIC industrial é inválido p/ banco/seguradora (painel 4/4) → usa o crivo
+        # FINANCEIRO (ROE-âncora + dividendo + resiliência). Sem ROE nem dividendo → (None,{}) mantém
+        # a nota operacional (segue thin honesta). Resgata ITUB4/BBDC/BPAC do fundo do ranking.
+        elif is_financial:
+            _fq, _fqb = S.score_financial_quality(
+                roe=fund.get("roe"), dy_avg10=dy_avg10, dy_worst=dy_worst, dividend_yield=dy,
+                max_dd_pct=dd, dd_recovery_mult=dd_recovery_mult)
+            if _fq is not None:
+                quality, qb = _fq, _fqb
 
         # ─── GUARDRAIL Bug D: QUALIDADE DE DADO FINO NÃO LIDERA VEREDITO FORTE NEM ALAVANCA ───
         # Quando o scrape fundamental BR quebra, a Qualidade da Camada 1 nasce de POUCOS pilares
@@ -1623,6 +1688,17 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             sigma_floor_min_pct=_plp["sigma_floor_min_pct"],
         )
         leverage = min(leverage, teto_lev)   # MIN inviolável (sobrevivência nunca sobe o teto)
+
+        # ── TRAVAS SURVIVAL-FIRST DA ALAVANCAGEM (painel CRO) ──
+        # (a) DADO FINO NÃO ALAVANCA: a Qualidade thin/CONF BAIXA (<piso de pilares-núcleo reais)
+        #     capava o veredito mas NÃO travava a leverage (BBSE3 thin liberava lev 83; SANB11 pil2
+        #     liberava 74). Survival-first: qualidade não-comprovada → SÓ à vista (1x) até provar.
+        # (b) KILL-SWITCH POR MAXDD: tombo histórico extremo (pior que -70%) = cauda de ruína →
+        #     alavancar é convite a margin-call (LREN3 -86%). Sem alavancagem, independente do rank.
+        if _quality_thin:
+            leverage = 1.0
+        if dd is not None and dd <= _MAXDD_KILL_LEVERAGE:
+            leverage = 1.0
 
         # RANK DUPLO (decisão do dono): a indicação de compra/venda (rank base + veredito) depende
         # SÓ de Qualidade + Momento — leverage-independente. A Camada 3 é um OVERLAY opcional (botão):
