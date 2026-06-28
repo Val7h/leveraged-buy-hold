@@ -1769,19 +1769,24 @@ def compute_ranking(force: bool = False) -> dict:
             return val                 # fresco
         _start_bg_refresh()            # vencido → devolve o velho já e atualiza por trás
         return val
-    return _recompute_ranking()        # frio ou force → calcula síncrono
+    return _recompute_ranking(force=force)   # frio ou force → calcula síncrono
 
 
 _compute_lock = _threading.Lock()
 
 
-def _recompute_ranking() -> dict:
+def _recompute_ranking(force: bool = False) -> dict:
     """Cálculo pesado do ranking (~116 tickers, paralelizado). Atualiza o cache.
     Serializado: se outro thread (ex: warm-up) já calculou enquanto esperávamos o
-    lock, reaproveita o resultado fresco em vez de recalcular tudo de novo."""
+    lock, reaproveita o resultado fresco em vez de recalcular tudo de novo.
+
+    force=True: IGNORA o cache fresco e recalcula de verdade. BUG corrigido — antes
+    o re-check de TTL aqui dentro anulava o force vindo do endpoint (?force=true),
+    deixando o ranking CONGELADO por até RANKING_TTL mesmo após dado novo (ex: CVM
+    populou o disco mas o ranking servia o cache thin do boot)."""
     with _compute_lock:
         entry = _cache.get("ranking")
-        if entry is not None and (time.time() - entry[0]) < RANKING_TTL:
+        if not force and entry is not None and (time.time() - entry[0]) < RANKING_TTL:
             return entry[1]
         return _recompute_ranking_inner()
 
