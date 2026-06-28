@@ -887,6 +887,17 @@ _REGULATED_BR = {
 
 # Kill-switch de alavancagem por drawdown histórico extremo (painel CRO): pior que isto → só à vista.
 _MAXDD_KILL_LEVERAGE = -70.0
+# SANITIZAÇÃO (painel CRO 2ª rodada): drawdown ≤ -95% num histórico longo é quase certamente ARTEFATO
+# de dado (split/bonificação não-ajustada pré-2000) — empresa viva não vai a zero. Esses -100% falsos
+# (UGPA3/CMIG4/GGBR4...) faziam o kill-switch travar 16/17 ativos legítimos ("ETF caro"). Ignoramos
+# valores ≤ isto como suspeitos; o kill-switch só morde sobre drawdown SANO.
+_MAXDD_ARTIFACT = -95.0
+
+
+def _worst_sane_dd(*vals):
+    """Pior (mais negativo) drawdown DESCARTANDO artefatos ≤ _MAXDD_ARTIFACT. None se todos suspeitos."""
+    sane = [v for v in vals if v is not None and v > _MAXDD_ARTIFACT]
+    return min(sane) if sane else None
 
 
 def _is_financial(ticker: str) -> bool:
@@ -1697,8 +1708,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         #     alavancar é convite a margin-call (LREN3 -86%). Sem alavancagem, independente do rank.
         if _quality_thin:
             leverage = 1.0
-        _mdds = [v for v in (dd, dd_full) if v is not None]
-        if _mdds and min(_mdds) <= _MAXDD_KILL_LEVERAGE:
+        _wdd = _worst_sane_dd(dd, dd_full)   # ignora artefatos -100% (split não-ajustado)
+        if _wdd is not None and _wdd <= _MAXDD_KILL_LEVERAGE:
             leverage = 1.0
 
         # RANK DUPLO (decisão do dono): a indicação de compra/venda (rank base + veredito) depende
@@ -2013,8 +2024,8 @@ def _rederive_leverage_for_profile(asset: dict, profile: str) -> Optional[float]
     # (este é o caminho que produz a leverage EXIBIDA p/ moderado/conservador). Antes só capava em 2x.
     if pin.get("quality_thin"):          # dado fino/CONF BAIXA NÃO alavanca — só à vista até comprovar
         leverage = 1.0
-    _mdds = [v for v in (pin.get("max_dd"), pin.get("max_dd_full")) if v is not None]
-    if _mdds and min(_mdds) <= _MAXDD_KILL_LEVERAGE:   # pior tombo histórico extremo → sem alavancagem
+    _wdd = _worst_sane_dd(pin.get("max_dd"), pin.get("max_dd_full"))   # ignora artefatos -100%
+    if _wdd is not None and _wdd <= _MAXDD_KILL_LEVERAGE:   # pior tombo SANO extremo → sem alavancagem
         leverage = 1.0
     if beta is not None and beta >= 1.45:
         leverage = min(leverage, 2.0)

@@ -633,6 +633,16 @@ def refresh_cvm_cache() -> dict:
         except Exception as e:
             logger.warning(f"[CVM] clear_cache do provider falhou (seguindo): {e}")
 
+        # RECOMPUTA O RANKING com o CVM fresco. Todo deploy ZERA o /tmp → se o ranking for computado
+        # na janela ANTES da CVM repopular, nasce thin e fica cacheado ~20min (regressão fantasma:
+        # WEGE3 caía p/ pil1). Recomputar aqui, no fim do refresh, garante ranking correto pós-deploy.
+        try:
+            from app.services import ranking_service as _RS
+            _RS.compute_ranking(force=True)
+            stats["ranking_recomputado"] = True
+        except Exception as e:
+            logger.warning(f"[CVM] recompute do ranking pós-refresh falhou (seguindo): {e}")
+
         logger.info(f"[CVM] refresh OK: {stats}")
         return stats
     except Exception as e:

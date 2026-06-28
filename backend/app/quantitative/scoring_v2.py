@@ -910,7 +910,9 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
         (s_fcf, 0.16, "fcf"),
         (s_moat, 0.16, "moat"),
         (s_growth, 0.12, "crescimento"),
-        (s_pred, 0.22, "fluxo_contratado"),
+        # peso ALTO (painel 2ª rodada): em utility regulada a previsibilidade de caixa contratado é o
+        # pilar DOMINANTE de qualidade defensiva; 0,22 era fraco demais (TAEE11 seguia no limbo Q46).
+        (s_pred, 0.40, "fluxo_contratado"),
     ]
     for s, w, k in pilares:
         if s is not None:
