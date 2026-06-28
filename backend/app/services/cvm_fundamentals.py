@@ -672,6 +672,21 @@ def probe_cvm(year: int = 2024) -> dict:
         res["names_esperados"] = [f"dfp_cia_aberta_{d}_con_{year}.csv"
                                   for d in ("DRE", "BPA", "BPP", "DFC_MI", "DVA")]
         res["nomes_batem"] = {n: (n in names) for n in res["names_esperados"]}
+        # composicao_capital: header real + linha PETR4 (p/ acertar o parser de ações)
+        cc_name = f"dfp_cia_aberta_composicao_capital_{year}.csv"
+        if cc_name in names:
+            try:
+                with z.open(cc_name) as fh:
+                    _tw = _io.TextIOWrapper(fh, encoding="latin-1", errors="replace", newline="")
+                    _rd = csv.DictReader(_tw, delimiter=";")
+                    res["cc_columns"] = _rd.fieldnames
+                    for _row in _rd:
+                        if (_row.get("CD_CVM") or "").strip().lstrip("0") == "9512":
+                            res["cc_petr4_row"] = {k: _row.get(k) for k in (_rd.fieldnames or [])}
+                            break
+            except Exception as e:
+                res["cc_err"] = str(e)[:200]
+            res["shares_parsed_petr4"] = _read_shares_from_zip(blob, year, {"9512"}).get("9512")
         # parse p/ PETR4 (cd_cvm 9512)
         rows = _read_consolidated_csvs(blob, "dfp_cia_aberta", year)
         res["total_rows_parsed"] = len(rows)
