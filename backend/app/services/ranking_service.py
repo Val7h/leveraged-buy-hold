@@ -1401,6 +1401,15 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # OBTENÍVEIS no BR (roic+safety+fcf) → BR bem-coberto (3/3) sai ILESO (w=1). HOLDING usa o
         # crivo próprio (dividendo+safety). Mesmo _qmkt usado depois no guardrail Bug D.
         _qmkt = "HOLDING" if is_holding else ("BR" if is_br else "US")
+        # fcf_yield DERIVADO da CVM (cobre TODA a B3; brapi free não dá market cap): FCF absoluto
+        # ÷ (preço × nº de ações ON+PN). Aproxima o market cap pelo preço-do-ticker × ações totais —
+        # ON/PN andam juntos no BR; suficiente p/ o pilar fcf (bucketizado por limiares). SÓ se a
+        # fonte não trouxe fcf_yield (não sobrescreve dado direto do brapi/FMP). NÃO fabrica.
+        if (fund.get("fcf_yield") is None and fund.get("fcf") is not None
+                and fund.get("shares") and len(a)):
+            _mc = float(a[-1]) * float(fund["shares"])
+            if _mc > 0:
+                fund["fcf_yield"] = fund["fcf"] / _mc
         quality, qb = S.compute_quality_blend(
             beta=beta, max_dd_pct=dd, dividend_yield=dy, growth_5y=fund_growth,
             roe=fund.get("roe"), debt_to_equity=fund.get("debt_to_equity"),

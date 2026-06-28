@@ -140,7 +140,7 @@ def _merge_cvm(key: str, result: dict) -> bool:
         for k in ("roe", "roic", "roic_history", "fcf", "fcf_over_assets",
                   "fcf_capex_found", "debt_to_equity", "payout_ratio",
                   "rev_growth_5y", "eps_growth_5y", "rev_growth_ttm",
-                  "eps_growth_ttm"):
+                  "eps_growth_ttm", "shares"):
             if cvm.get(k) is not None:
                 result[k] = cvm[k]
         if any(cvm.get(k) is not None for k in ("roe", "roic", "fcf")):

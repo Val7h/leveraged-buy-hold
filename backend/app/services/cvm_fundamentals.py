@@ -43,7 +43,7 @@ import urllib.request as _urlreq
 logger = logging.getLogger(__name__)
 
 # ───────────────────────────── constantes / config ──────────────────────────────
-ETL_VERSION = "selfheal-1"           # marcador p/ saber qual código está live no Render
+ETL_VERSION = "shares-fcfy-1"        # marcador p/ saber qual código está live no Render
 CVM_BASE = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC"
 TAX_RATE = 0.34                      # IR+CSLL p/ NOPAT = EBIT × (1 − 0.34)
 DFP_YEARS = 5                        # janela DFP p/ ROIC histórico / CAGR 5a
@@ -368,6 +368,7 @@ def _empty_cvm() -> dict:
         "rev_growth_ttm": None,
         "eps_growth_ttm": None,
         "roic_history": None,
+        "shares": None,               # nº de ações (ON+PN integralizadas − tesouraria) p/ market cap
         "source": "cvm",
         "data_origin": "cvm",
     }
@@ -430,6 +431,64 @@ def _read_consolidated_csvs(zip_bytes: bytes, prefix: str, year: int,
     return rows
 
 
+def _read_shares_from_zip(zip_bytes: bytes, year: int, wanted_cd: set | None = None) -> dict:
+    """Lê o nº de AÇÕES de dfp_cia_aberta_composicao_capital_{year}.csv (ON+PN
+    integralizadas − tesouraria) por CD_CVM. Usado p/ derivar fcf_yield = FCF ÷
+    (preço × ações) no ranking — cobre TODA a B3 (brapi free não dá market cap).
+
+    Detecção FUZZY das colunas (o layout da CVM varia): acha a coluna 'TOTAL ...
+    INTEGRALIZAD...'; senão soma 'ORDINAR...INTEGRALIZAD...' + 'PREFERENC...
+    INTEGRALIZAD...'; subtrai tesouraria total se houver. NÃO filtra ORDEM_EXERC
+    (este CSV não tem). Streaming (memória-safe). {} em qualquer falha."""
+    out: dict = {}
+    name = f"dfp_cia_aberta_composicao_capital_{year}.csv"
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except Exception:
+        return out
+    with zf:
+        if name not in set(zf.namelist()):
+            return out
+        try:
+            with zf.open(name) as fh:
+                tw = io.TextIOWrapper(fh, encoding="latin-1", errors="replace", newline="")
+                reader = csv.DictReader(tw, delimiter=";")
+                cols = reader.fieldnames or []
+
+                def _find(*needles):
+                    for c in cols:
+                        cu = c.upper()
+                        if all(n in cu for n in needles):
+                            return c
+                    return None
+
+                col_total = _find("TOTAL", "INTEGRALIZAD")
+                col_on = _find("ORDINAR", "INTEGRALIZAD")
+                col_pn = _find("PREFERENC", "INTEGRALIZAD")
+                col_tes = _find("TOTAL", "TESOURARIA")
+                if not (col_total or (col_on and col_pn)):
+                    return out
+                for row in reader:
+                    cd = ((row.get("CD_CVM") or "").strip().lstrip("0") or "0")
+                    if wanted_cd is not None and cd not in wanted_cd:
+                        continue
+                    tot = _to_float(row.get(col_total)) if col_total else None
+                    if tot is None and col_on and col_pn:
+                        on = _to_float(row.get(col_on))
+                        pn = _to_float(row.get(col_pn))
+                        if on is not None or pn is not None:
+                            tot = (on or 0.0) + (pn or 0.0)
+                    if tot is None or tot <= 0:
+                        continue
+                    tes = _to_float(row.get(col_tes)) if col_tes else None
+                    shares = tot - (tes or 0.0)
+                    if shares > 0:
+                        out[cd] = shares   # anos ASCENDENTES no refresh → último (mais recente) vence
+        except Exception as e:
+            logger.warning(f"[CVM] parse composicao_capital {year}: {e}")
+    return out
+
+
 def load_ticker_map() -> dict:
     """Lê cvm_ticker_map.json (ticker→{cd_cvm,cnpj}). {} se ausente/inválido."""
     try:
@@ -487,6 +546,7 @@ def refresh_cvm_cache() -> dict:
         # ── DFP (anual, 5 anos): junta linhas por cd_cvm. Filtra DURANTE o parse
         #    (wanted) e libera o blob a cada ano → pico de RAM minúsculo (anti-OOM). ──
         dfp_by_cd: dict[str, list[dict]] = {}
+        shares_by_cd: dict[str, float] = {}   # nº de ações (mais recente vence; anos ascendentes)
         for y in years:
             url = f"{CVM_BASE}/DFP/DADOS/dfp_cia_aberta_{y}.zip"
             blob = _http_get_bytes(url)
@@ -494,6 +554,7 @@ def refresh_cvm_cache() -> dict:
                 continue
             for r in _read_consolidated_csvs(blob, "dfp_cia_aberta", y, wanted_cd=wanted):
                 dfp_by_cd.setdefault((r["cd_cvm"].lstrip("0") or "0"), []).append(r)
+            shares_by_cd.update(_read_shares_from_zip(blob, y, wanted_cd=wanted))
             del blob
             _gc.collect()
 
@@ -512,6 +573,7 @@ def refresh_cvm_cache() -> dict:
         for cd, dfp_rows in dfp_by_cd.items():
             try:
                 pillars = compute_company_pillars(dfp_rows, itr_by_cd.get(cd))
+                pillars["shares"] = shares_by_cd.get(cd)   # p/ fcf_yield = FCF ÷ (preço×ações)
                 pillars["_cd_cvm"] = cd
                 pillars["_refreshed_at"] = time.time()
                 tmp = _cache_path(cd) + ".tmp"
@@ -646,13 +708,13 @@ def lookup_ticker(ticker: str) -> dict:
         cvm = get_cvm_fundamentals(key)
         res["cvm_raw"] = ({k: cvm.get(k) for k in
                            ("roe", "roic", "fcf", "debt_to_equity", "payout_ratio",
-                            "rev_growth_5y")} if cvm else None)
+                            "rev_growth_5y", "shares")} if cvm else None)
         try:
             from app.services import fundamentals_provider as _FP
             fu = _FP.get_fundamentals(key)
             res["provider"] = {k: fu.get(k) for k in
                                ("source", "data_origin", "roe", "roic", "fcf",
-                                "fcf_yield", "debt_to_equity")}
+                                "fcf_yield", "debt_to_equity", "shares")}
             # Simula o caminho do ranking: provider → compute_quality_blend → contagem de pilares.
             try:
                 from app.quantitative import scoring_v2 as _S
