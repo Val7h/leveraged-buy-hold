@@ -255,7 +255,24 @@ def _cagr(first, last, periods):
     return ((last / first) ** (1.0 / periods) - 1.0) * 100.0
 
 
-def compute_company_pillars(dfp_rows: list[dict], itr_rows: list[dict] | None = None) -> dict:
+def _normalize_shares(shares, pl):
+    """Normaliza a ESCALA do nº de ações. O composicao_capital da CVM MISTURA
+    unidades e milhares SEM coluna de escala (ex: PETR4 '13044496930' = unidades;
+    CMIG4 '2861782' = 2,86 bi em MILHARES). Cross-check com o PL: se o valor
+    patrimonial por ação (PL ÷ ações) ficar absurdo (>R$300/ação — implausível p/
+    ação B3) E o ×1000 trouxer p/ faixa sã, multiplica por 1000. Conservador: só
+    corrige o caso claramente absurdo; na dúvida mantém. None → None."""
+    if not shares or shares <= 0:
+        return shares
+    if pl and pl > 0:
+        bvps = pl / shares
+        if bvps > 300.0 and 0.5 <= (pl / (shares * 1000.0)) <= 300.0:
+            return shares * 1000.0
+    return shares
+
+
+def compute_company_pillars(dfp_rows: list[dict], itr_rows: list[dict] | None = None,
+                            shares=None) -> dict:
     """NÚCLEO PURO: dado o conjunto de linhas DFP (multi-ano) + ITR de UMA
     empresa, calcula todos os pilares. Retorna dict no shape do provider.
 
@@ -281,6 +298,7 @@ def compute_company_pillars(dfp_rows: list[dict], itr_rows: list[dict] | None = 
     capex = _capex(dfp_rows, last_year)
 
     out["roic"] = compute_roic(ebit, pl, gdebt)
+    out["shares"] = _normalize_shares(shares, pl)   # escala unidades×milhares (cross-check PL)
 
     if lucro is not None and pl not in (None, 0):
         out["roe"] = lucro / pl
@@ -594,8 +612,8 @@ def refresh_cvm_cache() -> dict:
         os.makedirs(CVM_CACHE_DIR, exist_ok=True)
         for cd, dfp_rows in dfp_by_cd.items():
             try:
-                pillars = compute_company_pillars(dfp_rows, itr_by_cd.get(cd))
-                pillars["shares"] = shares_by_cd.get(cd)   # p/ fcf_yield = FCF ÷ (preço×ações)
+                pillars = compute_company_pillars(dfp_rows, itr_by_cd.get(cd),
+                                                  shares=shares_by_cd.get(cd))
                 pillars["_cd_cvm"] = cd
                 pillars["_refreshed_at"] = time.time()
                 tmp = _cache_path(cd) + ".tmp"
