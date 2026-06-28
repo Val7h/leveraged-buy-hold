@@ -123,6 +123,41 @@ def _lastgood_read(key: str) -> dict | None:
         return None
 
 
+def _merge_cvm(key: str, result: dict) -> bool:
+    """Mescla os pilares da CVM (fonte primária BR, cache em disco) sobre `result`.
+    Retorna True se a CVM trouxe ≥1 pilar real (roe/roic/fcf) e foi aplicada.
+
+    CRÍTICO (multi-worker): o cache em memória é POR-WORKER; um worker pode ter
+    cacheado o dado FINO (brapi-só) no boot, ANTES do refresh da CVM popular o
+    DISCO (que é compartilhado entre workers). Este helper lê o disco e re-mescla
+    → cada worker se auto-cura na próxima request, sem depender de quem rodou o
+    refresh. NÃO fabrica: se a CVM não tem o ticker, não muda nada (retorna False)."""
+    try:
+        from app.services.cvm_fundamentals import get_cvm_fundamentals
+        cvm = get_cvm_fundamentals(key)
+        if not cvm:
+            return False
+        for k in ("roe", "roic", "roic_history", "fcf", "fcf_over_assets",
+                  "fcf_capex_found", "debt_to_equity", "payout_ratio",
+                  "rev_growth_5y", "eps_growth_5y", "rev_growth_ttm",
+                  "eps_growth_ttm"):
+            if cvm.get(k) is not None:
+                result[k] = cvm[k]
+        if any(cvm.get(k) is not None for k in ("roe", "roic", "fcf")):
+            result["data_origin"] = "cvm"
+            base_src = result.get("source")
+            # evita duplicar "+cvm" se já estava marcado
+            if not base_src:
+                result["source"] = "cvm"
+            elif "cvm" not in base_src:
+                result["source"] = base_src + "+cvm"
+            return True
+        return False
+    except Exception as e:
+        logger.warning(f"[FUNDAMENTALS] _merge_cvm({key!r}) falhou: {e}")
+        return False
+
+
 def _empty(source=None) -> dict:
     """Dict-padrão de retorno (shape estável). Nunca falta uma chave."""
     return {
@@ -536,7 +571,13 @@ def get_fundamentals(ticker: str) -> dict:
         now = _time.time()
         hit = _CACHE.get(key)
         if hit and hit[0] > now:
-            return dict(hit[1])  # cópia defensiva
+            cached = dict(hit[1])  # cópia defensiva
+            # AUTO-CURA cross-worker: .SA cacheado SEM CVM (fino do boot) mas a CVM
+            # já está no DISCO compartilhado → re-mescla agora e re-grava o cache.
+            if key.endswith(".SA") and cached.get("data_origin") != "cvm":
+                if _merge_cvm(key, cached):
+                    _CACHE[key] = (now + _CACHE_TTL, dict(cached))
+            return cached
 
         # sem fundamentos (crypto/índice/câmbio)
         _no_fund = _is_no_fundamentals(key)
@@ -549,23 +590,7 @@ def get_fundamentals(ticker: str) -> dict:
             # crescimento, payout, roe) que o brapi free achata. O brapi fica só
             # p/ preço/DY corrente. ZERO regressão: se a CVM não tiver o ticker
             # (sem mapa / sem cache), segue o fluxo brapi+fundamentus+fmp intacto.
-            try:
-                from app.services.cvm_fundamentals import get_cvm_fundamentals
-                cvm = get_cvm_fundamentals(key)
-                if cvm:
-                    for k in ("roe", "roic", "roic_history", "fcf", "fcf_over_assets",
-                              "fcf_capex_found", "debt_to_equity", "payout_ratio",
-                              "rev_growth_5y", "eps_growth_5y", "rev_growth_ttm",
-                              "eps_growth_ttm"):
-                        if cvm.get(k) is not None:
-                            result[k] = cvm[k]
-                    if any(cvm.get(k) is not None for k in ("roe", "roic", "fcf")):
-                        result["data_origin"] = "cvm"
-                        result["source"] = (
-                            (result.get("source") + "+cvm")
-                            if result.get("source") else "cvm")
-            except Exception as e:
-                logger.warning(f"[FUNDAMENTALS] CVM primária BR falhou p/ {key}: {e}")
+            _merge_cvm(key, result)   # fonte primária BR (disco compartilhado); no-op se ausente
             # brapi free cobre poucos tickers B3 (PETR4, ITUB4…); resto retorna 403.
             # Fallback 1: fundamentus.com.br — cobertura total B3, sem token.
             if (result.get("roe") is None or result.get("roic") is None):
