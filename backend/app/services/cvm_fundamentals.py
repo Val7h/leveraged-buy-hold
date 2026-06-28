@@ -431,16 +431,21 @@ def _read_consolidated_csvs(zip_bytes: bytes, prefix: str, year: int,
     return rows
 
 
-def _read_shares_from_zip(zip_bytes: bytes, year: int, wanted_cd: set | None = None) -> dict:
+def _only_digits(s) -> str:
+    return "".join(c for c in str(s or "") if c.isdigit())
+
+
+def _read_shares_from_zip(zip_bytes: bytes, year: int, wanted_cnpj: set | None = None) -> dict:
     """Lê o nº de AÇÕES de dfp_cia_aberta_composicao_capital_{year}.csv (ON+PN
-    integralizadas − tesouraria) por CD_CVM. Usado p/ derivar fcf_yield = FCF ÷
+    integralizadas − tesouraria) por CNPJ. Usado p/ derivar fcf_yield = FCF ÷
     (preço × ações) no ranking — cobre TODA a B3 (brapi free não dá market cap).
 
-    Detecção FUZZY das colunas (o layout da CVM varia): acha a coluna 'TOTAL ...
-    INTEGRALIZAD...'; senão soma 'ORDINAR...INTEGRALIZAD...' + 'PREFERENC...
-    INTEGRALIZAD...'; subtrai tesouraria total se houver. NÃO filtra ORDEM_EXERC
-    (este CSV não tem). Streaming (memória-safe). {} em qualquer falha."""
+    ATENÇÃO ao layout REAL deste CSV (confirmado via probe ao vivo): NÃO tem CD_CVM
+    (chaveia por CNPJ_CIA) e as colunas usam 'INTEGR'/'TESOURO' (não 'INTEGRALIZAD'/
+    'TESOURARIA'). Detecção FUZZY p/ resistir a variações. Pega o DT_REFER mais
+    recente por empresa. Retorna {cnpj_14dig: shares}. Streaming. {} em falha."""
     out: dict = {}
+    best_dt: dict = {}
     name = f"dfp_cia_aberta_composicao_capital_{year}.csv"
     try:
         zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
@@ -462,16 +467,21 @@ def _read_shares_from_zip(zip_bytes: bytes, year: int, wanted_cd: set | None = N
                             return c
                     return None
 
-                col_total = _find("TOTAL", "INTEGRALIZAD")
-                col_on = _find("ORDINAR", "INTEGRALIZAD")
-                col_pn = _find("PREFERENC", "INTEGRALIZAD")
-                col_tes = _find("TOTAL", "TESOURARIA")
+                col_total = _find("TOTAL", "INTEGR")
+                col_on = _find("ORDIN", "INTEGR")
+                col_pn = _find("PREF", "INTEGR")
+                col_tes = _find("TOTAL", "TESOUR")
                 if not (col_total or (col_on and col_pn)):
                     return out
                 for row in reader:
-                    cd = ((row.get("CD_CVM") or "").strip().lstrip("0") or "0")
-                    if wanted_cd is not None and cd not in wanted_cd:
+                    cnpj = _only_digits(row.get("CNPJ_CIA"))
+                    if len(cnpj) != 14:
                         continue
+                    if wanted_cnpj is not None and cnpj not in wanted_cnpj:
+                        continue
+                    dt = (row.get("DT_REFER") or "").strip()
+                    if cnpj in best_dt and dt <= best_dt[cnpj]:
+                        continue   # já temos um DT_REFER mais recente
                     tot = _to_float(row.get(col_total)) if col_total else None
                     if tot is None and col_on and col_pn:
                         on = _to_float(row.get(col_on))
@@ -483,7 +493,8 @@ def _read_shares_from_zip(zip_bytes: bytes, year: int, wanted_cd: set | None = N
                     tes = _to_float(row.get(col_tes)) if col_tes else None
                     shares = tot - (tes or 0.0)
                     if shares > 0:
-                        out[cd] = shares   # anos ASCENDENTES no refresh → último (mais recente) vence
+                        out[cnpj] = shares
+                        best_dt[cnpj] = dt
         except Exception as e:
             logger.warning(f"[CVM] parse composicao_capital {year}: {e}")
     return out
@@ -530,10 +541,18 @@ def refresh_cvm_cache() -> dict:
         tmap = load_ticker_map()
         # cd_cvm desejados (normalizados, sem zeros à esquerda inconsistentes)
         wanted: set[str] = set()
+        cnpj_to_cd: dict[str, str] = {}     # CNPJ(14díg) → cd_cvm — p/ casar o composicao_capital
+        wanted_cnpj: set[str] = set()
         for entry in tmap.values():
             cd = _cd_cvm_of(entry)
             if cd:
-                wanted.add(cd.lstrip("0") or "0")
+                cdn = cd.lstrip("0") or "0"
+                wanted.add(cdn)
+                if isinstance(entry, dict):
+                    cnpj = _only_digits(entry.get("cnpj"))
+                    if len(cnpj) == 14:
+                        cnpj_to_cd[cnpj] = cdn
+                        wanted_cnpj.add(cnpj)
         stats["empresas_mapa"] = len(wanted)
         if not wanted:
             logger.info("[CVM] mapa vazio — refresh no-op (sem erro)")
@@ -546,7 +565,7 @@ def refresh_cvm_cache() -> dict:
         # ── DFP (anual, 5 anos): junta linhas por cd_cvm. Filtra DURANTE o parse
         #    (wanted) e libera o blob a cada ano → pico de RAM minúsculo (anti-OOM). ──
         dfp_by_cd: dict[str, list[dict]] = {}
-        shares_by_cd: dict[str, float] = {}   # nº de ações (mais recente vence; anos ascendentes)
+        shares_by_cnpj: dict[str, float] = {}   # CNPJ → ações (mais recente vence; anos ascendentes)
         for y in years:
             url = f"{CVM_BASE}/DFP/DADOS/dfp_cia_aberta_{y}.zip"
             blob = _http_get_bytes(url)
@@ -554,9 +573,12 @@ def refresh_cvm_cache() -> dict:
                 continue
             for r in _read_consolidated_csvs(blob, "dfp_cia_aberta", y, wanted_cd=wanted):
                 dfp_by_cd.setdefault((r["cd_cvm"].lstrip("0") or "0"), []).append(r)
-            shares_by_cd.update(_read_shares_from_zip(blob, y, wanted_cd=wanted))
+            shares_by_cnpj.update(_read_shares_from_zip(blob, y, wanted_cnpj=wanted_cnpj))
             del blob
             _gc.collect()
+        # traduz CNPJ → cd_cvm (chave do cache de pilares)
+        shares_by_cd: dict[str, float] = {
+            cnpj_to_cd[c]: v for c, v in shares_by_cnpj.items() if c in cnpj_to_cd}
 
         # ── ITR (último ano + anterior) p/ TTM YoY ──
         itr_by_cd: dict[str, list[dict]] = {}
@@ -686,7 +708,8 @@ def probe_cvm(year: int = 2024) -> dict:
                             break
             except Exception as e:
                 res["cc_err"] = str(e)[:200]
-            res["shares_parsed_petr4"] = _read_shares_from_zip(blob, year, {"9512"}).get("9512")
+            res["shares_parsed_petr4"] = _read_shares_from_zip(
+                blob, year, {"33000167000101"}).get("33000167000101")
         # parse p/ PETR4 (cd_cvm 9512)
         rows = _read_consolidated_csvs(blob, "dfp_cia_aberta", year)
         res["total_rows_parsed"] = len(rows)
