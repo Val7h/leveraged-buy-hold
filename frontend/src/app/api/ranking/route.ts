@@ -14,7 +14,13 @@ export async function GET(req: NextRequest) {
 
   // Repassamos o perfil como query param. forwardSearch=false pra não duplicar
   // a search original (a aba não envia query relevante hoje).
-  const backendPath = `/api/ranking?profile=${encodeURIComponent(profile)}`;
+  // EXCEÇÃO: ?force=true é repassado explicitamente — sem isso o backend NUNCA
+  // recebia o force e servia o cache (~20min) eternamente (ex: dado CVM novo no
+  // disco não aparecia até o TTL vencer). O botão "Recalcular" depende disto.
+  const force = req.nextUrl.searchParams.get("force") === "true";
+  const backendPath =
+    `/api/ranking?profile=${encodeURIComponent(profile)}` +
+    (force ? "&force=true" : "");
 
   // ~116 tickers a frio é pesado; o FastAPI cacheia ~20min, então fica rápido depois.
   return proxyToBackend(req, backendPath, {
