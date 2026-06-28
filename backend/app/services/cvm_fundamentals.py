@@ -702,15 +702,16 @@ def probe_cvm(year: int = 2024) -> dict:
                     _tw = _io.TextIOWrapper(fh, encoding="latin-1", errors="replace", newline="")
                     _rd = csv.DictReader(_tw, delimiter=";")
                     res["cc_columns"] = _rd.fieldnames
-                    _samples = []
+                    _want = {"17155730000164": "CMIG4", "33592510000154": "VALE3"}
+                    _rows_by = {}
                     for _row in _rd:
                         cnpj = _only_digits(_row.get("CNPJ_CIA"))
-                        if len(_samples) < 3:
-                            _samples.append({k: _row.get(k) for k in (_rd.fieldnames or [])})
-                        if cnpj in ("33000167000101", "02808708000107"):  # PETR4, ABEV3
-                            res.setdefault("cc_named_rows", {})[cnpj] = {
-                                k: _row.get(k) for k in (_rd.fieldnames or [])}
-                    res["cc_first_rows"] = _samples
+                        if cnpj in _want:
+                            _rows_by.setdefault(_want[cnpj], []).append({
+                                "DT_REFER": _row.get("DT_REFER"), "VERSAO": _row.get("VERSAO"),
+                                "TOTAL_INTEGR": _row.get("QT_ACAO_TOTAL_CAP_INTEGR"),
+                                "TOTAL_TESOURO": _row.get("QT_ACAO_TOTAL_TESOURO")})
+                    res["cc_named_rows"] = _rows_by
             except Exception as e:
                 res["cc_err"] = str(e)[:200]
             res["shares_parsed_petr4"] = _read_shares_from_zip(
