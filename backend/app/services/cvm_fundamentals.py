@@ -623,6 +623,43 @@ def probe_cvm(year: int = 2024) -> dict:
     return res
 
 
+def lookup_ticker(ticker: str) -> dict:
+    """Diagnóstico por-ticker: resolve cd_cvm, diz se o arquivo de cache existe,
+    e mostra o retorno cru de get_cvm_fundamentals + de get_fundamentals (provider).
+    Pinpoint de onde o pilar vem (CVM vs brapi) e por que falha."""
+    res = {"ticker": ticker}
+    try:
+        key = ticker.strip().upper()
+        base = key[:-3] if key.endswith(".SA") else key
+        tmap = load_ticker_map()
+        entry = tmap.get(key) or tmap.get(base) or tmap.get(base + ".SA")
+        res["map_hit"] = entry is not None
+        cd = _cd_cvm_of(entry) if entry else None
+        cd = (cd.lstrip("0") or "0") if cd else None
+        res["cd_cvm"] = cd
+        if cd:
+            path = _cache_path(cd)
+            res["cache_file"] = os.path.basename(path)
+            res["cache_exists"] = os.path.exists(path)
+        cvm = get_cvm_fundamentals(key)
+        res["cvm_raw"] = ({k: cvm.get(k) for k in
+                           ("roe", "roic", "fcf", "debt_to_equity", "payout_ratio",
+                            "rev_growth_5y")} if cvm else None)
+        try:
+            from app.services import fundamentals_provider as _FP
+            fu = _FP.get_fundamentals(key)
+            res["provider"] = {k: fu.get(k) for k in
+                               ("source", "data_origin", "roe", "roic", "fcf",
+                                "fcf_yield", "debt_to_equity")}
+        except Exception as e:
+            res["provider_err"] = str(e)[:200]
+    except Exception as e:
+        import traceback as _tb
+        res["exception"] = str(e)
+        res["traceback"] = _tb.format_exc()[-800:]
+    return res
+
+
 def start_refresh_async() -> dict:
     """Dispara refresh_cvm_cache numa THREAD (não bloqueia o request) + grava status."""
     import threading as _th

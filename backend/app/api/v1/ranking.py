@@ -42,6 +42,14 @@ def cvm_probe(year: int = Query(2024, description="Ano DFP já publicado p/ sond
         return {"error": str(e)}
 
 
+@router.get("/api/cvm/lookup")
+def cvm_lookup(ticker: str = Query(..., description="Ticker .SA p/ diagnóstico CVM×provider")):
+    try:
+        return CVM.lookup_ticker(ticker)
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.post("/api/cvm/refresh")
 def cvm_refresh():
     """Dispara o refresh completo numa thread (não bloqueia). Veja /api/cvm/refresh-status."""
