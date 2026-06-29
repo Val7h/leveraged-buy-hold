@@ -910,6 +910,21 @@ def _is_regulated(ticker: str) -> bool:
     return ticker.upper() in _REGULATED_BR
 
 
+# Tickers US cujos PE são estruturalmente altos por D&A não-caixa (REIT/Utility/Infraestrutura):
+# o múltiplo correto é EV/FFO ou EV/AFFO, não PE. Isentos do haircut de TSR por PE > 18x.
+_PE_HAIRCUT_EXEMPT_US = {
+    # REITs
+    "O", "MAIN",          # Realty Income, Main Street (BDC assimilado)
+    "VICI", "AMT", "CCI", "SBAC",  # REIT infraestrutura (torres, cassinos)
+    "PLD", "EXR", "AVB", "EQR",    # REIT industrial/storage/residencial
+    # Utilities US (NEE/DUK/SO já no universo)
+    "NEE", "DUK", "SO", "AEP", "EXC", "SRE", "D", "PCG",
+}
+
+def _is_pe_haircut_exempt(ticker: str) -> bool:
+    return ticker.upper().replace("-", "") in {t.replace("-", "") for t in _PE_HAIRCUT_EXEMPT_US}
+
+
 # EMPRESAS ESTATAIS — dividendo pode ser cortado por decisão política (ex: PETR4 2022).
 # Flag informativo: não entra no scoring, sinaliza risco político ao gestor.
 # Inclui controle federal, estadual ou municipal ≥ 50%.
@@ -924,6 +939,10 @@ _STATE_OWNED = {
     "ELET3.SA", "ELET6.SA",    # Eletrobras (federal, privatizada 2022 — controle ainda > 40%)
     "SAPR11.SA", "SAPR4.SA",   # Sanepar (PR)
     "CPLE6.SA", "CPLE3.SA",    # Copel (PR)
+    # Controle cruzado / risco político equivalente
+    "CSAN3.SA",                # Cosan — braço da Raízen (JV Shell 50%); dependência estatal via combustíveis
+    "TIMS3.SA",                # TIM BR — controlada por Telecom Italia (estado italiano ~23%); risco regulatório
+    "VIVT3.SA",                # Telefônica BR (Vivo) — controlada por Telefónica S.A. (Espanha); risco político externo
 }
 
 
@@ -1468,10 +1487,13 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # HAIRCUT US/EUROPE: quando PE > mediana histórica S&P (~18x), parte do g5 de preço já foi
         # "antecipado" pela expansão de múltiplo — não se repete. Haircut proporcional ao excesso de PE:
         # cada ponto de PE acima de 18 desconta 0.3pp do crescimento (cap de 5pp de haircut).
-        # Evita TSR inflado em ativos com PE=40 (MSFT/NVDA) onde g5-preço inclui re-rating histórico.
+        # EXCEÇÃO: REITs, Utilities e Infrastructure têm PE estruturalmente alto por depreciação
+        # real (D&A não-caixa); o múltiplo correto seria EV/AFFO ou EV/FFO. Aplicar haircut linear
+        # de PE neles seria punir com métrica errada de valuation → isentos.
         _g5_for_tsr = g5 or 0.0
         _pe_tsr = fund.get("pe_ratio")
-        if not is_br and _pe_tsr is not None and _pe_tsr > 18 and _g5_for_tsr > 0:
+        _pe_haircut_exempt = _is_pe_haircut_exempt(tk) or is_regulated
+        if not is_br and not _pe_haircut_exempt and _pe_tsr is not None and _pe_tsr > 18 and _g5_for_tsr > 0:
             _pe_excess = min(_pe_tsr - 18.0, 17.0)  # excesso capped em 17 → haircut max 5.1pp
             _g5_haircut = min(_pe_excess * 0.3, 5.0)
             _g5_for_tsr = max(_g5_for_tsr - _g5_haircut, 0.0)
@@ -1749,8 +1771,13 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # Alavancagem = multiplicador do regime; só em candidato de compra (não RESERVA).
         # Candidato: (1) timing de entrada (momentum/dma), OU (2) aptidão alta → ativo
         # estruturalmente seguro de alavancar mesmo sem momentum quente (ex: utilities reguladas).
-        is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3)
-                            or (aptidao is not None and aptidao > 75 and bucket != "RESERVA"))
+        # aptidão>75 libera alavancagem SÓ se quality>=50 (Q-gate): respeita a hierarquia
+        # Qualidade > Momento > Aptidão do modelo mestre. Sem piso de qualidade, utility em
+        # trimestre ruim (ROE comprimido por provisão regulatória) receberia multiplicador indevido.
+        _aptidao_gate = (aptidao is not None and aptidao > 75
+                         and quality is not None and quality >= 50
+                         and bucket != "RESERVA")
+        is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3) or _aptidao_gate)
         leverage = float(mult) if (is_buy_candidate and bucket != "RESERVA") else 1.0
         # Covered-call ETF (JEPI/JEPQ/QYLD…): estratégia vende o upside intencionalmente.
         # Alavancar contradiz o veículo — teto 1x (recebe a renda, não o rally alavancado).
