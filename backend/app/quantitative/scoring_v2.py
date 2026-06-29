@@ -1489,15 +1489,18 @@ _VERDICT_PISO_COMPRAR = 45.0    # abaixo disto = ESPECULATIVO (faca), momento ne
 
 
 def aporte_verdict(momentum: float, quality: float, pe_ratio=None, selic_rate=None,
-                   growth_implied=None, is_holding=False) -> str:
+                   growth_implied=None, is_holding=False, is_regulated=False,
+                   market: str = "BR", fcf_yield=None) -> str:
     """Veredito de ENTRADA — Q-GATE (painel 2ª rodada, ratificado pelo dono; substitui o #15b
     momento-first). SURVIVAL-FIRST: a QUALIDADE define a FAIXA do veredito (é o PISO, não o momento);
     o momento move DENTRO da faixa (= timing de entrada). MONOTÔNICO em Q: a mesmo momento, Q maior
     nunca recebe veredito pior. Preserva um resquício de "pechincha": a empresa BOA (≥58) com
     momento FORTE (≥70) ainda alcança COMPRAR FORTE — mas a FRACA nunca vira FORTE só por momento.
     Por cima disto, o CRIVO por tipo + confiança + faca (ranking_service) pode rebaixar 1 degrau.
-    Gate EY vs Selic: se EY+crescimento_implícito < Selic+2pp (e não for holding), rebaixa para ESTICADO.
-    Holdings isentas: PE delas reflete desconto contábil de equivalência, não caro."""
+    Gate EY vs hurdle: se EY+crescimento_implícito < hurdle (e não for holding nem regulada), rebaixa
+    para ESTICADO. Holdings isentas: PE reflete desconto contábil de equivalência, não caro.
+    Reguladas isentas: ROE ausente no provedor gera growth=0 por artefato de dado, não sobrepreço.
+    Hurdle por moeda: BR usa Selic+2pp; US/EUR usa juro risk-free USD+2pp (~6.5% hoje)."""
     if quality >= 70:                     # EXCELENTE: nunca cai abaixo de COMPRAR por momento fraco
         if momentum >= 55:
             verdict = "COMPRAR FORTE"
@@ -1530,19 +1533,34 @@ def aporte_verdict(momentum: float, quality: float, pe_ratio=None, selic_rate=No
         else:
             verdict = "ESTICADO"
 
-    # Gate Earnings Yield vs Selic: (EY + crescimento_implícito) < Selic+2pp → ESTICADO.
-    # Holdings isentas: PE delas reflete desconto contábil de equivalência patrimonial,
-    # não sobrepreço — aplicar o mesmo limiar geraria falsos positivos estruturais (ITSA4, BRAP4).
-    # Crescimento implícito (ROE×retenção) desconta a parte do retorno que vem de crescimento,
-    # evitando penalizar ITUB4 (9.9%a.a. crescimento real) junto com BBSE3 (1.25%).
-    if not is_holding and pe_ratio is not None and pe_ratio > 0:
-        _sr = selic_rate if selic_rate is not None else _SELIC_RATE
-        earnings_yield = 1.0 / pe_ratio
-        _growth = growth_implied if growth_implied is not None else 0.0
-        total_return_implied = earnings_yield + _growth
-        if total_return_implied < (_sr + 0.02):  # retorno total implícito < Selic + 2pp
-            if verdict in ("COMPRAR FORTE", "COMPRAR"):
-                return "ESTICADO"
+    # Gate Earnings Yield vs hurdle por mercado:
+    # (EY + crescimento_implícito) < hurdle → ESTICADO.
+    # Holdings isentas: PE reflete desconto contábil de equivalência, não sobrepreço (ITSA4, BRAP4).
+    # Reguladas isentas: ROE ausente → growth=0 por artefato de dado, não por sobrepreço real.
+    # Hurdle: BR → Selic+2pp; US/EUROPE → RF_USD+2pp (evitar viés cambial em ativos em dólar).
+    # Para REITs/PE distorcido: usa fcf_yield (FFO proxy) em vez de 1/PE quando disponível.
+    _gate_exempt = is_holding or is_regulated
+    if not _gate_exempt:
+        # Determina hurdle pelo mercado do ativo
+        if market in ("US", "EUROPE"):
+            _RF_USD = float(os.environ.get("RF_USD", "0.045"))  # fed funds / T-10Y, default 4.5%
+            _hurdle = _RF_USD + 0.02
+        else:
+            _sr = selic_rate if selic_rate is not None else _SELIC_RATE
+            _hurdle = _sr + 0.02
+        # Earnings yield: preferir fcf_yield (para REITs/PE distorcido por D&A) quando disponível
+        if fcf_yield is not None and fcf_yield > 0:
+            _ey = float(fcf_yield)
+        elif pe_ratio is not None and pe_ratio > 0:
+            _ey = 1.0 / pe_ratio
+        else:
+            _ey = None
+        if _ey is not None:
+            _growth = growth_implied if growth_implied is not None else 0.0
+            total_return_implied = _ey + _growth
+            if total_return_implied < _hurdle:
+                if verdict in ("COMPRAR FORTE", "COMPRAR"):
+                    return "ESTICADO"
 
     return verdict
 

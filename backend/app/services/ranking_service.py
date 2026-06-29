@@ -840,6 +840,8 @@ _HOLDINGS = {
     "SIMH4.SA",
     "PEAB4.SA", "PEAB3.SA",     # Participações Industriais (Votorantim/Hejoassu) — quando no universo
     "MOAR3.SA",                 # Monteiro Aranha (participação em Klabin/3M...)
+    # US — holdings operacionais; PE delas reflete ganhos não-realizados (GAAP), não sobrepreço
+    "BRK-B", "BRK.B", "BRK-A", "BRK.A",  # Berkshire Hathaway
 }
 
 # Termos de setor/indústria que caracterizam holding pura de participações (detecção secundária,
@@ -959,7 +961,10 @@ def _verdict_from_momentum(momentum: float, st: dict, cat: str) -> str:
     else:
         verdict = S.aporte_verdict(momentum, quality, pe_ratio=st.get("pe_ratio"),
                                    growth_implied=st.get("growth_implied"),
-                                   is_holding=st.get("is_holding", False))
+                                   is_holding=st.get("is_holding", False),
+                                   is_regulated=st.get("is_regulated", False),
+                                   market=st.get("market_for_gate", "BR"),
+                                   fcf_yield=st.get("fcf_yield"))
     if verdict in ("COMPRAR FORTE", "COMPRAR") and st.get("knife"):
         verdict = "ESPECULATIVO"
     if st.get("crivo_rebaixa"):
@@ -1593,8 +1598,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             _growth_implied = None
             if _roe_for_growth is not None and _payout_for_growth is not None:
                 _growth_implied = float(_roe_for_growth) * (1.0 - min(float(_payout_for_growth), 1.0))
+            # market para gate EY: deriva do _qmkt (BR/US/EUROPE/HOLDING/FINANCIAL)
+            _market_for_gate = ("BR" if _qmkt in ("BR", "FINANCIAL", "HOLDING") else _qmkt)
             verdict = S.aporte_verdict(momentum, quality, pe_ratio=fund.get("pe_ratio"),
-                                       growth_implied=_growth_implied, is_holding=is_holding)
+                                       growth_implied=_growth_implied, is_holding=is_holding,
+                                       is_regulated=is_regulated, market=_market_for_gate,
+                                       fcf_yield=fund.get("fcf_yield"))
 
             # ANTI-FACA (#15c): faca = NEGÓCIO encolhendo (crescimento REAL de 5a < 0, OU recente
             # TTM apodrecendo), não só preço barato. Carry ZERO (Quantfury) → sem custo de carrego a
@@ -1797,6 +1806,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 "pe_ratio": fund.get("pe_ratio"),
                 "growth_implied": _growth_implied,
                 "is_holding": is_holding,
+                "is_regulated": is_regulated,
+                "market_for_gate": _market_for_gate,
+                "fcf_yield": fund.get("fcf_yield"),
             },
             "slow_stoch_weekly": _round_or_none(sstoch, 0),
             "stoch_k": _round_or_none(stoch_k, 1),

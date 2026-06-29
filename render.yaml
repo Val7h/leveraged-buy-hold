@@ -51,3 +51,10 @@ services:
         sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
+
+      # ── Motor Quant: taxas de referência por mercado ────────────────────────
+      # Atualizar em cada ciclo do COPOM/Fed. Gate EY usa estes limiares.
+      - key: SELIC_RATE
+        value: "0.135"   # Selic atual (jun/2026). BR hurdle = Selic+2pp = 15.5%
+      - key: RF_USD
+        value: "0.045"   # Fed funds / T-10Y americano (jun/2026). US/EUR hurdle = RF_USD+2pp = 6.5%
