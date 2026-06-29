@@ -1008,7 +1008,7 @@ QUALITY_MIN_PILARES_REAIS = 3
 # → todos os 4 (comportamento legado). NÃO mexe nos pesos nem no score; só na CONTAGEM/limiar.
 _QUALITY_CORE_BY_MARKET = {
     "BR": ("roic_nivel", "safety", "fcf"),                       # crescimento indisponível (grátis)
-    "US": ("roic_nivel", "safety", "fcf", "crescimento"),
+    "US": ("roic_nivel", "safety", "fcf"),                       # crescimento ausente via FMP grátis (igual BR)
     # EUROPE (SAN.PA, ASML.AS etc): FCF e crescimento frequentemente ausentes via Yahoo → crivo
     # mais enxuto (roic+safety). Mínimo 2 p/ não ser CONF BAIXA (FMP cobre ROIC+safety na maioria).
     "EUROPE": ("roic_nivel", "safety", "fcf"),
@@ -1026,7 +1026,10 @@ _QUALITY_CORE_BY_MARKET = {
 # Piso de pilares-núcleo reais p/ NÃO ser "dado fino", por mercado. BR exige os 3 obteníveis; US 3.
 # HOLDING: os 2 do crivo de holding (dividendo+safety) reais → comprovada (não thin / não CONF BAIXA).
 # EUROPE: mínimo 2 (roic+safety cobertas pelo FMP) para sair do CONF BAIXA.
-_QUALITY_MIN_BY_MARKET = {"BR": 3, "US": QUALITY_MIN_PILARES_REAIS, "HOLDING": 2, "FINANCIAL": 2, "EUROPE": 2}
+_QUALITY_MIN_BY_MARKET = {"BR": 3, "US": 2, "HOLDING": 2, "FINANCIAL": 2, "EUROPE": 2}
+# US: piso reduzido de 3→2 pois FMP grátis não entrega ROIC+crescimento para a maioria dos
+# dividend-growers americanos. Com safety+fcf (2 pilares) a cobertura já é válida e o shrinkage
+# não colapsa para quality=50 flat. Consistente com o tratamento de EUROPE (também 2).
 
 
 def _market_core_pillars(market: Optional[str]):

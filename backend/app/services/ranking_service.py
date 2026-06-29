@@ -910,6 +910,26 @@ def _is_regulated(ticker: str) -> bool:
     return ticker.upper() in _REGULATED_BR
 
 
+# EMPRESAS ESTATAIS — dividendo pode ser cortado por decisão política (ex: PETR4 2022).
+# Flag informativo: não entra no scoring, sinaliza risco político ao gestor.
+# Inclui controle federal, estadual ou municipal ≥ 50%.
+_STATE_OWNED = {
+    "PETR4.SA", "PETR3.SA",    # Petrobras (federal)
+    "BBAS3.SA", "BBAS4.SA",    # Banco do Brasil (federal)
+    "CMIG4.SA", "CMIG3.SA",    # Cemig (MG)
+    "SBSP3.SA",                 # Sabesp (SP)
+    "CSMG3.SA",                 # Copasa (MG)
+    "BRSR6.SA", "BRSR3.SA",    # Banrisul (RS)
+    "ELET3.SA", "ELET6.SA",    # Eletrobras (federal, privatizada 2022 — controle ainda > 40%)
+    "SAPR11.SA", "SAPR4.SA",   # Sanepar (PR)
+    "CPLE6.SA", "CPLE3.SA",    # Copel (PR)
+}
+
+
+def _is_state_owned(ticker: str) -> bool:
+    return ticker.upper() in _STATE_OWNED
+
+
 def _is_holding(ticker: str, fund: dict) -> bool:
     """True se o ativo é uma HOLDING de participações (equity-method) — set CURADO (explícito) OU,
     como rede secundária, setor/indústria 'Holding'/'Participações' vindo da fonte (quando houver).
@@ -1665,6 +1685,13 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             if _pe is not None and _pe > 14.0:
                 verdict = "ESTICADO"
 
+        # TSR ESPERADO NEGATIVO → rebaixa para JUSTO.
+        # Ativo que projeta retorno total negativo (dividendo+crescimento) não é indicação de COMPRAR.
+        if (tsr is not None and tsr < 0
+                and bucket != "RESERVA"
+                and verdict in ("COMPRAR FORTE", "COMPRAR")):
+            verdict = "JUSTO"
+
         # REGRA DO OURO: ouro em capitulação do mercado de ações → hedge → COMPRAR FORTE (override).
         _gold_override = (tk.upper() in ("GLD", "GC=F")
                           and equity_regime in ("CAPITULACAO", "CAPIT.EXTREMA"))
@@ -1833,6 +1860,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "hist_years": hist_years,
             "hist_curto": hist_curto,
             "is_tatico": is_tatico,
+            "is_state_owned": _is_state_owned(tk),
             "tsr_expected": _round_or_none(tsr, 1),
             "aptidao": round(aptidao),
             "aptidao_breakdown": aptidao_bd,
