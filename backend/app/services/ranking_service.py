@@ -957,7 +957,9 @@ def _verdict_from_momentum(momentum: float, st: dict, cat: str) -> str:
     if cat == "CRYPTO":
         verdict = _crypto_verdict(momentum, quality)
     else:
-        verdict = S.aporte_verdict(momentum, quality, pe_ratio=st.get("pe_ratio"))
+        verdict = S.aporte_verdict(momentum, quality, pe_ratio=st.get("pe_ratio"),
+                                   growth_implied=st.get("growth_implied"),
+                                   is_holding=st.get("is_holding", False))
     if verdict in ("COMPRAR FORTE", "COMPRAR") and st.get("knife"):
         verdict = "ESPECULATIVO"
     if st.get("crivo_rebaixa"):
@@ -1584,7 +1586,15 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         if bucket == "RESERVA":
             verdict = "RESERVA"
         else:
-            verdict = S.aporte_verdict(momentum, quality, pe_ratio=fund.get("pe_ratio"))
+            # growth_implied para o gate EY: ROE × (1 - payout) para financeiras
+            # Para não-financeiras sem dado: None → gate usa só EY (conservador)
+            _roe_for_growth = fund.get("roe_alt") or fund.get("roe")
+            _payout_for_growth = fund.get("payout_ratio")
+            _growth_implied = None
+            if _roe_for_growth is not None and _payout_for_growth is not None:
+                _growth_implied = float(_roe_for_growth) * (1.0 - min(float(_payout_for_growth), 1.0))
+            verdict = S.aporte_verdict(momentum, quality, pe_ratio=fund.get("pe_ratio"),
+                                       growth_implied=_growth_implied, is_holding=is_holding)
 
             # ANTI-FACA (#15c): faca = NEGÓCIO encolhendo (crescimento REAL de 5a < 0, OU recente
             # TTM apodrecendo), não só preço barato. Carry ZERO (Quantfury) → sem custo de carrego a
@@ -1785,6 +1795,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 "leverage": leverage,
                 "quality_thin": _quality_thin,
                 "pe_ratio": fund.get("pe_ratio"),
+                "growth_implied": _growth_implied,
+                "is_holding": is_holding,
             },
             "slow_stoch_weekly": _round_or_none(sstoch, 0),
             "stoch_k": _round_or_none(stoch_k, 1),

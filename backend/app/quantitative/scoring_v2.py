@@ -23,7 +23,12 @@ Indicadores (recuperação, consistência, distância do topo, reversão) ficam 
 """
 from typing import Dict, Optional, Tuple
 import math
+import os
 import numpy as np
+
+# Selic atual (configurável via env var para atravessar ciclos de juros).
+# Default 13.5% (jun/2026). Atualizar em cada ciclo: SELIC_RATE=0.105 no Render.
+_SELIC_RATE = float(os.environ.get("SELIC_RATE", "0.135"))
 
 # Piso de elegibilidade e piso para liberar 4x
 QUALITY_GATE_MIN = 70.0
@@ -1210,12 +1215,13 @@ _HOLDING_Q_CEIL = 75.0         # teto da banda (holding excelente em dividendo+s
 # de ROE (âncora) + dividendo sustentável + resiliência de queda. NÃO usa safety=D/E (alavancagem é o
 # NEGÓCIO do banco, não risco) nem FCF (sem sentido p/ banco). LEVERAGE-INDEPENDENTE, não fabrica.
 # Ao contrário da holding (teto 75), um banco/seguradora de elite PODE ser compounder de topo → teto 92.
-def _q_valuation_abs(pe_ratio, selic_rate=0.135):
+def _q_valuation_abs(pe_ratio, selic_rate=None):
     """Earning Yield spread sobre Selic+2pp. Sem PE: prior neutro."""
     if pe_ratio is None or pe_ratio <= 0:
         return 50.0
+    _sr = selic_rate if selic_rate is not None else _SELIC_RATE
     earning_yield = 1.0 / pe_ratio
-    spread = earning_yield - (selic_rate + 0.02)
+    spread = earning_yield - (_sr + 0.02)
     if spread >= 0.06:  return 100.0
     if spread >= 0.03:  return 80.0
     if spread >= 0.00:  return 60.0
@@ -1482,14 +1488,16 @@ _VERDICT_EXCELENCIA = 75.0      # excelente "compra" o momento que falta (FORTE 
 _VERDICT_PISO_COMPRAR = 45.0    # abaixo disto = ESPECULATIVO (faca), momento nenhum salva
 
 
-def aporte_verdict(momentum: float, quality: float, pe_ratio=None, selic_rate=0.135) -> str:
+def aporte_verdict(momentum: float, quality: float, pe_ratio=None, selic_rate=None,
+                   growth_implied=None, is_holding=False) -> str:
     """Veredito de ENTRADA — Q-GATE (painel 2ª rodada, ratificado pelo dono; substitui o #15b
     momento-first). SURVIVAL-FIRST: a QUALIDADE define a FAIXA do veredito (é o PISO, não o momento);
     o momento move DENTRO da faixa (= timing de entrada). MONOTÔNICO em Q: a mesmo momento, Q maior
     nunca recebe veredito pior. Preserva um resquício de "pechincha": a empresa BOA (≥58) com
     momento FORTE (≥70) ainda alcança COMPRAR FORTE — mas a FRACA nunca vira FORTE só por momento.
     Por cima disto, o CRIVO por tipo + confiança + faca (ranking_service) pode rebaixar 1 degrau.
-    Gate EY vs Selic: se EY < Selic+2pp, rebaixa COMPRAR FORTE/COMPRAR para ESTICADO."""
+    Gate EY vs Selic: se EY+crescimento_implícito < Selic+2pp (e não for holding), rebaixa para ESTICADO.
+    Holdings isentas: PE delas reflete desconto contábil de equivalência, não caro."""
     if quality >= 70:                     # EXCELENTE: nunca cai abaixo de COMPRAR por momento fraco
         if momentum >= 55:
             verdict = "COMPRAR FORTE"
@@ -1522,10 +1530,17 @@ def aporte_verdict(momentum: float, quality: float, pe_ratio=None, selic_rate=0.
         else:
             verdict = "ESTICADO"
 
-    # Gate Earnings Yield vs Selic: EY < Selic+2pp → ativo esticado pelo valuation absoluto
-    if pe_ratio is not None and pe_ratio > 0:
+    # Gate Earnings Yield vs Selic: (EY + crescimento_implícito) < Selic+2pp → ESTICADO.
+    # Holdings isentas: PE delas reflete desconto contábil de equivalência patrimonial,
+    # não sobrepreço — aplicar o mesmo limiar geraria falsos positivos estruturais (ITSA4, BRAP4).
+    # Crescimento implícito (ROE×retenção) desconta a parte do retorno que vem de crescimento,
+    # evitando penalizar ITUB4 (9.9%a.a. crescimento real) junto com BBSE3 (1.25%).
+    if not is_holding and pe_ratio is not None and pe_ratio > 0:
+        _sr = selic_rate if selic_rate is not None else _SELIC_RATE
         earnings_yield = 1.0 / pe_ratio
-        if earnings_yield < (selic_rate + 0.02):  # EY < Selic + 2pp
+        _growth = growth_implied if growth_implied is not None else 0.0
+        total_return_implied = earnings_yield + _growth
+        if total_return_implied < (_sr + 0.02):  # retorno total implícito < Selic + 2pp
             if verdict in ("COMPRAR FORTE", "COMPRAR"):
                 return "ESTICADO"
 
