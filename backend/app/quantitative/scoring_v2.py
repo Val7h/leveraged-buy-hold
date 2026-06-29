@@ -1207,11 +1207,19 @@ _HOLDING_Q_CEIL = 75.0         # teto da banda (holding excelente em dividendo+s
 # NEGÓCIO do banco, não risco) nem FCF (sem sentido p/ banco). LEVERAGE-INDEPENDENTE, não fabrica.
 # Ao contrário da holding (teto 75), um banco/seguradora de elite PODE ser compounder de topo → teto 92.
 def score_financial_quality(roe=None, dy_avg10=None, dy_worst=None, dividend_yield=None,
-                            max_dd_pct=None, dd_recovery_mult=1.0):
+                            max_dd_pct=None, dd_recovery_mult=1.0, payout_ratio=None):
     """QUALIDADE FINANCEIRA (0-100) p/ bancos/seguradoras. ROE-âncora + dividendo + resiliência.
     Breakdown: 'roe_nivel' (núcleo) · 'dividendos' · 'resiliencia_queda'. (None,{}) se sem ROE nem
-    dividendo (segue thin honestamente). NÃO pune D/E (estrutural no setor)."""
-    s_roe = _q_roe(roe) if roe is not None else None
+    dividendo (segue thin honestamente). NÃO pune D/E (estrutural no setor).
+    Haircut de sustentabilidade: payout > 100% = dividendo insustentável (erosão de capital)
+    → ROE-efetivo reduzido proporcionalmente (cap de -50%). Ex: BRSR6 payout 210% → ROE×0.5."""
+    # Haircut de sustentabilidade: payout > 1.0 = empresa paga mais do que ganha → ROE artificial.
+    # Reduz ROE-efetivo: cada % acima de 100% de payout = 1% de desconto (cap 50%).
+    roe_effective = roe
+    if roe is not None and payout_ratio is not None and payout_ratio > 1.0:
+        haircut = min(payout_ratio - 1.0, 0.5)   # max 50% de desconto
+        roe_effective = roe * (1.0 - haircut)
+    s_roe = _q_roe(roe_effective) if roe_effective is not None else None
     s_div = (score_dividend_sustainable(dy_avg10, dy_worst, dividend_yield, roe=roe, roic=None)
              if (dy_avg10 is not None or dividend_yield is not None) else None)
     s_dd = (_clamp(score_maxdd_quality(max_dd_pct) * dd_recovery_mult)
@@ -1447,31 +1455,38 @@ _VERDICT_PISO_COMPRAR = 45.0    # abaixo disto = ESPECULATIVO (faca), momento ne
 
 
 def aporte_verdict(momentum: float, quality: float) -> str:
-    """Veredito de ENTRADA (#15b). DUAS faixas de qualidade acima do piso:
-      - PECHINCHA FORTE (momentum≥70): empresa boa-o-suficiente (≥58) já alcança COMPRAR FORTE
-        (não perde a pechincha por a empresa não ser excelente).
-      - MOMENTO BOM (60-69): só a EXCELENTE (≥75) sobe a FORTE (qualidade recompensada).
-      - quality < 45 → ESPECULATIVO (faca). Nada exclui (segue no ranking).
-    Por cima disto, o CRIVO de fundamentos por TIPO + confiança (ranking_service) rebaixa 1 degrau."""
-    if momentum >= 70:
-        if quality >= _VERDICT_PISO_FORTE:
+    """Veredito de ENTRADA — Q-GATE (painel 2ª rodada, ratificado pelo dono; substitui o #15b
+    momento-first). SURVIVAL-FIRST: a QUALIDADE define a FAIXA do veredito (é o PISO, não o momento);
+    o momento move DENTRO da faixa (= timing de entrada). MONOTÔNICO em Q: a mesmo momento, Q maior
+    nunca recebe veredito pior. Preserva um resquício de "pechincha": a empresa BOA (≥58) com
+    momento FORTE (≥70) ainda alcança COMPRAR FORTE — mas a FRACA nunca vira FORTE só por momento.
+    Por cima disto, o CRIVO por tipo + confiança + faca (ranking_service) pode rebaixar 1 degrau."""
+    if quality >= 70:                     # EXCELENTE: nunca cai abaixo de COMPRAR por momento fraco
+        if momentum >= 55:
             return "COMPRAR FORTE"
-        if quality >= _VERDICT_PISO_COMPRAR:
+        if momentum >= 42:
             return "COMPRAR"
-        return "ESPECULATIVO"      # pechincha forte, mas qualidade fraca = faca
-    if momentum >= 60:
-        if quality >= _VERDICT_EXCELENCIA:
-            return "COMPRAR FORTE"   # excelência compra o momento que falta
-        if quality >= _VERDICT_PISO_COMPRAR:
+        return "JUSTO"                    # excelente mas esticada → aguardar (não vira ESPECULATIVO)
+    if quality >= _VERDICT_PISO_FORTE:    # BOA (≥58)
+        if momentum >= 70:
+            return "COMPRAR FORTE"        # boa + pechincha forte (resquício do #15b)
+        if momentum >= 50:
             return "COMPRAR"
-        return "ESPECULATIVO"
-    if momentum >= 50:
-        if quality >= _VERDICT_PISO_COMPRAR:
+        if momentum >= 42:
+            return "JUSTO"
+        return "ESTICADO"
+    if quality >= _VERDICT_PISO_COMPRAR:  # MEDIANA (45-57)
+        if momentum >= 55:
             return "COMPRAR"
+        if momentum >= 42:
+            return "JUSTO"
+        return "ESTICADO"
+    # FRACA (<45): qualidade não sustenta compra; barata + momento = faca (ESPECULATIVO)
+    if momentum >= 55:
         return "ESPECULATIVO"
     if momentum >= 42:
-        return "JUSTO"             # boa empresa, hora mediana — aguardar entrada melhor
-    return "ESTICADO"              # sem desconto agora (NÃO é exclusão)
+        return "JUSTO"
+    return "ESTICADO"
 
 
 # ─────────────────── ANTI-FACA POR DECLÍNIO DO NEGÓCIO (#15c) ───────────────────

@@ -585,6 +585,10 @@ def get_fundamentals(ticker: str) -> dict:
             result = _empty(None)
         elif key.endswith(".SA"):
             result = _from_brapi(key)
+            # ROE de MERCADO (brapi TTM) capturado ANTES do override da CVM. Usado pelo crivo
+            # FINANCEIRO (banco/seguradora): o ROE-CVM (lucro/PL anual) é RUIDOSO em banco
+            # (ex Bradesco 5,4% vs ~14% real). roe_alt preserva o ROE de mercado p/ esse caso.
+            _roe_market = result.get("roe")
             # FONTE PRIMÁRIA BR: CVM Dados Abertos (ETL local, cache em disco).
             # Cobre os pilares fundamentalistas reais (roic + histórico, fcf, D/E,
             # crescimento, payout, roe) que o brapi free achata. O brapi fica só
@@ -592,10 +596,14 @@ def get_fundamentals(ticker: str) -> dict:
             # (sem mapa / sem cache), segue o fluxo brapi+fundamentus+fmp intacto.
             _merge_cvm(key, result)   # fonte primária BR (disco compartilhado); no-op se ausente
             # brapi free cobre poucos tickers B3 (PETR4, ITUB4…); resto retorna 403.
-            # Fallback 1: fundamentus.com.br — cobertura total B3, sem token.
-            if (result.get("roe") is None or result.get("roic") is None):
+            # Fallback 1: fundamentus.com.br — cobertura total B3, sem token. Roda tb quando
+            # falta o ROE de MERCADO (roe_alt) p/ o crivo financeiro — fundamentus tem ROE de
+            # TODA a B3 (banco incluso), bem mais confiável que o lucro/PL anual da CVM.
+            if (result.get("roe") is None or result.get("roic") is None or _roe_market is None):
                 try:
                     fund = _from_fundamentus(key)
+                    if _roe_market is None and fund.get("roe") is not None:
+                        _roe_market = fund["roe"]   # ROE de mercado p/ roe_alt (banco)
                     for k in ("roe", "roic", "dividend_yield", "debt_to_equity"):
                         if result.get(k) is None and fund.get(k) is not None:
                             result[k] = fund[k]
@@ -623,6 +631,10 @@ def get_fundamentals(ticker: str) -> dict:
                             if result.get("source") else "fmp")
                 except Exception as e:
                     logger.warning(f"[FUNDAMENTALS] FMP fallback BR falhou p/ {key}: {e}")
+            # ROE de MERCADO (brapi/fundamentus TTM) — preservado p/ crivo financeiro (bancos).
+            # roe_alt evita que o ROE-CVM ruidoso (ex Bradesco 5,4% vs ~14% real) destrua a nota.
+            if _roe_market is not None:
+                result["roe_alt"] = _roe_market
         else:
             # US/mundo: Finnhub PRIMEIRO (grátis, traz beta junto); FMP como fallback.
             result = _from_finnhub(key)

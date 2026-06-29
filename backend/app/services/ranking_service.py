@@ -1505,9 +1505,13 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # FINANCEIRO (ROE-âncora + dividendo + resiliência). Sem ROE nem dividendo → (None,{}) mantém
         # a nota operacional (segue thin honesta). Resgata ITUB4/BBDC/BPAC do fundo do ranking.
         elif is_financial:
+            # roe_alt = ROE de MERCADO (brapi/fundamentus TTM) capturado ANTES do override CVM.
+            # Evita que o ROE-CVM ruidoso (ex Bradesco 5,4% vs real ~14%) destrua a nota do banco.
+            _roe_financeiro = fund.get("roe_alt") or fund.get("roe")
             _fq, _fqb = S.score_financial_quality(
-                roe=fund.get("roe"), dy_avg10=dy_avg10, dy_worst=dy_worst, dividend_yield=dy,
-                max_dd_pct=dd, dd_recovery_mult=dd_recovery_mult)
+                roe=_roe_financeiro, dy_avg10=dy_avg10, dy_worst=dy_worst, dividend_yield=dy,
+                max_dd_pct=dd, dd_recovery_mult=dd_recovery_mult,
+                payout_ratio=fund.get("payout_ratio"))
             if _fq is not None:
                 quality, qb = _fq, _fqb
 
