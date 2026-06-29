@@ -167,6 +167,9 @@ def _empty(source=None) -> dict:
         "debt_to_equity": None,
         "dividend_yield": None,
         "fcf_yield": None,
+        # FCF absoluto TTM em $ — exposto pelo FMP quando não há fcf_yield direto; ranking_service
+        # deriva o yield via fcf_abs_ttm ÷ market_cap (igual ao fluxo BR via CVM).
+        "fcf_abs_ttm": None,
         # Crescimento REAL da EMPRESA (não do preço) — em %, ex 8.5. Só Finnhub (US) traz; BR=None.
         # Substitui o "g5 de preço" na nota de Qualidade (quebra a circularidade). Ausente→None.
         "rev_growth_5y": None,
@@ -508,6 +511,10 @@ def _from_fmp(ticker: str) -> dict:
                 out["dividend_yield"] = dy * 100.0 if dy is not None else None
             fcf = pick("freeCashFlowYieldTTM")
             out["fcf_yield"] = fcf if fcf is not None else None   # FRAÇÃO (FMP já manda fração; score usa fcf_yield>=0.08)
+            # FMP grátis raramente traz freeCashFlowYieldTTM; expõe FCF absoluto para
+            # ranking_service derivar o yield via fcf_abs_ttm ÷ market_cap (como faz p/ BR).
+            if fcf is None:
+                out["fcf_abs_ttm"] = pick("freeCashFlowTTM")
             # pe_ratio: priceEarningsRatioTTM (FMP)
             _pe = pick("priceEarningsRatioTTM")
             if _pe is not None and _pe > 0:
@@ -632,7 +639,7 @@ def get_fundamentals(ticker: str) -> dict:
             if (result.get("roe") is None or result.get("fcf_yield") is None):
                 try:
                     fmp = _from_fmp(key)
-                    for k in ("roe", "roic", "fcf_yield", "payout_ratio", "debt_to_equity",
+                    for k in ("roe", "roic", "fcf_yield", "fcf_abs_ttm", "payout_ratio", "debt_to_equity",
                               "rev_growth_5y", "eps_growth_5y", "rev_growth_ttm",
                               "eps_growth_ttm", "dividend_yield", "beta"):
                         if result.get(k) is None and fmp.get(k) is not None:
@@ -658,6 +665,17 @@ def get_fundamentals(ticker: str) -> dict:
                 if any(fmp.get(k) is not None for k in ("roe", "payout_ratio", "debt_to_equity",
                                                         "dividend_yield", "fcf_yield", "beta")):
                     result = fmp
+            else:
+                # Finnhub parcial: tenta preencher fcf_yield/fcf_abs_ttm via FMP se ausentes
+                # (Finnhub grátis não traz FCF; FMP expõe freeCashFlowTTM como fcf_abs_ttm)
+                if result.get("fcf_yield") is None:
+                    try:
+                        fmp = _from_fmp(key)
+                        for k in ("fcf_yield", "fcf_abs_ttm", "debt_to_equity"):
+                            if result.get(k) is None and fmp.get(k) is not None:
+                                result[k] = fmp[k]
+                    except Exception:
+                        pass
 
         # ── CACHE DO ÚLTIMO-BOM (anti-oscilação) — só p/ tickers que DEVERIAM ter fundamentos.
         # Crypto/índice/câmbio (_no_fund) nunca têm pilares de negócio → não entram (None é correto).

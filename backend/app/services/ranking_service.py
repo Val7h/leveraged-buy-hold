@@ -916,6 +916,7 @@ def _is_regulated(ticker: str) -> bool:
 _STATE_OWNED = {
     "PETR4.SA", "PETR3.SA",    # Petrobras (federal)
     "BBAS3.SA", "BBAS4.SA",    # Banco do Brasil (federal)
+    "BBSE3.SA",                # BB Seguridade (subsidiária indireta do BB — controle público via holding)
     "CMIG4.SA", "CMIG3.SA",    # Cemig (MG)
     "SBSP3.SA",                 # Sabesp (SP)
     "CSMG3.SA",                 # Copasa (MG)
@@ -1498,11 +1499,16 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # ÷ (preço × nº de ações ON+PN). Aproxima o market cap pelo preço-do-ticker × ações totais —
         # ON/PN andam juntos no BR; suficiente p/ o pilar fcf (bucketizado por limiares). SÓ se a
         # fonte não trouxe fcf_yield (não sobrescreve dado direto do brapi/FMP). NÃO fabrica.
-        if (fund.get("fcf_yield") is None and fund.get("fcf") is not None
-                and fund.get("shares") and len(a)):
-            _mc = float(a[-1]) * float(fund["shares"])
-            if _mc > 0:
-                fund["fcf_yield"] = fund["fcf"] / _mc
+        if (fund.get("fcf_yield") is None and len(a)):
+            # Fonte 1: fcf absoluto (CVM → BR) — usa shares da CVM
+            _fcf_num = fund.get("fcf")
+            # Fonte 2: fcf_abs_ttm (FMP → US) — usa shares do provedor de fundamentos
+            if _fcf_num is None:
+                _fcf_num = fund.get("fcf_abs_ttm")
+            if _fcf_num is not None and fund.get("shares"):
+                _mc = float(a[-1]) * float(fund["shares"])
+                if _mc > 0:
+                    fund["fcf_yield"] = _fcf_num / _mc
         quality, qb = S.compute_quality_blend(
             beta=beta, max_dd_pct=dd, dividend_yield=dy, growth_5y=fund_growth,
             roe=fund.get("roe"), debt_to_equity=fund.get("debt_to_equity"),
@@ -1700,8 +1706,11 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
 
         rank = quality * 0.45 + momentum * 0.55  # #15b: oportunidade decide o desempate (comprar bem)
 
-        # Alavancagem = multiplicador do regime; só em candidato de compra (não RESERVA)
-        is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3))
+        # Alavancagem = multiplicador do regime; só em candidato de compra (não RESERVA).
+        # Candidato: (1) timing de entrada (momentum/dma), OU (2) aptidão alta → ativo
+        # estruturalmente seguro de alavancar mesmo sem momentum quente (ex: utilities reguladas).
+        is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3)
+                            or (aptidao is not None and aptidao > 75 and bucket != "RESERVA"))
         leverage = float(mult) if (is_buy_candidate and bucket != "RESERVA") else 1.0
         # Crypto NÃO segue o 4x/5x do regime — teto 3x (defensivo não convive c/ 5x em BTC).
         if cat == "CRYPTO":
