@@ -1741,6 +1741,113 @@ def opportunity_rating(opportunity_score: float) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SCORE DE FII (Fundos de Investimento Imobiliário brasileiros)
+# ══════════════════════════════════════════════════════════════════════════════
+# Doutrina: FII não é empresa → ROIC/ROE/EPS inúteis. Pilares de renda imobiliária:
+#   DY (40%) + P/VP (30%) + Safety/D/E (10%) + Drawdown/volatilidade (20%)
+# Shrinkage idêntico ao de ações mas piso 1 (FII com só DY = dado honesto).
+# Gate de veredito: P/VP > 1.15 → ESTICADO (prêmio excessivo sobre patrimônio).
+
+_FII_PRIOR = 60.0           # prior honesto (mediana típica FII curado)
+_FII_DY_FULL = 0.09         # 9% a.a. = nota 100 (yield alto real em FII)
+_FII_DY_FAIR = 0.06         # 6% a.a. ≈ nota 60 (justo, CDI-like)
+_FII_DY_MIN  = 0.03         # <3% = nota 0 (abaixo de qualquer referência)
+_FII_PVP_DISCOUNT = 0.90    # P/VP ≤ 0.90 = nota 100 (desconto sólido ao PL)
+_FII_PVP_FAIR     = 1.00    # P/VP ≈ 1.00 = nota 70 (par, justo)
+_FII_PVP_PREMIUM  = 1.15    # P/VP ≥ 1.15 = nota 30 (prêmio — ESTICADO candidato)
+
+
+def _fii_s_dy(dy_pct: Optional[float]) -> Optional[float]:
+    """DY anual em % (ex 8.5) → nota 0-100."""
+    if dy_pct is None:
+        return None
+    dy = dy_pct / 100.0
+    if dy <= _FII_DY_MIN:
+        return 0.0
+    if dy >= _FII_DY_FULL:
+        return 100.0
+    if dy < _FII_DY_FAIR:
+        return _clamp((dy - _FII_DY_MIN) / (_FII_DY_FAIR - _FII_DY_MIN) * 60.0)
+    return _clamp(60.0 + (dy - _FII_DY_FAIR) / (_FII_DY_FULL - _FII_DY_FAIR) * 40.0)
+
+
+def _fii_s_pvp(pvp: Optional[float]) -> Optional[float]:
+    """P/VP (múltiplo, ex 0.95) → nota 0-100. Desconto = ótimo; prêmio = ruim."""
+    if pvp is None:
+        return None
+    if pvp <= _FII_PVP_DISCOUNT:
+        return 100.0
+    if pvp >= _FII_PVP_PREMIUM:
+        return max(0.0, 30.0 - (pvp - _FII_PVP_PREMIUM) * 100.0)
+    if pvp <= _FII_PVP_FAIR:
+        return _clamp(70.0 + (_FII_PVP_FAIR - pvp) / (_FII_PVP_FAIR - _FII_PVP_DISCOUNT) * 30.0)
+    return _clamp(30.0 + (_FII_PVP_PREMIUM - pvp) / (_FII_PVP_PREMIUM - _FII_PVP_FAIR) * 40.0)
+
+
+def score_fii_quality(
+    dividend_yield: Optional[float] = None,   # % anual (ex 8.5)
+    pvp: Optional[float] = None,              # múltiplo (ex 0.95)
+    debt_to_equity: Optional[float] = None,   # D/E do fundo (ex 0.30)
+    max_dd_pct: Optional[float] = None,       # drawdown máximo histórico (ex -45)
+    dy_avg10: Optional[float] = None,         # DY médio 10a (consistência)
+    dy_worst: Optional[float] = None,         # DY pior ano (resiliência)
+) -> Tuple[Optional[float], Dict[str, float]]:
+    """Qualidade de FII: DY 40% + P/VP 30% + Safety 10% + Drawdown 20%.
+    Retorna (nota 0-100 ou None, breakdown). None apenas se TODOS os pilares ausentes."""
+    bd: Dict[str, float] = {}
+
+    # Pilar DY: usa DY médio 10a se disponível (mais estável que o spot)
+    _dy_for_score = dy_avg10 if dy_avg10 is not None else dividend_yield
+    s_dy = _fii_s_dy(_dy_for_score)
+    if s_dy is not None:
+        bd["dy"] = s_dy
+
+    # Penalidade de consistência: pior ano muito abaixo da média → corte de yield
+    if dy_avg10 is not None and dy_worst is not None and dy_avg10 > 0:
+        _consistency_ratio = dy_worst / dy_avg10
+        if _consistency_ratio < 0.5:  # pior ano < 50% da média → corte -10pp
+            bd["dy_consistency"] = max(0.0, s_dy - 10.0) if s_dy is not None else None
+
+    s_pvp = _fii_s_pvp(pvp)
+    if s_pvp is not None:
+        bd["pvp"] = s_pvp
+
+    s_safety = _q_safety(debt_to_equity)  # reutiliza: D/E alto é risco mesmo em FII
+    if s_safety is not None:
+        bd["safety"] = s_safety
+
+    # Drawdown: FIIs têm queda típica de 30-50% em crises; penaliza acima de 35%.
+    s_dd = None
+    if max_dd_pct is not None:
+        _dd = abs(max_dd_pct)
+        s_dd = _clamp(100.0 - max(0.0, _dd - 20.0) * 2.0)  # 20% dd=100; 70% dd=0
+        bd["drawdown"] = s_dd
+
+    # Pesos: DY 40% + P/VP 30% + Safety 10% + DD 20%
+    _weights = {"dy": 0.40, "pvp": 0.30, "safety": 0.10, "drawdown": 0.20}
+    total_w = sum(_weights[k] for k in _weights if k in bd and bd[k] is not None)
+    if total_w == 0:
+        return None, bd
+
+    q_raw = sum(_weights[k] * bd[k] for k in _weights if k in bd and bd[k] is not None) / total_w * 100.0 / 100.0
+    # Nota bruta já está em 0-100 (scores internos já são 0-100)
+    q_raw = sum(_weights[k] * bd[k] for k in _weights if k in bd and bd[k] is not None) / total_w
+
+    # Shrinkage: k_real = nº pilares presentes; K=2 (DY + P/VP mínimos para FII)
+    k_real = sum(1 for k in ("dy", "pvp", "safety", "drawdown") if k in bd and bd[k] is not None)
+    K = 2
+    w = 1.0 if k_real >= K else (k_real / float(K)) ** 0.7
+    q = w * q_raw + (1.0 - w) * _FII_PRIOR
+
+    return round(_clamp(q), 1), bd
+
+
+def fii_pvp_gate(pvp: Optional[float]) -> bool:
+    """True se P/VP indica ESTICADO (prêmio > 15% sobre o PL)."""
+    return pvp is not None and pvp > _FII_PVP_PREMIUM
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SCORE DE CRYPTO (framework SEPARADO — ratificado por Pal/Hayes/Woo)
 # ══════════════════════════════════════════════════════════════════════════════
 # Doutrina (MODELO_RANKING_ALAVANCAGEM.md §🪙): crypto NÃO usa fundamentos, dividendo,

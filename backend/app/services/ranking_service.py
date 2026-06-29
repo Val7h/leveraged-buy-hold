@@ -1575,6 +1575,14 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 payout_ratio=fund.get("payout_ratio"), pe_ratio=fund.get("pe_ratio"))
             if _fq is not None:
                 quality, qb = _fq, _fqb
+        # FII: ROIC/ROE/EPS inúteis (estrutura de fundo) → scoring próprio DY+P/VP+safety+DD.
+        elif cat == "FII":
+            _fiiq, _fiiqb = S.score_fii_quality(
+                dividend_yield=dy, pvp=fund.get("pvp"),
+                debt_to_equity=fund.get("debt_to_equity"), max_dd_pct=dd,
+                dy_avg10=dy_avg10, dy_worst=dy_worst)
+            if _fiiq is not None:
+                quality, qb = _fiiq, _fiiqb
 
         # ─── GUARDRAIL Bug D: QUALIDADE DE DADO FINO NÃO LIDERA VEREDITO FORTE NEM ALAVANCA ───
         # Quando o scrape fundamental BR quebra, a Qualidade da Camada 1 nasce de POUCOS pilares
@@ -1725,6 +1733,10 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 and bucket != "RESERVA"
                 and verdict in ("COMPRAR FORTE", "COMPRAR")):
             verdict = "JUSTO"
+
+        # GATE FII P/VP: prêmio > 15% sobre o PL → ESTICADO (pagando caro pelos ativos reais).
+        if cat == "FII" and S.fii_pvp_gate(fund.get("pvp")) and verdict in ("COMPRAR FORTE", "COMPRAR"):
+            verdict = "ESTICADO"
 
         # REGRA DO OURO: ouro em capitulação do mercado de ações → hedge → COMPRAR FORTE (override).
         _gold_override = (tk.upper() in ("GLD", "GC=F")
@@ -1902,6 +1914,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             "hist_curto": hist_curto,
             "is_tatico": is_tatico,
             "is_state_owned": _is_state_owned(tk),
+            "pvp": _round_or_none(fund.get("pvp"), 2),   # FII: P/VP (múltiplo); None p/ não-FII
             "tsr_expected": _round_or_none(tsr, 1),
             "aptidao": round(aptidao),
             "aptidao_breakdown": aptidao_bd,

@@ -170,6 +170,9 @@ def _empty(source=None) -> dict:
         # FCF absoluto TTM em $ — exposto pelo FMP quando não há fcf_yield direto; ranking_service
         # deriva o yield via fcf_abs_ttm ÷ market_cap (igual ao fluxo BR via CVM).
         "fcf_abs_ttm": None,
+        # P/VP (Preço ÷ Valor Patrimonial) — específico para FIIs; scraping fundamentus.
+        # Múltiplo (ex 0.92 = desconto; 1.10 = prêmio). None para não-FII.
+        "pvp": None,
         # Crescimento REAL da EMPRESA (não do preço) — em %, ex 8.5. Só Finnhub (US) traz; BR=None.
         # Substitui o "g5 de preço" na nota de Qualidade (quebra a circularidade). Ausente→None.
         "rev_growth_5y": None,
@@ -234,6 +237,20 @@ def _http_json(url: str, _retries: int = 1):
 
 
 # ───────────────────────────────── classificação de ticker ──────────────────────
+# Set de tickers FII conhecidos (mesmo universo de universe.py) — evita import circular.
+_FII_TICKERS: set[str] = {
+    "HGLG11.SA","XPLG11.SA","BRCO11.SA","BTLG11.SA","LVBI11.SA",
+    "XPML11.SA","VISC11.SA","HSML11.SA","MALL11.SA",
+    "HGRE11.SA","RBRP11.SA","BRCR11.SA",
+    "HGRU11.SA","RZTR11.SA",
+    "MXRF11.SA","KNCR11.SA","KNRI11.SA","RECR11.SA","IRDM11.SA","BCFF11.SA",
+    "BPFF11.SA",
+}
+
+def _is_fii_ticker(t: str) -> bool:
+    return t.upper() in _FII_TICKERS
+
+
 def _is_no_fundamentals(t: str) -> bool:
     """Crypto (-USD), índices (^...), câmbio/futuros (=X, =F) → sem fundamentos."""
     tu = t.upper()
@@ -316,15 +333,18 @@ def _from_brapi(ticker: str) -> dict:
 
 
 # ──────────────────────── Fundamentus (Brasil .SA, GRÁTIS) ──────────────────────
-def _from_fundamentus(ticker: str) -> dict:
+def _from_fundamentus(ticker: str, is_fii: bool = False) -> dict:
     """
     Fundamentos via fundamentus.com.br (HTML scraping) — cobertura total B3, sem token.
-    Campos: ROE, ROIC → fração (÷100); Div. Yield → %; Dív Líq/Patrim → múltiplo.
-    FCF não disponível nesta fonte.
+    Para FIIs usa fii_detalhes.php (traz P/VP, DY; sem ROIC/ROE).
+    Para ações usa detalhes.php (traz ROE, ROIC, Dív Líq/Patrim, DY).
     """
     out = _empty("fundamentus")
     base = ticker[:-3] if ticker.upper().endswith(".SA") else ticker
-    url = f"https://www.fundamentus.com.br/detalhes.php?papel={_urlparse.quote(base.upper())}"
+    if is_fii:
+        url = f"https://www.fundamentus.com.br/fii_detalhes.php?papel={_urlparse.quote(base.upper())}"
+    else:
+        url = f"https://www.fundamentus.com.br/detalhes.php?papel={_urlparse.quote(base.upper())}"
     try:
         req = _urlreq.Request(url, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -377,10 +397,17 @@ def _from_fundamentus(ticker: str) -> dict:
             except Exception:
                 return None
 
-        out["roe"] = _pct_frac(_field("ROE"))
-        out["roic"] = _pct_frac(_field("ROIC"))
-        out["dividend_yield"] = _pct(_field("Div. Yield"))
-        out["debt_to_equity"] = _ratio(_field("Dív Líq / Patrim"))
+        if is_fii:
+            # FII: P/VP (múltiplo) + DY (%) — sem ROE/ROIC/D/E (estrutura de fundo)
+            pvp_raw = _ratio(_field("P/VP"))
+            out["pvp"] = pvp_raw  # múltiplo ex 0.92; None se ausente
+            out["dividend_yield"] = _pct(_field("Div. Yield"))
+            # FIIs não têm D/E de empresa; Patrimônio Líquido ≠ dívida corporativa → None
+        else:
+            out["roe"] = _pct_frac(_field("ROE"))
+            out["roic"] = _pct_frac(_field("ROIC"))
+            out["dividend_yield"] = _pct(_field("Div. Yield"))
+            out["debt_to_equity"] = _ratio(_field("Dív Líq / Patrim"))
     except Exception as e:
         logger.warning(f"[FUNDAMENTALS] parse fundamentus {ticker}: {e}")
         return _empty("fundamentus")
@@ -610,6 +637,20 @@ def get_fundamentals(ticker: str) -> dict:
             # FINANCEIRO (banco/seguradora): o ROE-CVM (lucro/PL anual) é RUIDOSO em banco
             # (ex Bradesco 5,4% vs ~14% real). roe_alt preserva o ROE de mercado p/ esse caso.
             _roe_market = result.get("roe")
+
+            # FII: fundamentus FII tem P/VP + DY direto; sem ROIC/ROE/FCF (estrutura de fundo).
+            _is_fii_tk = _is_fii_ticker(key)
+            if _is_fii_tk:
+                try:
+                    fii_fund = _from_fundamentus(key, is_fii=True)
+                    for k in ("pvp", "dividend_yield"):
+                        if result.get(k) is None and fii_fund.get(k) is not None:
+                            result[k] = fii_fund[k]
+                    if fii_fund.get("pvp") is not None:
+                        result["source"] = (result.get("source") or "") + "+fundamentus_fii"
+                except Exception as e:
+                    logger.warning(f"[FUNDAMENTALS] Fundamentus FII falhou p/ {key}: {e}")
+
             # FONTE PRIMÁRIA BR: CVM Dados Abertos (ETL local, cache em disco).
             # Cobre os pilares fundamentalistas reais (roic + histórico, fcf, D/E,
             # crescimento, payout, roe) que o brapi free achata. O brapi fica só
@@ -620,7 +661,7 @@ def get_fundamentals(ticker: str) -> dict:
             # Fallback 1: fundamentus.com.br — cobertura total B3, sem token. Roda tb quando
             # falta o ROE de MERCADO (roe_alt) p/ o crivo financeiro — fundamentus tem ROE de
             # TODA a B3 (banco incluso), bem mais confiável que o lucro/PL anual da CVM.
-            if (result.get("roe") is None or result.get("roic") is None or _roe_market is None):
+            if not _is_fii_tk and (result.get("roe") is None or result.get("roic") is None or _roe_market is None):
                 try:
                     fund = _from_fundamentus(key)
                     if _roe_market is None and fund.get("roe") is not None:

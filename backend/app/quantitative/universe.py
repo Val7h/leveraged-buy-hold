@@ -151,9 +151,42 @@ UNIVERSE = {
         ("DOGE-USD","TATICO","Dogecoin"), ("AVAX-USD","TATICO","Avalanche"),
         ("TRX-USD","TATICO","Tron"), ("LINK-USD","TATICO","Chainlink"),
     ],
+    # FIIs — Fundos de Investimento Imobiliário (B3)
+    # Scoring próprio: DY+P/VP+safety+drawdown (sem ROIC/FCF/EPS — estrutura de fundo, não empresa).
+    # bucket: GERADOR = renda corrente; ANCORA = previdenciário sólido; TATICO = oportunidade/ciclo.
+    "FII": [
+        # Logística / galpões (tijolo) — renda previsível, ativos de longa vida
+        ("HGLG11.SA","GERADOR","CSHG Logística"),
+        ("XPLG11.SA","GERADOR","XP Log"),
+        ("BRCO11.SA","GERADOR","Bresco"),
+        ("BTLG11.SA","GERADOR","BTG Logística"),
+        ("LVBI11.SA","GERADOR","VBI Logística"),
+        # Shoppings / varejo (tijolo) — renda crescente, vacância cíclica
+        ("XPML11.SA","ANCORA","XP Malls"),
+        ("VISC11.SA","ANCORA","Vinci Shopping"),
+        ("HSML11.SA","GERADOR","HSI Malls"),
+        ("MALL11.SA","GERADOR","Malls Brasil Plural"),
+        # Lajes corporativas (tijolo) — escritórios prime
+        ("HGRE11.SA","GERADOR","CSHG Real Estate"),
+        ("RBRP11.SA","GERADOR","RBR Properties"),
+        ("BRCR11.SA","GERADOR","BTG Pactual Corporate"),
+        # Renda urbana / residencial / diversificado (tijolo)
+        ("HGRU11.SA","ANCORA","CSHG Renda Urbana"),
+        ("RZTR11.SA","GERADOR","Riza Terrax"),
+        # Papel (CRI/CRA) — rendimento atrelado a CDI/IPCA, sem ativo físico
+        ("MXRF11.SA","GERADOR","Maxi Renda"),
+        ("KNCR11.SA","ANCORA","Kinea Rendimentos"),
+        ("KNRI11.SA","ANCORA","Kinea Renda Imobiliária"),
+        ("RECR11.SA","GERADOR","REC Recebíveis"),
+        ("IRDM11.SA","GERADOR","Iridium Recebíveis"),
+        ("BCFF11.SA","GERADOR","BTG Fundo de Fundos"),
+        # FOF (fundo de fundos)
+        ("BPFF11.SA","TATICO","Brasil Plural FoF"),
+    ],
 }
 
 INDEX_BY_CAT = {
     "BR": "^BVSP", "US": "^GSPC", "ETF": "^GSPC",
     "EUROPE": "^STOXX50E", "COMMODITY": "^GSPC", "CRYPTO": "BTC-USD",
+    "FII": "^BVSP",  # benchmark: Ibovespa (IFIX não disponível grátis no yfinance)
 }
