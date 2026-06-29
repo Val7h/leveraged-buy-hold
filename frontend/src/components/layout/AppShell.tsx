@@ -86,7 +86,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Content area */}
-      <div className="flex-1 flex flex-col lg:ml-60 min-h-screen overflow-x-hidden">
+      <div className="flex-1 flex flex-col lg:ml-60 min-h-screen">
         {/* Mobile top bar */}
         <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-surface border-b border-border">
           <div className="flex items-center gap-3">

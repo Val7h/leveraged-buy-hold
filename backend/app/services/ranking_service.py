@@ -1466,7 +1466,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # OBTENÍVEIS no BR (roic+safety+fcf) → BR bem-coberto (3/3) sai ILESO (w=1). HOLDING/FINANCIAL
         # usam o crivo próprio. Mesmo _qmkt usado depois no guardrail Bug D.
         _qmkt = ("HOLDING" if is_holding else "FINANCIAL" if is_financial
-                 else ("BR" if is_br else "US"))
+                 else ("BR" if is_br else ("EUROPE" if cat == "EUROPE" else "US")))
         # fcf_yield DERIVADO da CVM (cobre TODA a B3; brapi free não dá market cap): FCF absoluto
         # ÷ (preço × nº de ações ON+PN). Aproxima o market cap pelo preço-do-ticker × ações totais —
         # ON/PN andam juntos no BR; suficiente p/ o pilar fcf (bucketizado por limiares). SÓ se a

@@ -1004,6 +1004,9 @@ QUALITY_MIN_PILARES_REAIS = 3
 _QUALITY_CORE_BY_MARKET = {
     "BR": ("roic_nivel", "safety", "fcf"),                       # crescimento indisponível (grátis)
     "US": ("roic_nivel", "safety", "fcf", "crescimento"),
+    # EUROPE (SAN.PA, ASML.AS etc): FCF e crescimento frequentemente ausentes via Yahoo → crivo
+    # mais enxuto (roic+safety). Mínimo 2 p/ não ser CONF BAIXA (FMP cobre ROIC+safety na maioria).
+    "EUROPE": ("roic_nivel", "safety", "fcf"),
     # HOLDING (participações/equity-method, ex ITSA4/BRAP4/CXSE3): a Qualidade NÃO vem de pilares
     # operacionais (ROIC/FCF dão ~0 na controladora) e sim do CRIVO DE HOLDING (score_holding_quality:
     # dividendo consistente + safety da controladora). Esses pilares SUBSTITUEM os operacionais como
@@ -1017,7 +1020,8 @@ _QUALITY_CORE_BY_MARKET = {
 }
 # Piso de pilares-núcleo reais p/ NÃO ser "dado fino", por mercado. BR exige os 3 obteníveis; US 3.
 # HOLDING: os 2 do crivo de holding (dividendo+safety) reais → comprovada (não thin / não CONF BAIXA).
-_QUALITY_MIN_BY_MARKET = {"BR": 3, "US": QUALITY_MIN_PILARES_REAIS, "HOLDING": 2, "FINANCIAL": 2}
+# EUROPE: mínimo 2 (roic+safety cobertas pelo FMP) para sair do CONF BAIXA.
+_QUALITY_MIN_BY_MARKET = {"BR": 3, "US": QUALITY_MIN_PILARES_REAIS, "HOLDING": 2, "FINANCIAL": 2, "EUROPE": 2}
 
 
 def _market_core_pillars(market: Optional[str]):
