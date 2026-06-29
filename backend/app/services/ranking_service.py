@@ -931,6 +931,22 @@ def _is_state_owned(ticker: str) -> bool:
     return ticker.upper() in _STATE_OWNED
 
 
+# ETFs de venda de opções (covered-call / buy-write): a estratégia CAP o upside intencionalmente.
+# Alavancar 3-5x contradiz a doutrina do veículo — o prêmio de call é vendido para gerar renda,
+# não para participar do rally. Teto 1x: recebe renda, não alavancagem.
+_COVERED_CALL_ETFS = {
+    "JEPI", "JEPQ",         # JP Morgan covered-call (S&P500 / Nasdaq)
+    "QYLD", "XYLD", "RYLD", # Global-X buy-write (Nasdaq/SP/Russell)
+    "DIVO",                  # Amplify CWP (calls ativas sobre dividend blue-chips)
+    "SPYI", "QQQI",          # NEOS covered-call (SP/Nasdaq)
+    "XDTE", "QDTE",          # Roundhill 0DTE weekly income
+}
+
+def _is_covered_call_etf(ticker: str) -> bool:
+    base = ticker.upper().replace(".US", "").replace("-USD", "")
+    return base in _COVERED_CALL_ETFS
+
+
 def _is_holding(ticker: str, fund: dict) -> bool:
     """True se o ativo é uma HOLDING de participações (equity-method) — set CURADO (explícito) OU,
     como rede secundária, setor/indústria 'Holding'/'Participações' vindo da fonte (quando houver).
@@ -1447,7 +1463,19 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         current_price = float(a[-1]) if len(a) else None
         day_change_pct = ((a[-1] / a[-2] - 1) * 100) if len(a) >= 2 and a[-2] else None
         currency = "BRL" if tk.upper().endswith(".SA") else "USD"
-        tsr = (dy or 0.0) + (g5 or 0.0)  # TSR esperado proxy = dividend yield + crescimento
+
+        # TSR esperado = dividend yield + crescimento histórico.
+        # HAIRCUT US/EUROPE: quando PE > mediana histórica S&P (~18x), parte do g5 de preço já foi
+        # "antecipado" pela expansão de múltiplo — não se repete. Haircut proporcional ao excesso de PE:
+        # cada ponto de PE acima de 18 desconta 0.3pp do crescimento (cap de 5pp de haircut).
+        # Evita TSR inflado em ativos com PE=40 (MSFT/NVDA) onde g5-preço inclui re-rating histórico.
+        _g5_for_tsr = g5 or 0.0
+        _pe_tsr = fund.get("pe_ratio")
+        if not is_br and _pe_tsr is not None and _pe_tsr > 18 and _g5_for_tsr > 0:
+            _pe_excess = min(_pe_tsr - 18.0, 17.0)  # excesso capped em 17 → haircut max 5.1pp
+            _g5_haircut = min(_pe_excess * 0.3, 5.0)
+            _g5_for_tsr = max(_g5_for_tsr - _g5_haircut, 0.0)
+        tsr = (dy or 0.0) + _g5_for_tsr  # TSR esperado proxy = dividend yield + crescimento
 
         reg = regime(idxc.get(INDEX_BY_CAT.get(cat)))
         # Multiplicador do fluxo por regime CONFORME O PERFIL (agressivo = tabela atual MULT).
@@ -1712,6 +1740,10 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3)
                             or (aptidao is not None and aptidao > 75 and bucket != "RESERVA"))
         leverage = float(mult) if (is_buy_candidate and bucket != "RESERVA") else 1.0
+        # Covered-call ETF (JEPI/JEPQ/QYLD…): estratégia vende o upside intencionalmente.
+        # Alavancar contradiz o veículo — teto 1x (recebe a renda, não o rally alavancado).
+        if _is_covered_call_etf(tk):
+            leverage = min(leverage, 1.0)
         # Crypto NÃO segue o 4x/5x do regime — teto 3x (defensivo não convive c/ 5x em BTC).
         if cat == "CRYPTO":
             leverage = min(leverage, 3.0)

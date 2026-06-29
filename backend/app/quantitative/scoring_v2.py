@@ -943,6 +943,9 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
     q = w * q_raw + (1.0 - w) * _QUALITY_PRIOR
 
     # ── TRAVAS DE SANIDADE NA NOTA (movidas de "só confiança" p/ a NOTA) ──
+    # Soft caps: compressão progressiva acima do teto em vez de truncamento.
+    # Hard cap (min) cria clustering artificial — todos acima do teto colapsam para o mesmo valor.
+    # Soft: acima do teto, cada 1pp extra vira 0.25pp (compressão 4:1) → dispersão preservada.
     broken = False
     if k_real < K:
         # nota ≤12 nascida de sub-cobertura = artefato de renormalização magra (caso TIMS3, TIM
@@ -950,9 +953,13 @@ def compute_quality_blend(beta=None, max_dd_pct=None, dividend_yield=None,
         if q_raw <= _SANITY_BROKEN_Q:
             broken = True
             q = _QUALITY_PRIOR
-        q = min(q, _SANITY_CAP_SUBCOVER)            # sub-cobertura não vira nota de elite (fica ~mediana)
+        # Soft cap sub-cobertura: perto de 65 mas disperso
+        if q > _SANITY_CAP_SUBCOVER:
+            q = _SANITY_CAP_SUBCOVER + (q - _SANITY_CAP_SUBCOVER) * 0.25
     if k_real <= 1:
-        q = min(q, _SANITY_CAP_ONEPILLAR)           # 1 pilar não sustenta convicção
+        # Soft cap 1-pilar: perto de 55 mas disperso
+        if q > _SANITY_CAP_ONEPILLAR:
+            q = _SANITY_CAP_ONEPILLAR + (q - _SANITY_CAP_ONEPILLAR) * 0.25
 
     # ── CICLICIDADE (ratificado: cap 65 + penalidade por dispersão do roic_history) ──
     # is_tatico chega na assinatura e até hoje era IGNORADO no score. Agora morde: cíclica/commodity
