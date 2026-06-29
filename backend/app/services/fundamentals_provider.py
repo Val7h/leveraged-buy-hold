@@ -175,6 +175,7 @@ def _empty(source=None) -> dict:
         # (que a média de 6a esconde). Em %, ex -12. Só Finnhub (US).
         "rev_growth_ttm": None,
         "eps_growth_ttm": None,
+        "pe_ratio": None,
         "beta": None,
         "beta_note": None,
         "source": source,
@@ -296,6 +297,15 @@ def _from_brapi(ticker: str) -> dict:
             out["fcf_yield"] = fcf / mcap   # FRAÇÃO (score usa fcf_yield>=0.08)
 
         # payout: brapi não traz de forma direta/confiável → None
+
+        # pe_ratio: forward P/E (preferido) ou trailing P/E
+        pe_ratio = (
+            (stats.get("forwardPE"))
+            or (r0.get("summaryDetail") or {}).get("trailingPE")
+        )
+        _pe = _to_float(pe_ratio)
+        if _pe and _pe > 0:
+            out["pe_ratio"] = _pe
     except Exception as e:
         logger.warning(f"[FUNDAMENTALS] parse brapi {ticker}: {e}")
         return _empty("brapi")
@@ -498,6 +508,10 @@ def _from_fmp(ticker: str) -> dict:
                 out["dividend_yield"] = dy * 100.0 if dy is not None else None
             fcf = pick("freeCashFlowYieldTTM")
             out["fcf_yield"] = fcf if fcf is not None else None   # FRAÇÃO (FMP já manda fração; score usa fcf_yield>=0.08)
+            # pe_ratio: priceEarningsRatioTTM (FMP)
+            _pe = pick("priceEarningsRatioTTM")
+            if _pe is not None and _pe > 0:
+                out["pe_ratio"] = _pe
     except Exception as e:
         logger.warning(f"[FUNDAMENTALS] parse FMP ratios {ticker}: {e}")
 

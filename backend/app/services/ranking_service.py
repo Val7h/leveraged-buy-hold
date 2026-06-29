@@ -957,7 +957,7 @@ def _verdict_from_momentum(momentum: float, st: dict, cat: str) -> str:
     if cat == "CRYPTO":
         verdict = _crypto_verdict(momentum, quality)
     else:
-        verdict = S.aporte_verdict(momentum, quality)
+        verdict = S.aporte_verdict(momentum, quality, pe_ratio=st.get("pe_ratio"))
     if verdict in ("COMPRAR FORTE", "COMPRAR") and st.get("knife"):
         verdict = "ESPECULATIVO"
     if st.get("crivo_rebaixa"):
@@ -1511,7 +1511,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             _fq, _fqb = S.score_financial_quality(
                 roe=_roe_financeiro, dy_avg10=dy_avg10, dy_worst=dy_worst, dividend_yield=dy,
                 max_dd_pct=dd, dd_recovery_mult=dd_recovery_mult,
-                payout_ratio=fund.get("payout_ratio"))
+                payout_ratio=fund.get("payout_ratio"), pe_ratio=fund.get("pe_ratio"))
             if _fq is not None:
                 quality, qb = _fq, _fqb
 
@@ -1584,7 +1584,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         if bucket == "RESERVA":
             verdict = "RESERVA"
         else:
-            verdict = S.aporte_verdict(momentum, quality)
+            verdict = S.aporte_verdict(momentum, quality, pe_ratio=fund.get("pe_ratio"))
 
             # ANTI-FACA (#15c): faca = NEGÓCIO encolhendo (crescimento REAL de 5a < 0, OU recente
             # TTM apodrecendo), não só preço barato. Carry ZERO (Quantfury) → sem custo de carrego a
@@ -1630,6 +1630,21 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                     verdict = "COMPRAR"
                 elif verdict == "ESPECULATIVO" and not _knife:
                     verdict = "JUSTO"
+
+        # Late-cycle momentum flag: momentum alto + DY comprimido + PE esticado
+        _dy_comprimido = (
+            dy is not None and dy_avg10 is not None
+            and dy_avg10 > 0
+            and dy < dy_avg10 * 0.80
+        )
+        if (
+            momentum >= 65
+            and _dy_comprimido
+            and verdict in ("COMPRAR FORTE", "COMPRAR")
+        ):
+            _pe = fund.get("pe_ratio")
+            if _pe is not None and _pe > 14.0:
+                verdict = "ESTICADO"
 
         # REGRA DO OURO: ouro em capitulação do mercado de ações → hedge → COMPRAR FORTE (override).
         _gold_override = (tk.upper() in ("GLD", "GC=F")
@@ -1769,6 +1784,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 "gold_override": _gold_override, "sigma_total": sigma_total,
                 "leverage": leverage,
                 "quality_thin": _quality_thin,
+                "pe_ratio": fund.get("pe_ratio"),
             },
             "slow_stoch_weekly": _round_or_none(sstoch, 0),
             "stoch_k": _round_or_none(stoch_k, 1),

@@ -1210,13 +1210,28 @@ _HOLDING_Q_CEIL = 75.0         # teto da banda (holding excelente em dividendo+s
 # de ROE (âncora) + dividendo sustentável + resiliência de queda. NÃO usa safety=D/E (alavancagem é o
 # NEGÓCIO do banco, não risco) nem FCF (sem sentido p/ banco). LEVERAGE-INDEPENDENTE, não fabrica.
 # Ao contrário da holding (teto 75), um banco/seguradora de elite PODE ser compounder de topo → teto 92.
+def _q_valuation_abs(pe_ratio, selic_rate=0.135):
+    """Earning Yield spread sobre Selic+2pp. Sem PE: prior neutro."""
+    if pe_ratio is None or pe_ratio <= 0:
+        return 50.0
+    earning_yield = 1.0 / pe_ratio
+    spread = earning_yield - (selic_rate + 0.02)
+    if spread >= 0.06:  return 100.0
+    if spread >= 0.03:  return 80.0
+    if spread >= 0.00:  return 60.0
+    if spread >= -0.03: return 35.0
+    return 10.0
+
+
 def score_financial_quality(roe=None, dy_avg10=None, dy_worst=None, dividend_yield=None,
-                            max_dd_pct=None, dd_recovery_mult=1.0, payout_ratio=None):
-    """QUALIDADE FINANCEIRA (0-100) p/ bancos/seguradoras. ROE-âncora + dividendo + resiliência.
-    Breakdown: 'roe_nivel' (núcleo) · 'dividendos' · 'resiliencia_queda'. (None,{}) se sem ROE nem
+                            max_dd_pct=None, dd_recovery_mult=1.0, payout_ratio=None,
+                            pe_ratio=None):
+    """QUALIDADE FINANCEIRA (0-100) p/ bancos/seguradoras. ROE-âncora + dividendo + resiliência + valuation.
+    Breakdown: 'roe_nivel' (núcleo) · 'dividendos' · 'resiliencia_queda' · 'valuation_abs'. (None,{}) se sem ROE nem
     dividendo (segue thin honestamente). NÃO pune D/E (estrutural no setor).
     Haircut de sustentabilidade: payout > 100% = dividendo insustentável (erosão de capital)
-    → ROE-efetivo reduzido proporcionalmente (cap de -50%). Ex: BRSR6 payout 210% → ROE×0.5."""
+    → ROE-efetivo reduzido proporcionalmente (cap de -50%). Ex: BRSR6 payout 210% → ROE×0.5.
+    Pesos: ROE 40% · Dividendo 20% · Resiliência 20% · Valuation 20%."""
     # Haircut de sustentabilidade: payout > 1.0 = empresa paga mais do que ganha → ROE artificial.
     # Reduz ROE-efetivo: cada % acima de 100% de payout = 1% de desconto (cap 50%).
     roe_effective = roe
@@ -1228,18 +1243,27 @@ def score_financial_quality(roe=None, dy_avg10=None, dy_worst=None, dividend_yie
              if (dy_avg10 is not None or dividend_yield is not None) else None)
     s_dd = (_clamp(score_maxdd_quality(max_dd_pct) * dd_recovery_mult)
             if max_dd_pct is not None else None)
+    s_valuation = _q_valuation_abs(pe_ratio)
     comps = []
     bd = {}
-    for s, w, k in ((s_roe, 0.55, "roe_nivel"), (s_div, 0.25, "dividendos"),
-                    (s_dd, 0.20, "resiliencia_queda")):
+    for s, w, k in ((s_roe, 0.40, "roe_nivel"), (s_div, 0.20, "dividendos"),
+                    (s_dd, 0.20, "resiliencia_queda"), (s_valuation, 0.20, "valuation_abs")):
         if s is not None:
             comps.append((s, w))
             bd[k] = round(s)
     wsum = sum(w for _, w in comps)
     if wsum <= 0:
         return None, {}                 # sem ROE nem dividendo → não fabrica (segue thin)
-    q = sum(s * w for s, w in comps) / wsum
-    return round(_clamp(q), 1), bd
+    score = sum(s * w for s, w in comps) / wsum
+
+    # Penalidade: ativo de renda pura sendo precificado como compounder
+    if payout_ratio is not None and pe_ratio is not None and pe_ratio > 0:
+        growth_implied = (roe_effective or 0.0) * (1.0 - min(payout_ratio, 1.0))
+        if growth_implied < 0.03 and pe_ratio > 13.0:
+            penalty = min((0.03 - growth_implied) / 0.03, 1.0) * 12.0
+            score = max(0.0, score - penalty)
+
+    return round(_clamp(score), 1), bd
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1458,39 +1482,54 @@ _VERDICT_EXCELENCIA = 75.0      # excelente "compra" o momento que falta (FORTE 
 _VERDICT_PISO_COMPRAR = 45.0    # abaixo disto = ESPECULATIVO (faca), momento nenhum salva
 
 
-def aporte_verdict(momentum: float, quality: float) -> str:
+def aporte_verdict(momentum: float, quality: float, pe_ratio=None, selic_rate=0.135) -> str:
     """Veredito de ENTRADA — Q-GATE (painel 2ª rodada, ratificado pelo dono; substitui o #15b
     momento-first). SURVIVAL-FIRST: a QUALIDADE define a FAIXA do veredito (é o PISO, não o momento);
     o momento move DENTRO da faixa (= timing de entrada). MONOTÔNICO em Q: a mesmo momento, Q maior
     nunca recebe veredito pior. Preserva um resquício de "pechincha": a empresa BOA (≥58) com
     momento FORTE (≥70) ainda alcança COMPRAR FORTE — mas a FRACA nunca vira FORTE só por momento.
-    Por cima disto, o CRIVO por tipo + confiança + faca (ranking_service) pode rebaixar 1 degrau."""
+    Por cima disto, o CRIVO por tipo + confiança + faca (ranking_service) pode rebaixar 1 degrau.
+    Gate EY vs Selic: se EY < Selic+2pp, rebaixa COMPRAR FORTE/COMPRAR para ESTICADO."""
     if quality >= 70:                     # EXCELENTE: nunca cai abaixo de COMPRAR por momento fraco
         if momentum >= 55:
-            return "COMPRAR FORTE"
-        if momentum >= 42:
-            return "COMPRAR"
-        return "JUSTO"                    # excelente mas esticada → aguardar (não vira ESPECULATIVO)
-    if quality >= _VERDICT_PISO_FORTE:    # BOA (≥58)
+            verdict = "COMPRAR FORTE"
+        elif momentum >= 42:
+            verdict = "COMPRAR"
+        else:
+            verdict = "JUSTO"                    # excelente mas esticada → aguardar (não vira ESPECULATIVO)
+    elif quality >= _VERDICT_PISO_FORTE:    # BOA (≥58)
         if momentum >= 70:
-            return "COMPRAR FORTE"        # boa + pechincha forte (resquício do #15b)
-        if momentum >= 50:
-            return "COMPRAR"
-        if momentum >= 42:
-            return "JUSTO"
-        return "ESTICADO"
-    if quality >= _VERDICT_PISO_COMPRAR:  # MEDIANA (45-57)
+            verdict = "COMPRAR FORTE"        # boa + pechincha forte (resquício do #15b)
+        elif momentum >= 50:
+            verdict = "COMPRAR"
+        elif momentum >= 42:
+            verdict = "JUSTO"
+        else:
+            verdict = "ESTICADO"
+    elif quality >= _VERDICT_PISO_COMPRAR:  # MEDIANA (45-57)
         if momentum >= 55:
-            return "COMPRAR"
-        if momentum >= 42:
-            return "JUSTO"
-        return "ESTICADO"
-    # FRACA (<45): qualidade não sustenta compra; barata + momento = faca (ESPECULATIVO)
-    if momentum >= 55:
-        return "ESPECULATIVO"
-    if momentum >= 42:
-        return "JUSTO"
-    return "ESTICADO"
+            verdict = "COMPRAR"
+        elif momentum >= 42:
+            verdict = "JUSTO"
+        else:
+            verdict = "ESTICADO"
+    else:
+        # FRACA (<45): qualidade não sustenta compra; barata + momento = faca (ESPECULATIVO)
+        if momentum >= 55:
+            verdict = "ESPECULATIVO"
+        elif momentum >= 42:
+            verdict = "JUSTO"
+        else:
+            verdict = "ESTICADO"
+
+    # Gate Earnings Yield vs Selic: EY < Selic+2pp → ativo esticado pelo valuation absoluto
+    if pe_ratio is not None and pe_ratio > 0:
+        earnings_yield = 1.0 / pe_ratio
+        if earnings_yield < (selic_rate + 0.02):  # EY < Selic + 2pp
+            if verdict in ("COMPRAR FORTE", "COMPRAR"):
+                return "ESTICADO"
+
+    return verdict
 
 
 # ─────────────────── ANTI-FACA POR DECLÍNIO DO NEGÓCIO (#15c) ───────────────────
