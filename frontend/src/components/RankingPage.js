@@ -565,7 +565,7 @@ function SurvivalTierBadge({ asset }) {
 /* Linha do ranking                                                    */
 /* ------------------------------------------------------------------ */
 
-function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy, showLeverage }) {
+function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick, onBuy, showLeverage }) {
   const verdictCls = VERDICT_STYLE[asset.verdict] || "text-text-secondary bg-surface-2 border-border";
   const dotCls = VERDICT_DOT[asset.verdict] || "bg-text-muted";
   const stops = asset.staggered_stops || {};
@@ -574,7 +574,8 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy, s
     ? asset.rank_alavancado ?? asset.rank
     : asset.rank;
 
-  const medal = medalEmoji(displayRank);
+  // Medal usa posição na lista (1-based), não o score de rank.
+  const medal = medalEmoji(position);
   // Momentum: pode vir como momentum, opportunity_score ou momentum_score
   const momentumVal = asset.momentum ?? asset.opportunity_score ?? asset.momentum_score ?? 0;
   // Aptidao: Camada 3
@@ -711,11 +712,15 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy, s
         </div>
 
         <div className="col-span-3 sm:col-span-3 lg:col-span-1 flex items-center justify-end gap-2 sm:gap-3">
-          {showLeverage && asset.leverage != null && (
+          {asset.leverage != null && (
             <div className="text-right">
-              <div className="text-[9px] uppercase tracking-wide text-text-muted leading-none">alav.</div>
-              <div className="text-base font-mono font-bold text-[#C084FC] leading-tight flex items-center justify-end gap-0.5">
-                <Zap size={12} className="text-[#C084FC]" />
+              <div className="text-[9px] uppercase tracking-wide text-text-muted leading-none">
+                {showLeverage ? "alav." : "recom."}
+              </div>
+              <div className={`text-base font-mono font-bold leading-tight flex items-center justify-end gap-0.5 ${
+                showLeverage ? "text-[#C084FC]" : "text-primary"
+              }`}>
+                <Zap size={12} className={showLeverage ? "text-[#C084FC]" : "text-primary"} />
                 {fmtNum(asset.leverage, 1)}x
               </div>
             </div>
@@ -1515,10 +1520,11 @@ export default function RankingPage() {
           </div>
         ) : (
           <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-card">
-            {assets.map((a) => (
+            {assets.map((a, i) => (
               <RankingRow
                 key={a.ticker}
                 asset={a}
+                position={i + 1}
                 expanded={expanded === a.ticker}
                 onToggle={toggle}
                 onRemove={handleRemove}
