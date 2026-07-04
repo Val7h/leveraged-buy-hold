@@ -355,12 +355,27 @@ function PortfolioPageInner() {
         {/* Positions table */}
         {positions.length > 0 ? (
           <div className="card mb-6">
-            <h2 className="text-sm font-semibold text-text-primary mb-4">Posições</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-text-primary">Posições</h2>
+              {/* Effective portfolio leverage — weighted average by notional */}
+              {(() => {
+                const levAnalytics = analytics?.leverage_agregado?.effective_leverage ?? analytics?.totals?.effective_leverage;
+                const levCalc = levAnalytics ?? calcEffectiveLeverage(positions);
+                if (levCalc == null) return null;
+                return (
+                  <div className="flex items-center gap-1.5 text-xs text-text-muted">
+                    <span>Alav. efetiva carteira:</span>
+                    <span className={`font-mono font-bold ${getLeverageColor(levCalc)}`}>{levCalc.toFixed(2)}x</span>
+                    <span className="text-[10px] text-text-muted">(média ponderada por notional)</span>
+                  </div>
+                );
+              })()}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Ativo", "Preço Atual", "Valor (Equity)", "Alavancagem", "Exposição (Notional)", "P&L", "P&L %", "Peso / Qtd", "PM", ""].map((h) => (
+                    {["Ativo", "Preço Atual", "Valor (Equity)", "Alavancagem", "Exposição (Notional)", "P&L", "P&L %", "Peso / Qtd", "PM / Stops", "Liq.", ""].map((h) => (
                       <th key={h} className="text-left text-text-muted font-medium py-2 pr-3 last:pr-0">{h}</th>
                     ))}
                   </tr>
@@ -368,6 +383,20 @@ function PortfolioPageInner() {
                 <tbody>
                   {positions.map((pos) => {
                     const isEditing = editingId === String(pos.id);
+                    // Liquidation semaphore
+                    const liqSlack = getLiqSlack(analytics, pos.ticker);
+                    // Stop levels from PM (only for Ciclo, never Semente)
+                    const pm = pos.avg_price ?? 0;
+                    const showStops = pos.is_cycle && !pos.is_seed && pm > 0;
+                    const stop10 = pm * 0.90;
+                    const stop20 = pm * 0.80;
+                    const stop30 = pm * 0.70;
+                    const curPrice = pos.current_price ?? 0;
+                    // which stop level is breached
+                    const stopBreached = curPrice > 0 && curPrice <= stop30 ? 3
+                      : curPrice > 0 && curPrice <= stop20 ? 2
+                      : curPrice > 0 && curPrice <= stop10 ? 1
+                      : 0;
                     return (
                       <tr key={pos.ticker} className="border-b border-border/40 hover:bg-surface-2/40 transition-colors">
                         <td className="py-2.5 pr-3">
@@ -378,12 +407,12 @@ function PortfolioPageInner() {
                                 <span className="font-mono font-bold text-text-primary">{pos.ticker}</span>
                                 {pos.is_seed && (
                                   <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning bg-warning/10 border border-warning/20 rounded px-1 py-0.5">
-                                    <Lock size={8} /> Semente
+                                    🔒 Semente
                                   </span>
                                 )}
                                 {pos.is_cycle && (
                                   <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary bg-primary/10 border border-primary/20 rounded px-1 py-0.5">
-                                    <RefreshCw size={8} /> Ciclo
+                                    🔄 Ciclo
                                   </span>
                                 )}
                               </div>
@@ -426,12 +455,32 @@ function PortfolioPageInner() {
                           )}
                         </td>
 
-                        {/* PM — editável */}
-                        <td className="py-2.5 pr-3">
+                        {/* PM + Stops (Ciclo only) — editável */}
+                        <td className="py-2.5 pr-3 min-w-[110px]">
                           {isEditing ? (
                             <input className="input text-xs py-0.5 px-1 w-24 font-mono" type="number" min="0" step="0.01"
                               value={editForm.avg_price} onChange={(e) => setEditForm({ ...editForm, avg_price: e.target.value })} />
+                          ) : showStops ? (
+                            <div className="space-y-0.5">
+                              <div className={`font-mono text-[10px] ${stopBreached >= 1 ? "text-danger font-bold" : "text-text-muted"}`}
+                                title="-10% do PM: stop escada nível 1">
+                                -10% {formatCurrency(stop10)}
+                              </div>
+                              <div className={`font-mono text-[10px] ${stopBreached >= 2 ? "text-danger font-bold" : "text-text-muted"}`}
+                                title="-20% do PM: stop escada nível 2">
+                                -20% {formatCurrency(stop20)}
+                              </div>
+                              <div className={`font-mono text-[10px] ${stopBreached >= 3 ? "text-danger font-bold animate-pulse" : "text-text-muted"}`}
+                                title="-30% do PM: stop escada nível 3">
+                                -30% {formatCurrency(stop30)}
+                              </div>
+                            </div>
                           ) : null}
+                        </td>
+
+                        {/* Liquidation semaphore */}
+                        <td className="py-2.5 pr-3">
+                          <LiqSemaphore slack={liqSlack} />
                         </td>
 
                         <td className="py-2.5">
