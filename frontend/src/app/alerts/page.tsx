@@ -392,7 +392,7 @@ export default function AlertsPage() {
               {sortedAlerts.map((alert) => (
                 <div
                   key={alert.id}
-                  className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                  className={`flex flex-col p-3 rounded-lg border transition-colors ${
                     alert.triggered
                       ? "bg-warning/5 border-warning/20"
                       : !alert.active
@@ -400,70 +400,72 @@ export default function AlertsPage() {
                         : "bg-surface-2 border-border/50 hover:border-border"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    {alert.triggered ? (
-                      <CheckCircle size={14} className="text-warning flex-shrink-0" />
-                    ) : (
-                      <Clock size={14} className="text-text-muted flex-shrink-0" />
-                    )}
-                    <TickerLogo ticker={alert.ticker} size={28} />
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-bold text-text-primary text-sm">{alert.ticker}</span>
-                        <span className="text-xs text-text-muted">{condLabel(alert.condition)}</span>
-                        <span className="badge bg-surface-3 border-border text-text-secondary text-xs font-mono">
-                          ${alert.threshold.toFixed(2)}
-                        </span>
-                        {!alert.active && (
-                          <span className="badge bg-surface-3 border-border text-text-muted text-xs">INATIVO</span>
-                        )}
-                        {alert.triggered && (
-                          <span className="badge bg-warning/10 border-warning/20 text-warning text-xs">DISPARADO</span>
-                        )}
-                      </div>
-                      {alert.message && <p className="text-xs text-text-muted mt-0.5">{alert.message}</p>}
-                      {alert.context && (
-                        <p className={`text-xs mt-0.5 flex items-center gap-1 ${alert.triggered ? "text-warning" : "text-text-muted"}`}>
-                          <Info size={10} />
-                          {alert.context}
-                        </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {alert.triggered ? (
+                        <CheckCircle size={14} className="text-warning flex-shrink-0" />
+                      ) : (
+                        <Clock size={14} className="text-text-muted flex-shrink-0" />
                       )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {alert.current_price != null && (
-                      <div className="text-right">
-                        <p className="text-xs font-mono text-text-primary">${alert.current_price.toFixed(2)}</p>
-                        {alert.distance_pct != null && (
-                          <p className={`text-xs font-mono flex items-center gap-0.5 justify-end ${
-                            alert.distance_pct > 0 ? "text-success" : "text-danger"
-                          }`}>
-                            {alert.distance_pct > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                            {alert.distance_pct > 0 ? "+" : ""}{alert.distance_pct.toFixed(1)}%
+                      <TickerLogo ticker={alert.ticker} size={28} />
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono font-bold text-text-primary text-sm">{alert.ticker}</span>
+                          <span className="text-xs text-text-muted">{condLabel(alert.condition)}</span>
+                          <span className="badge bg-surface-3 border-border text-text-secondary text-xs font-mono">
+                            ${alert.threshold.toFixed(2)}
+                          </span>
+                          {!alert.active && (
+                            <span className="badge bg-surface-3 border-border text-text-muted text-xs">INATIVO</span>
+                          )}
+                          {alert.triggered && (
+                            <span className="badge bg-warning/10 border-warning/20 text-warning text-xs">DISPARADO</span>
+                          )}
+                        </div>
+                        {alert.message && <p className="text-xs text-text-muted mt-0.5">{alert.message}</p>}
+                        {alert.context && (
+                          <p className={`text-xs mt-0.5 flex items-center gap-1 ${alert.triggered ? "text-warning" : "text-text-muted"}`}>
+                            <Info size={10} />
+                            {alert.context}
                           </p>
                         )}
                       </div>
-                    )}
-                    <button
-                      onClick={() => handleToggle(alert.id, alert.active)}
-                      className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                        alert.active
-                          ? "text-text-muted border-border hover:border-warning/50 hover:text-warning"
-                          : "text-primary border-primary/30 hover:bg-primary/10"
-                      }`}
-                    >
-                      {alert.active ? "Pausar" : "Ativar"}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(alert.id)}
-                      className="text-text-muted hover:text-danger transition-colors p-1"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {alert.current_price != null && (
+                        <div className="text-right">
+                          <p className="text-xs font-mono text-text-primary">${alert.current_price.toFixed(2)}</p>
+                          {alert.distance_pct != null && (
+                            <p className={`text-xs font-mono flex items-center gap-0.5 justify-end ${
+                              alert.distance_pct > 0 ? "text-success" : "text-danger"
+                            }`}>
+                              {alert.distance_pct > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                              {alert.distance_pct > 0 ? "+" : ""}{alert.distance_pct.toFixed(1)}%
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleToggle(alert.id, alert.active)}
+                        className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                          alert.active
+                            ? "text-text-muted border-border hover:border-warning/50 hover:text-warning"
+                            : "text-primary border-primary/30 hover:bg-primary/10"
+                        }`}
+                      >
+                        {alert.active ? "Pausar" : "Ativar"}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(alert.id)}
+                        className="text-text-muted hover:text-danger transition-colors p-1"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
-                  {/* Barra de proximidade ao threshold */}
+                  {/* Barra de proximidade ao threshold — full width abaixo da row */}
                   {alert.active && !alert.triggered && alert.distance_pct != null && (
-                    <div className="mt-2 px-3 pb-2">
+                    <div className="mt-2">
                       <div className="flex justify-between text-[10px] text-text-muted mb-1">
                         <span>Proximidade ao gatilho</span>
                         <span className={Math.abs(alert.distance_pct) < 5 ? "text-warning font-semibold" : ""}>

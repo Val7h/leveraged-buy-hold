@@ -116,9 +116,9 @@ function isBuyZone(a: AssetScore): boolean {
 // ── Badge de camadas: qual pilar está puxando o veredito ─────────────────────
 // Q = Qualidade (quality_score), M = Momento (opportunity_score), A = Aptidão (leverage_score)
 function LayerBadge({ asset }: { asset: AssetScore }) {
-  const q = asset.quality_score;
-  const m = asset.opportunity_score;
-  const a = asset.leverage_score;
+  const q = asset.quality_score ?? 0;
+  const m = asset.opportunity_score ?? 0;
+  const a = asset.leverage_score ?? 0;
   const fmt = (score: number, label: string) => {
     const up = score >= 60;
     const ok = score >= 40 && score < 60;

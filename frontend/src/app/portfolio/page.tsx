@@ -97,7 +97,7 @@ function PortfolioPageInner() {
     }
   }, [activePortfolioId]);
 
-  // Pre-fill from watchlist "Comprei → Portfólio" button
+  // Pre-fill from watchlist / dashboard "Simular → Portfólio" button
   useEffect(() => {
     const ticker = searchParams.get("add");
     if (ticker) {
