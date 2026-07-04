@@ -93,15 +93,94 @@ const VERDICT_LABEL: Record<string, string> = {
   RESERVA: "Reserva",
 };
 
-type SortKey = "rank" | "dy" | "momentum" | "quality" | "beta" | "leverage";
+type SortKey = "rank" | "dy" | "momentum" | "quality" | "beta" | "leverage" | "best_aporte";
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "rank", label: "Rank (composto)" },
+  { key: "best_aporte", label: "Melhor aporte agora ★" },
   { key: "dy", label: "Dividend Yield" },
   { key: "momentum", label: "Momento" },
   { key: "quality", label: "Qualidade" },
   { key: "beta", label: "Beta (menor)" },
   { key: "leverage", label: "Alavancagem" },
 ];
+
+// ── Zona de compra: RSI semanal ≤38 OU desconto MM200 ≥10% ──────────────────
+function isBuyZone(a: AssetScore): boolean {
+  const rsi = a.technicals?.rsi_14_weekly ?? a.technicals?.rsi_weekly;
+  const dist = a.technicals?.distance_from_ma200;
+  if (rsi != null && rsi <= 38) return true;
+  if (dist != null && dist <= -10) return true;
+  return false;
+}
+
+// ── Badge de camadas: qual pilar está puxando o veredito ─────────────────────
+// Q = Qualidade (quality_score), M = Momento (opportunity_score), A = Aptidão (leverage_score)
+function LayerBadge({ asset }: { asset: AssetScore }) {
+  const q = asset.quality_score;
+  const m = asset.opportunity_score;
+  const a = asset.leverage_score;
+  const fmt = (score: number, label: string) => {
+    const up = score >= 60;
+    const ok = score >= 40 && score < 60;
+    const cls = up
+      ? "text-emerald-400 font-bold"
+      : ok
+      ? "text-yellow-400"
+      : "text-zinc-500";
+    return (
+      <span key={label} className={cls} title={`${label}: ${score.toFixed(0)}/100`}>
+        {label}
+        {up ? "↑" : ok ? "→" : "−"}
+      </span>
+    );
+  };
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-surface-2 border border-border/40 select-none">
+      {fmt(q, "Q")}
+      <span className="text-border">·</span>
+      {fmt(m, "M")}
+      <span className="text-border">·</span>
+      {fmt(a, "A")}
+    </span>
+  );
+}
+
+// ── Confiança de dados: conta quantos pilares têm dado real ──────────────────
+function DataConfBadge({ asset }: { asset: AssetScore }) {
+  const bd = asset.score_breakdown ?? {};
+  const keys = Object.keys(bd);
+  // Pilares com valores válidos (não zero, não indefinido)
+  const filled = keys.filter((k) => {
+    const v = bd[k];
+    return typeof v === "number" && Number.isFinite(v) && v !== 0;
+  });
+  const total = keys.length || 1;
+  const pct = Math.round((filled.length / total) * 100);
+  const high = pct >= 70;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border select-none ${
+        high
+          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+          : "bg-warning/10 border-warning/30 text-warning"
+      }`}
+      title={`Pilares com dado: ${filled.length}/${total} (${pct}%)`}
+    >
+      {high ? "CONF↑" : "CONF↓"} {filled.length}/{total}
+    </span>
+  );
+}
+
+// ── Score "Melhor aporte agora": veredito + zona de compra ───────────────────
+function bestAporteScore(a: AssetScore): number {
+  const verdictBonus = [
+    "COMPRAR FORTE", "COMPRAR", "JUSTO", "ESTICADO", "ESPECULATIVO", "RESERVA",
+  ].indexOf(a.verdict ?? "RESERVA");
+  // verdictBonus: 0=FORTE … 5=RESERVA → inverter para que FORTE = alto
+  const verdictScore = 5 - (verdictBonus >= 0 ? verdictBonus : 5);
+  const zoneBonus = isBuyZone(a) ? 3 : 0;
+  return verdictScore * 10 + zoneBonus + (a.composite_score ?? 0) / 100;
+}
 
 const num = (v: unknown): number | undefined =>
   typeof v === "number" && Number.isFinite(v) ? v : undefined;
@@ -120,6 +199,7 @@ function AssetsPageInner() {
   // ── Filtros do screener (client-side) ──
   const [minDY, setMinDY] = useState(0);              // dividend_yield em %
   const [buyOnly, setBuyOnly] = useState(false);      // só COMPRAR / COMPRAR FORTE
+  const [buyZoneOnly, setBuyZoneOnly] = useState(false); // RSI sem ≤38 OU desconto MM200 ≥10%
   const [maxBeta, setMaxBeta] = useState(0);          // 0 = sem teto
   const [minLev, setMinLev] = useState(1);
   const [maxLev, setMaxLev] = useState(5);
@@ -222,6 +302,9 @@ function AssetsPageInner() {
     if (caps.hasVerdict && buyOnly) {
       list = list.filter((a) => a.verdict === "COMPRAR" || a.verdict === "COMPRAR FORTE");
     }
+    if (buyZoneOnly) {
+      list = list.filter((a) => isBuyZone(a));
+    }
     if (caps.hasBeta && maxBeta > 0) {
       list = list.filter((a) => { const b = betaOf(a); return b === undefined || b <= maxBeta; });
     }
@@ -235,12 +318,13 @@ function AssetsPageInner() {
         case "quality": return qualityOf(b) - qualityOf(a);
         case "leverage": return levOf(b) - levOf(a);
         case "beta": return (betaOf(a) ?? Infinity) - (betaOf(b) ?? Infinity);
+        case "best_aporte": return bestAporteScore(b) - bestAporteScore(a);
         case "rank":
         default: return rankOf(b) - rankOf(a);
       }
     });
     return list;
-  }, [result, caps, minDY, buyOnly, maxBeta, minLev, maxLev, sectorFilter, sortKey]);
+  }, [result, caps, minDY, buyOnly, buyZoneOnly, maxBeta, minLev, maxLev, sectorFilter, sortKey]);
 
   // Agrupa por veredito (FORTE no topo). Mantém a ordenação dentro de cada grupo.
   const grouped = useMemo(() => {
@@ -288,12 +372,25 @@ function AssetsPageInner() {
   const renderCards = (list: AssetScore[]) => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {list.map((asset) => (
-        <AssetCard
-          key={asset.ticker}
-          asset={asset}
-          selected={selectedAssets.has(asset.ticker)}
-          onToggleSelect={toggleAssetSelection}
-        />
+        <div key={asset.ticker} className="flex flex-col gap-1.5">
+          {/* Badges de contexto: camadas + confiança de dados + zona de compra */}
+          <div className="flex flex-wrap items-center gap-1.5 px-1">
+            <LayerBadge asset={asset} />
+            {Object.keys(asset.score_breakdown ?? {}).length > 0 && (
+              <DataConfBadge asset={asset} />
+            )}
+            {isBuyZone(asset) && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 select-none">
+                🎯 Zona compra
+              </span>
+            )}
+          </div>
+          <AssetCard
+            asset={asset}
+            selected={selectedAssets.has(asset.ticker)}
+            onToggleSelect={toggleAssetSelection}
+          />
+        </div>
       ))}
     </div>
   );
@@ -422,6 +519,12 @@ function AssetsPageInner() {
                     Só Comprar / Comprar Forte
                   </label>
                 )}
+                <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer" title="RSI semanal ≤38 OU desconto MM200 ≥10%">
+                  <input type="checkbox" checked={buyZoneOnly} onChange={(e) => setBuyZoneOnly(e.target.checked)}
+                    className="accent-primary" />
+                  <span>Zona de compra</span>
+                  <span className="text-text-muted">(RSI sem. ≤38 ou MM200 ≥−10%)</span>
+                </label>
                 {caps.hasVerdict && (
                   <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer">
                     <input type="checkbox" checked={groupByVerdict} onChange={(e) => setGroupByVerdict(e.target.checked)}
@@ -477,10 +580,11 @@ function AssetsPageInner() {
             )}
 
             {/* Summary bar */}
-            <div className="grid grid-cols-3 gap-3 mb-5">
+            <div className="grid grid-cols-4 gap-3 mb-5">
               {[
                 { label: "Score Médio", value: filtered.length > 0 ? (filtered.reduce((s, a) => s + rankOf(a), 0) / filtered.length).toFixed(1) : "—" },
-                { label: "Melhor Oport.", value: filtered[0] ? (filtered[0].underlying_ticker ?? filtered[0].ticker.replace("ONUSDT", "")) : "—" },
+                { label: "Melhor aporte", value: filtered[0] ? (filtered[0].underlying_ticker ?? filtered[0].ticker.replace("ONUSDT", "")) : "—" },
+                { label: "Zona de compra", value: filtered.filter(isBuyZone).length > 0 ? `${filtered.filter(isBuyZone).length} ativo${filtered.filter(isBuyZone).length !== 1 ? "s" : ""}` : "nenhum" },
                 { label: "Alavancagem Méd.", value: filtered.length > 0 ? (filtered.reduce((s, a) => s + levOf(a), 0) / filtered.length).toFixed(2) + "x" : "—" },
               ].map((item) => (
                 <div key={item.label} className="card-sm flex items-center justify-between">
