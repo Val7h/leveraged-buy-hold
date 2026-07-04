@@ -925,6 +925,37 @@ def _is_pe_haircut_exempt(ticker: str) -> bool:
     return ticker.upper().replace("-", "") in {t.replace("-", "") for t in _PE_HAIRCUT_EXEMPT_US}
 
 
+# ── PIVOT DINÂMICO DO HAIRCUT DE PE ──────────────────────────────────────────────
+# O PE "justo" cai quando os juros sobem: cada +1pp de yield acima de 3.5% comprime
+# o pivot em 1.5x (calibração empírica do Shiller CAPE vs 10y yield 1990-2024).
+# Limites: piso 12x (recessão profunda) e teto 22x (ZIRP extremo).
+# Fallback = 18x (neutro histórico) se ^TNX indisponível.
+_PE_PIVOT_CACHE: dict = {"value": None, "ts": 0.0}
+_PE_PIVOT_TTL  = 3600  # 1h — yield muda devagar, não precisa atualizar a cada ranking
+
+def _fetch_pe_pivot() -> float:
+    """Busca 10y Treasury yield (^TNX) e calcula pivot dinâmico. Retorna 18.0 em falha."""
+    now = _time.time()
+    cached = _PE_PIVOT_CACHE.get("value")
+    if cached is not None and (now - _PE_PIVOT_CACHE["ts"]) < _PE_PIVOT_TTL:
+        return cached
+    try:
+        d = _yahoo_chart_json("%5ETNX", "range=5d&interval=1d")
+        if d:
+            closes = d["chart"]["result"][0]["indicators"]["quote"][0].get("close") or []
+            ten_yr = next((c for c in reversed(closes) if c is not None), None)
+            if ten_yr is not None:
+                # pivot cai 1.5x para cada pp acima de 3.5%; clampado em [12, 22]
+                pivot = 18.0 - max(0.0, (ten_yr - 3.5) * 1.5)
+                pivot = max(12.0, min(22.0, pivot))
+                _PE_PIVOT_CACHE["value"] = pivot
+                _PE_PIVOT_CACHE["ts"] = now
+                return pivot
+    except Exception as exc:
+        logger.warning(f"[PE_PIVOT] falha ao buscar ^TNX: {exc} — usando pivot=18.0")
+    return 18.0
+
+
 # EMPRESAS ESTATAIS — dividendo pode ser cortado por decisão política (ex: PETR4 2022).
 # Flag informativo: não entra no scoring, sinaliza risco político ao gestor.
 # Inclui controle federal, estadual ou municipal ≥ 50%.
@@ -1493,8 +1524,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         _g5_for_tsr = g5 or 0.0
         _pe_tsr = fund.get("pe_ratio")
         _pe_haircut_exempt = _is_pe_haircut_exempt(tk) or is_regulated
-        if not is_br and not _pe_haircut_exempt and _pe_tsr is not None and _pe_tsr > 18 and _g5_for_tsr > 0:
-            _pe_excess = min(_pe_tsr - 18.0, 17.0)  # excesso capped em 17 → haircut max 5.1pp
+        _pe_pivot = _fetch_pe_pivot()  # dinâmico: cai com juros altos (12-22x), fallback 18x
+        if not is_br and not _pe_haircut_exempt and _pe_tsr is not None and _pe_tsr > _pe_pivot and _g5_for_tsr > 0:
+            _pe_excess = min(_pe_tsr - _pe_pivot, 17.0)  # excesso capped → haircut max 5.1pp
             _g5_haircut = min(_pe_excess * 0.3, 5.0)
             _g5_for_tsr = max(_g5_for_tsr - _g5_haircut, 0.0)
         tsr = (dy or 0.0) + _g5_for_tsr  # TSR esperado proxy = dividend yield + crescimento
@@ -1549,6 +1581,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # ÷ (preço × nº de ações ON+PN). Aproxima o market cap pelo preço-do-ticker × ações totais —
         # ON/PN andam juntos no BR; suficiente p/ o pilar fcf (bucketizado por limiares). SÓ se a
         # fonte não trouxe fcf_yield (não sobrescreve dado direto do brapi/FMP). NÃO fabrica.
+        #
+        # Para ações US (fonte: FMP freeCashFlowTTM ÷ preço×shares): ESCOLHA CONSCIENTE — usar o
+        # preço diário como denominador introduz viés pró-cíclico (yield cai quando bolsa sobe,
+        # sobe em crash). Aceito: (a) o pilar é bucketizado, não contínuo → ruído amortecido;
+        # (b) alternativa (market_cap snapshottado) seria staleness, não precisão. Limitação
+        # reconhecida: em bull market prolongado, US FCF yields são sistematicamente subestimados.
         if (fund.get("fcf_yield") is None and len(a)):
             # Fonte 1: fcf absoluto (CVM → BR) — usa shares da CVM
             _fcf_num = fund.get("fcf")

@@ -154,6 +154,18 @@ UNIVERSE = {
     # FIIs — Fundos de Investimento Imobiliário (B3)
     # Scoring próprio: DY+P/VP+safety+drawdown (sem ROIC/FCF/EPS — estrutura de fundo, não empresa).
     # bucket: GERADOR = renda corrente; ANCORA = previdenciário sólido; TATICO = oportunidade/ciclo.
+    #
+    # CRITÉRIOS DE INCLUSÃO (anti-survivorship bias — revisar semestralmente):
+    #   1. Liquidez: volume médio diário ≥ R$1M (últimos 3 meses)
+    #   2. Patrimônio: PL ≥ R$300M
+    #   3. Histórico: ≥ 3 anos de negociação contínua na B3
+    #   4. Diversificação mínima: ≥ 5 ativos imobiliários no portfólio (exceto papéis/FOF)
+    #   5. Gestora reconhecida: CSHG, XP, BTG, Kinea, Vinci, RBR, HSI, VBI — fora da lista exige justificativa
+    # CRITÉRIOS DE EXCLUSÃO (trigger imediato — não aguardar revisão semestral):
+    #   - Vacância > 30% por 2 trimestres consecutivos (tijolo)
+    #   - DY < 3% por 4 meses consecutivos (sinaliza problema operacional, não ciclo)
+    #   - P/VP > 1.30 por > 60 dias (gate ESTICADO já aplica acima de 1.15, mas 1.30 = sair do universo)
+    #   - Gestora em litígio regulatório (CVM) ou troca não-comunicada
     "FII": [
         # Logística / galpões (tijolo) — renda previsível, ativos de longa vida
         ("HGLG11.SA","GERADOR","CSHG Logística"),
