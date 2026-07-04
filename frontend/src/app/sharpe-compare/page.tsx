@@ -4,15 +4,11 @@ import { useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import { backtestApi } from "@/lib/api";
 import type { SharpeCompareResult, SharpeCompareItem } from "@/types";
-import { BarChart3, RefreshCw, Download, TrendingUp, Skull, Search } from "lucide-react";
+import { BarChart3, RefreshCw, Download, TrendingUp, Skull, Search, Trophy, AlertTriangle } from "lucide-react";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import TickerLogo from "@/components/ui/TickerLogo";
 
-// Default ENXUTO (~7 tickers) p/ rodar rápido no cold start — o caminho óbvio
-// (abrir + comparar) não pode dar timeout. Presets maiores ficam a 1 clique.
-// 4 tickers: o caminho óbvio (abrir + comparar) roda mesmo no cold start do Render free
-// (container acordando + N fetches de ~10a). Acima de ~6 o cold start pode estourar — por
-// isso o aviso. Presets maiores (B3 Top 20 etc.) ficam a 1 clique, já com o aviso.
+// Default ENXUTO (~4 tickers) p/ rodar rápido no cold start
 const DEFAULT_TICKERS = "NEE,JNJ,KO,O";
 
 // Acima disso, avisamos que a 1ª carga (cold start) pode demorar/expirar.
@@ -51,6 +47,26 @@ const SHARPE_PRESETS: Record<string, { label: string; flag: string; tickers: str
   global_mix:    { label: "Global Mix",        flag: "🌐",  tickers: "AAPL,JNJ,NEE,KO,O,MSFT,PG,VZ,T,ABT,MCD,PEP,MMM,SO,WEC" },
 };
 
+// ── Survival tier: critério Calmar ────────────────────────────────────────────
+type SurvivalTier = "elite" | "sobrevivente" | "fragil" | "descartado" | "liquidado";
+
+function getSurvivalTier(item: SharpeCompareItem): SurvivalTier {
+  if (item.margin_call) return "liquidado";
+  if (item.calmar > 1.5) return "elite";
+  if (item.calmar >= 0.8) return "sobrevivente";
+  if (item.calmar >= 0.4) return "fragil";
+  return "descartado";
+}
+
+const TIER_CONFIG: Record<SurvivalTier, { label: string; badgeCls: string; borderCls: string; icon: string }> = {
+  elite:        { label: "Sobrevivente Elite",  badgeCls: "bg-purple-500/15 text-purple-400 border-purple-500/30", borderCls: "border-l-purple-500",  icon: "👑" },
+  sobrevivente: { label: "Sobrevivente",         badgeCls: "bg-success/15 text-success border-success/30",          borderCls: "border-l-success",     icon: "✓" },
+  fragil:       { label: "Frágil",               badgeCls: "bg-warning/15 text-warning border-warning/30",          borderCls: "border-l-warning",     icon: "⚠" },
+  descartado:   { label: "Descartado",           badgeCls: "bg-danger/15 text-danger border-danger/30",             borderCls: "border-l-danger",      icon: "✕" },
+  liquidado:    { label: "Liquidado",            badgeCls: "bg-danger/20 text-danger border-danger/40",             borderCls: "border-l-danger",      icon: "💀" },
+};
+
+// ── Color helpers ─────────────────────────────────────────────────────────────
 function sharpeColor(v: number): string {
   if (v < 0)  return "text-danger";
   if (v < 1)  return "text-warning";
@@ -59,40 +75,44 @@ function sharpeColor(v: number): string {
   return "text-purple-400";
 }
 
-function sharpeBg(v: number): string {
-  if (v < 0)  return "bg-danger/10";
-  if (v < 1)  return "bg-warning/10";
-  if (v < 2)  return "bg-surface-3";
-  if (v < 3)  return "bg-success/10";
-  return "bg-purple-500/10";
-}
-
-// Calmar (CAGR/|MaxDD|) — métrica nativa do alavancado, critério principal de rank.
 function calmarColor(v: number): string {
-  if (v <= -99) return "text-danger";       // liquidado (sentinela)
+  if (v <= -99) return "text-danger";
   if (v < 0)    return "text-danger";
-  if (v < 0.5)  return "text-warning";
-  if (v < 1)    return "text-text-primary";
-  if (v < 2)    return "text-success";
+  if (v < 0.4)  return "text-danger";
+  if (v < 0.8)  return "text-warning";
+  if (v < 1.5)  return "text-success";
   return "text-purple-400";
 }
 function calmarBg(v: number): string {
   if (v <= -99) return "bg-danger/10";
   if (v < 0)    return "bg-danger/10";
-  if (v < 0.5)  return "bg-warning/10";
-  if (v < 1)    return "bg-surface-3";
-  if (v < 2)    return "bg-success/10";
-  return "bg-purple-500/10";
+  if (v < 0.4)  return "bg-danger/10";
+  if (v < 0.8)  return "bg-warning/10";
+  if (v < 1.5)  return "bg-success/10";
+  return "bg-purple-500/15";
 }
 
 // Margin buffer: quão perto o LOW chegou da liquidação (%). Menor = mais perigoso.
 function bufferColor(v: number | null): string {
-  if (v === null)  return "text-text-muted";  // sem alavancagem
-  if (v <= 0)      return "text-danger";       // liquidou
-  if (v < 15)      return "text-danger";       // raspou a liquidação
+  if (v === null)  return "text-text-muted";
+  if (v <= 0)      return "text-danger";
+  if (v < 15)      return "text-danger";
   if (v < 40)      return "text-warning";
   if (v < 100)     return "text-text-primary";
   return "text-success";
+}
+
+// Margin buffer semaphore fill (0–100% width, capped at 200% => 100%)
+function bufferBarWidth(v: number | null): number {
+  if (v === null || v <= 0) return 0;
+  return Math.min(100, (v / 200) * 100);
+}
+function bufferBarColor(v: number | null): string {
+  if (v === null || v <= 0) return "bg-danger";
+  if (v < 15)  return "bg-danger";
+  if (v < 40)  return "bg-warning";
+  if (v < 100) return "bg-text-primary";
+  return "bg-success";
 }
 
 function fmtCalmar(v: number): string {
@@ -109,25 +129,27 @@ function fmtBuffer(v: number | null): string {
 }
 
 function exportCsv(items: SharpeCompareItem[], leverage: number, period: string) {
-  const header = "Ticker,Beta,Retorno Total (%),CAGR (%),Volatilidade (%),Calmar,Sortino,Sharpe,Max Drawdown (%),Margin Buffer (%),Max Lev Sobrevivente,Patrimônio Final,Sobreviveu,Margin Call Date";
-  const rows = items.map((r) =>
-    [
+  const header = "Tier,Ticker,Beta,Retorno Total (%),CAGR (%),Calmar,Sortino,Sharpe,Volatilidade (%),Max Drawdown (%),Margin Buffer (%),Max Lev Sobrevivente,Patrimônio Final,Sobreviveu,Margin Call Date";
+  const rows = items.map((r) => {
+    const tier = getSurvivalTier(r);
+    return [
+      TIER_CONFIG[tier].label,
       r.ticker,
       r.beta.toFixed(3),
       r.retorno_total.toFixed(2),
       r.retorno_anualizado.toFixed(2),
-      r.volatilidade.toFixed(2),
       r.calmar <= -99 ? "" : r.calmar.toFixed(3),
       r.sortino <= -99 ? "" : r.sortino.toFixed(3),
       r.sharpe.toFixed(3),
+      r.volatilidade.toFixed(2),
       r.max_drawdown.toFixed(2),
       r.margin_buffer === null ? "" : r.margin_buffer.toFixed(2),
       r.max_leverage.toFixed(1),
       r.final_equity.toFixed(2),
       r.margin_call ? "NÃO" : "SIM",
       r.margin_call_date ?? "",
-    ].join(",")
-  );
+    ].join(",");
+  });
   const csv = [header, ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
@@ -138,6 +160,7 @@ function exportCsv(items: SharpeCompareItem[], leverage: number, period: string)
   URL.revokeObjectURL(url);
 }
 
+// ── Main Component ────────────────────────────────────────────────────────────
 export default function SharpeComparePage() {
   const router = useRouter();
   const [tickers, setTickers]     = useState(DEFAULT_TICKERS);
@@ -150,7 +173,6 @@ export default function SharpeComparePage() {
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState("");
 
-  // Nº de tickers no campo (p/ avisar de cold-start lento quando há muitos).
   const tickerCount = tickers.split(",").map((t) => t.trim()).filter(Boolean).length;
   const manyTickers = tickerCount > SLOW_TICKER_THRESHOLD;
 
@@ -167,26 +189,36 @@ export default function SharpeComparePage() {
         risk_free: riskFree,
       });
       setResult(res.data);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || "Erro ao executar comparação");
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      setError(err?.response?.data?.detail || "Erro ao executar comparação");
     } finally {
       setLoading(false);
     }
   };
+
+  // Derived stats from result
+  const survivors    = result ? result.items.filter((r) => !r.margin_call) : [];
+  const liquidated   = result ? result.items.filter((r) => r.margin_call)  : [];
+  const winner       = survivors[0] ?? null;
+  const eliteCount   = survivors.filter((r) => r.calmar > 1.5).length;
+  const fragilCount  = survivors.filter((r) => r.calmar < 0.4).length;
 
   return (
     <AppShell>
       <div className="p-6 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-xl font-semibold text-text-primary">Comparação Alavancada (Calmar / Survival-First)</h1>
+          <h1 className="text-xl font-semibold text-text-primary">Comparação Alavancada — Survival-First</h1>
           <p className="text-sm text-text-secondary mt-0.5">
-            Qual ativo merece mais alavancagem? Ranking por <strong>Calmar</strong> (CAGR/|MaxDD|), com margin call
-            intraday, margin buffer e leverage máximo sobrevivente. <span className="text-text-muted">Carry zero (Quantfury).</span>
+            Qual ativo merece mais alavancagem? Ranking por{" "}
+            <strong className="text-purple-400">Calmar</strong> (CAGR / |MaxDD|) — a métrica nativa do alavancado.
+            Margin call intraday, buffer de margem e alavancagem máx sobrevivente.{" "}
+            <span className="text-text-muted">Carry zero (Quantfury).</span>
           </p>
         </div>
 
-        {/* Config */}
+        {/* Config card */}
         <div className="card mb-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
             <div className="md:col-span-2">
@@ -200,7 +232,7 @@ export default function SharpeComparePage() {
             </div>
           </div>
 
-          {/* Preset categories */}
+          {/* Preset pills */}
           <div className="mb-3">
             <p className="text-xs text-text-muted mb-2">Categorias pré-definidas:</p>
             <div className="flex flex-wrap gap-1.5">
@@ -216,7 +248,6 @@ export default function SharpeComparePage() {
             </div>
           </div>
 
-          {/* Aviso de cold-start: muitos tickers podem demorar/expirar na 1ª carga. */}
           {manyTickers && (
             <div className="mb-3 flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2 text-xs text-warning">
               <span className="shrink-0">⏳</span>
@@ -251,7 +282,7 @@ export default function SharpeComparePage() {
           </div>
           <button onClick={handleRun} disabled={loading} className="btn-primary flex items-center gap-2">
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <BarChart3 size={14} />}
-            {loading ? "Calculando..." : "Comparar Sharpe"}
+            {loading ? "Calculando..." : "Comparar Ativos"}
           </button>
         </div>
 
@@ -269,34 +300,72 @@ export default function SharpeComparePage() {
 
         {result && !loading && (
           <div className="space-y-4">
-            {/* Summary bar */}
+
+            {/* ── Winner banner ─────────────────────────────────────────────── */}
+            {winner && (
+              <div className="card border border-purple-500/30 bg-purple-500/5 p-4">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Trophy size={24} className="text-purple-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] text-text-muted uppercase tracking-wider mb-0.5">#1 para alavancar agora</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <TickerLogo ticker={winner.ticker} size={28} />
+                      <span className="text-xl font-bold font-mono text-purple-400">{winner.ticker}</span>
+                      <span className={`text-sm font-mono font-bold px-2 py-0.5 rounded ${calmarBg(winner.calmar)} ${calmarColor(winner.calmar)}`}>
+                        Calmar {fmtCalmar(winner.calmar)}
+                      </span>
+                      <span className="text-sm text-text-secondary">
+                        CAGR {winner.retorno_anualizado.toFixed(1)}% · MaxDD {winner.max_drawdown.toFixed(1)}% · Alavancagem máx sobrevivente: <strong className="text-text-primary">{winner.max_leverage.toFixed(1)}x</strong>
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => router.push(`/assets?tickers=${encodeURIComponent(winner.ticker)}&autorun=1`)}
+                    className="btn-primary text-xs flex items-center gap-1.5 shrink-0"
+                  >
+                    <Search size={12} />
+                    Analisar no Screening
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Summary bar ───────────────────────────────────────────────── */}
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex gap-4 text-xs text-text-muted flex-wrap">
-                <span>{result.items.length} ativos · {result.leverage}x alavancagem · {result.period}</span>
-                <span className="text-success font-medium">
-                  ✓ {result.items.filter((r) => !r.margin_call).length} sobreviventes
+              <div className="flex gap-3 flex-wrap items-center">
+                <span className="text-xs text-text-muted">{result.items.length} ativos · {result.leverage}x · {result.period}</span>
+                {eliteCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                    👑 {eliteCount} Elite
+                  </span>
+                )}
+                <span className="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/20">
+                  ✓ {survivors.length} sobrevivente{survivors.length !== 1 ? "s" : ""}
                 </span>
-                {result.items.filter((r) => r.margin_call).length > 0 && (
-                  <span className="text-danger font-medium">
-                    💀 {result.items.filter((r) => r.margin_call).length} liquidados
+                {fragilCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/20">
+                    ⚠ {fragilCount} frágil
+                  </span>
+                )}
+                {liquidated.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-danger/10 text-danger border border-danger/20">
+                    💀 {liquidated.length} liquidado{liquidated.length !== 1 ? "s" : ""}
                   </span>
                 )}
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    const top10 = result.items
-                      .filter((r) => !r.margin_call)
-                      .slice(0, 10)
-                      .map((r) => r.ticker)
-                      .join(",");
-                    router.push(`/assets?tickers=${encodeURIComponent(top10)}&autorun=1`);
-                  }}
-                  className="btn-primary text-xs flex items-center gap-1.5"
-                >
-                  <Search size={12} />
-                  Analisar Top 10 no Screening
-                </button>
+                {survivors.length >= 2 && (
+                  <button
+                    onClick={() => {
+                      const top10 = survivors.slice(0, 10).map((r) => r.ticker).join(",");
+                      router.push(`/assets?tickers=${encodeURIComponent(top10)}&autorun=1`);
+                    }}
+                    className="btn-ghost text-xs flex items-center gap-1.5 border border-border"
+                  >
+                    <Search size={12} />
+                    Top {Math.min(10, survivors.length)} no Screening
+                  </button>
+                )}
                 <button
                   onClick={() => exportCsv(result.items, result.leverage, result.period)}
                   className="btn-ghost text-xs flex items-center gap-1.5 border border-border"
@@ -307,120 +376,222 @@ export default function SharpeComparePage() {
               </div>
             </div>
 
-            {/* Table */}
-            <div className="card overflow-x-auto">
-              {/* Ranking note + Calmar color legend */}
-              <div className="mb-3 text-[11px] text-text-muted">
-                Ordenado por <strong className="text-text-secondary">Calmar</strong> (CAGR / |MaxDD|) — desempate por Sortino.
-                Sharpe é apenas informativo (quase invariante à alavancagem). Liquidados no fundo.
-              </div>
-              <div className="flex gap-4 mb-4 flex-wrap items-center">
-                <span className="text-[10px] text-text-muted uppercase tracking-wider">Calmar:</span>
-                {[
-                  { label: "< 0",       cls: "text-danger bg-danger/10" },
-                  { label: "0 – 0.5",   cls: "text-warning bg-warning/10" },
-                  { label: "0.5 – 1",   cls: "text-text-primary bg-surface-3" },
-                  { label: "1 – 2",     cls: "text-success bg-success/10" },
-                  { label: "> 2",       cls: "text-purple-400 bg-purple-500/10" },
-                ].map((l) => (
-                  <span key={l.label} className={`text-xs px-2 py-0.5 rounded font-mono ${l.cls}`}>
-                    {l.label}
-                  </span>
-                ))}
-              </div>
+            {/* ── Tier legend ───────────────────────────────────────────────── */}
+            <div className="flex gap-3 flex-wrap items-center text-[11px] text-text-muted">
+              <span className="uppercase tracking-wider">Calmar:</span>
+              {([
+                { label: "Elite  > 1.5",     cls: "text-purple-400 bg-purple-500/15 border-purple-500/30" },
+                { label: "Sobrev. 0.8–1.5",  cls: "text-success bg-success/10 border-success/20" },
+                { label: "Frágil 0.4–0.8",   cls: "text-warning bg-warning/10 border-warning/20" },
+                { label: "Descart. < 0.4",   cls: "text-danger bg-danger/10 border-danger/20" },
+                { label: "Liquidado",         cls: "text-danger bg-danger/15 border-danger/30 opacity-60" },
+              ] as { label: string; cls: string }[]).map((l) => (
+                <span key={l.label} className={`px-2 py-0.5 rounded border font-mono ${l.cls}`}>
+                  {l.label}
+                </span>
+              ))}
+            </div>
 
+            {/* ── Table ─────────────────────────────────────────────────────── */}
+            <div className="card overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Ticker", "Beta", "Retorno Total", "CAGR", "Calmar", "Sortino", "Sharpe", "Max DD", "Margin Buffer", "Max Lev", "Patrimônio Final", "Status"].map((h) => (
-                      <th key={h} className="text-left text-text-muted font-medium py-2 pr-3">{h}</th>
-                    ))}
+                    <th className="text-left text-text-muted font-medium py-2 pr-4 w-8">#</th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-4">Ativo</th>
+                    {/* Calmar is king — most prominent */}
+                    <th className="text-left py-2 pr-4">
+                      <span className="text-purple-400 font-bold">Calmar ★</span>
+                    </th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-4">Tier</th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-4">CAGR</th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-4">Max DD</th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-4">
+                      <span title="Buffer = (low - liq_price)/liq_price. Barra: quão longe da liquidação ficou no pior intradia.">
+                        Buffer Margem
+                      </span>
+                    </th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-4" title="Alavancagem máxima que sobreviveria ao período inteiro (busca binária no LOW intradiário).">
+                      Alavancagem Máx
+                    </th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-4">Sortino</th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-4 opacity-50">Sharpe</th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-4">Patrimônio</th>
+                    <th className="text-left text-text-muted font-medium py-2 pr-3">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {result.items.map((item, idx) => (
-                    <tr
-                      key={item.ticker}
-                      onClick={() => router.push(`/assets?ticker=${item.ticker}`)}
-                      className={`border-b border-border/40 cursor-pointer transition-colors ${
-                        item.margin_call
-                          ? "opacity-50 hover:opacity-70"
-                          : "hover:bg-surface-2"
-                      } ${idx === 0 && !item.margin_call ? "bg-primary/5" : ""}`}
-                    >
-                      <td className="py-2.5 pr-3">
-                        <div className="flex items-center gap-2">
-                          <TickerLogo ticker={item.ticker} size={22} />
-                          <div>
-                            <span className={`font-mono font-bold ${item.margin_call ? "text-text-muted" : "text-text-primary"}`}>
-                              {item.ticker}
+                  {result.items.map((item, idx) => {
+                    const tier = getSurvivalTier(item);
+                    const tc   = TIER_CONFIG[tier];
+                    const isWinner = idx === 0 && !item.margin_call;
+                    return (
+                      <tr
+                        key={item.ticker}
+                        className={`border-b border-border/40 border-l-2 transition-colors ${tc.borderCls} ${
+                          item.margin_call
+                            ? "opacity-45 hover:opacity-60"
+                            : "hover:bg-surface-2"
+                        } ${isWinner ? "bg-purple-500/5" : ""}`}
+                      >
+                        {/* Rank */}
+                        <td className="py-3 pr-4 font-mono text-text-muted">
+                          {item.margin_call ? "—" : idx + 1}
+                        </td>
+
+                        {/* Ticker + logo */}
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-2">
+                            <TickerLogo ticker={item.ticker} size={22} />
+                            <div>
+                              <span className={`font-mono font-bold ${item.margin_call ? "text-text-muted" : "text-text-primary"}`}>
+                                {item.ticker}
+                              </span>
+                              {isWinner && (
+                                <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 font-bold">
+                                  #1
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Calmar — king column, big badge */}
+                        <td className="py-3 pr-4">
+                          <span className={`font-mono font-bold text-sm px-2 py-1 rounded-md ${calmarColor(item.calmar)} ${calmarBg(item.calmar)}`}>
+                            {fmtCalmar(item.calmar)}
+                          </span>
+                        </td>
+
+                        {/* Survival tier badge */}
+                        <td className="py-3 pr-4">
+                          <span className={`text-[10px] px-2 py-0.5 rounded border font-medium ${tc.badgeCls}`}>
+                            {tc.icon} {tc.label}
+                          </span>
+                        </td>
+
+                        {/* CAGR */}
+                        <td className={`py-3 pr-4 font-mono font-semibold ${item.retorno_anualizado >= 0 ? "text-success" : "text-danger"}`}>
+                          {item.retorno_anualizado.toFixed(1)}%
+                        </td>
+
+                        {/* Max DD */}
+                        <td className="py-3 pr-4 font-mono text-danger">
+                          {item.max_drawdown.toFixed(1)}%
+                        </td>
+
+                        {/* Margin buffer — semaphore bar + value */}
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-1.5 bg-surface-3 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${bufferBarColor(item.margin_buffer)}`}
+                                style={{ width: `${bufferBarWidth(item.margin_buffer)}%` }}
+                              />
+                            </div>
+                            <span className={`font-mono text-[11px] ${bufferColor(item.margin_buffer)}`}>
+                              {fmtBuffer(item.margin_buffer)}
                             </span>
-                            {idx === 0 && !item.margin_call && (
-                              <span className="ml-1.5 badge bg-primary/10 border-primary/20 text-primary text-[10px]">MELHOR</span>
+                          </div>
+                        </td>
+
+                        {/* Max leverage survivable */}
+                        <td className="py-3 pr-4">
+                          <span
+                            className={`font-mono font-semibold text-sm ${
+                              item.max_leverage >= leverage + 1
+                                ? "text-success"
+                                : item.max_leverage >= leverage
+                                ? "text-text-primary"
+                                : "text-warning"
+                            }`}
+                            title="Alavancagem máxima que sobreviveria ao período (busca binária no LOW intradiário)"
+                          >
+                            {item.max_leverage.toFixed(1)}x
+                          </span>
+                          {item.max_leverage < leverage && !item.margin_call && (
+                            <span title="Abaixo da alavancagem configurada"><AlertTriangle size={10} className="inline ml-1 text-warning" /></span>
+                          )}
+                        </td>
+
+                        {/* Sortino — desempate */}
+                        <td className={`py-3 pr-4 font-mono ${sharpeColor(item.sortino)}`}>
+                          {fmtSortino(item.sortino)}
+                        </td>
+
+                        {/* Sharpe — informativo, de-emphasizado */}
+                        <td className="py-3 pr-4 font-mono text-text-muted opacity-50">
+                          {item.sharpe.toFixed(2)}
+                        </td>
+
+                        {/* Final equity */}
+                        <td className="py-3 pr-4 font-mono font-semibold text-text-primary">
+                          {item.margin_call
+                            ? <span className="text-danger">$0</span>
+                            : formatCurrency(item.final_equity, "USD", true)
+                          }
+                        </td>
+
+                        {/* Per-ticker actions */}
+                        <td className="py-3 pr-3">
+                          <div className="flex items-center gap-1.5">
+                            {item.margin_call ? (
+                              <div className="flex items-center gap-1">
+                                <Skull size={11} className="text-danger" />
+                                <span className="text-danger text-[10px]">
+                                  {item.margin_call_date ? item.margin_call_date.slice(0, 7) : "Liquidado"}
+                                </span>
+                              </div>
+                            ) : (
+                              <>
+                                <TrendingUp size={11} className="text-success" />
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push(`/assets?tickers=${encodeURIComponent(item.ticker)}&autorun=1`);
+                                  }}
+                                  className="text-[10px] text-primary hover:underline whitespace-nowrap"
+                                  title="Analisar no screening"
+                                >
+                                  Screening →
+                                </button>
+                              </>
                             )}
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-2.5 pr-3 font-mono text-text-secondary">{item.beta.toFixed(2)}</td>
-                      <td className={`py-2.5 pr-3 font-mono font-semibold ${item.retorno_total >= 0 ? "text-success" : "text-danger"}`}>
-                        {formatPercent(item.retorno_total)}
-                      </td>
-                      <td className={`py-2.5 pr-3 font-mono font-semibold ${item.retorno_anualizado >= 0 ? "text-success" : "text-danger"}`}>
-                        {item.retorno_anualizado.toFixed(1)}%
-                      </td>
-                      <td className="py-2.5 pr-3 font-mono text-text-secondary">{item.volatilidade.toFixed(1)}%</td>
-                      {/* Calmar — critério principal de ranking, destacado */}
-                      <td className="py-2.5 pr-3">
-                        <span className={`font-mono font-bold px-1.5 py-0.5 rounded ${calmarColor(item.calmar)} ${calmarBg(item.calmar)}`}>
-                          {fmtCalmar(item.calmar)}
-                        </span>
-                      </td>
-                      <td className={`py-2.5 pr-3 font-mono ${sharpeColor(item.sortino)}`}>{fmtSortino(item.sortino)}</td>
-                      {/* Sharpe — informativo, de-emphasizado */}
-                      <td className="py-2.5 pr-3 font-mono text-text-muted">{item.sharpe.toFixed(2)}</td>
-                      <td className="py-2.5 pr-3 font-mono text-danger">{item.max_drawdown.toFixed(1)}%</td>
-                      {/* Margin buffer — quão perto chegou da liquidação (survival-first) */}
-                      <td className={`py-2.5 pr-3 font-mono font-semibold ${bufferColor(item.margin_buffer)}`} title="Mínimo histórico de (low − liq_price) / liq_price. Menor = mais perto da liquidação.">
-                        {fmtBuffer(item.margin_buffer)}
-                      </td>
-                      <td className="py-2.5 pr-3 font-mono text-text-secondary" title="Leverage máximo que sobreviveria ao período (busca binária no low intradiário).">
-                        {item.max_leverage.toFixed(1)}x
-                      </td>
-                      <td className="py-2.5 pr-3 font-mono font-semibold text-text-primary">
-                        {formatCurrency(item.final_equity, "USD", true)}
-                      </td>
-                      <td className="py-2.5 pr-3">
-                        {item.margin_call ? (
-                          <div className="flex items-center gap-1">
-                            <Skull size={12} className="text-danger" />
-                            <span className="text-danger text-[10px]">
-                              {item.margin_call_date ? item.margin_call_date.slice(0, 7) : "Liquidado"}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <TrendingUp size={12} className="text-success" />
-                            <span className="text-success text-[10px]">Sobreviveu</span>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
-            {/* Métricas — doutrina survival-first */}
+            {/* ── Metrics legend ────────────────────────────────────────────── */}
             <div className="card">
               <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">
-                Como ler as métricas (survival-first, carry zero)
+                Como ler as métricas (survival-first · carry zero)
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 text-xs">
                 {[
                   {
-                    name: "Calmar  ·  critério de ranking",
+                    name: "Calmar ★  ·  critério de ranking",
                     cls: "text-purple-400",
                     desc: "CAGR ÷ |Max Drawdown|. A métrica NATIVA do alavancado: pune diretamente a profundidade do tombo, que é o que liquida a conta. Quanto maior, melhor. É por ela que a tabela ordena.",
+                  },
+                  {
+                    name: "Tier de Sobrevivência",
+                    cls: "text-success",
+                    desc: "Elite (Calmar > 1.5), Sobrevivente (0.8–1.5), Frágil (0.4–0.8), Descartado (< 0.4). Indica se o ativo merece alavancagem, com qual confiança.",
+                  },
+                  {
+                    name: "Buffer de Margem  ·  barra semáforo",
+                    cls: "text-warning",
+                    desc: "Mínimo histórico de (low − preço de liquidação) / liq. Quão perto o ativo CHEGOU da liquidação no pior intradia. Barra verde = margem folgada; vermelha = raspou. Sinal de cauda que o Sharpe esconde.",
+                  },
+                  {
+                    name: "Alavancagem Máx",
+                    cls: "text-text-primary",
+                    desc: "Maior alavancagem (busca binária no low intradiário) em que o ativo NÃO teria sido liquidado no período. Teto prático de risco por ativo. Amarelo = abaixo da alavancagem configurada.",
                   },
                   {
                     name: "Sortino  ·  desempate",
@@ -428,24 +599,9 @@ export default function SharpeComparePage() {
                     desc: "Como o Sharpe, mas só penaliza a volatilidade de QUEDA (downside deviation). Não pune a oscilação pra cima. Usado como desempate quando o Calmar é parecido.",
                   },
                   {
-                    name: "Margin Buffer  ·  cauda",
-                    cls: "text-warning",
-                    desc: "Mínimo histórico de (low − preço de liquidação) / liq. Quão perto o ativo CHEGOU da liquidação no pior intradia. Pequeno = raspou a margem. É o sinal de cauda que o Sharpe esconde.",
-                  },
-                  {
-                    name: "Max Lev sobrevivente",
-                    cls: "text-text-primary",
-                    desc: "Maior alavancagem (busca binária no low intradiário) em que o ativo NÃO teria sido liquidado no período. Teto prático de risco por ativo.",
-                  },
-                  {
-                    name: "Sharpe  ·  só informativo",
+                    name: "Sharpe  ·  informativo (opaco)",
                     cls: "text-text-muted",
-                    desc: "Retorno excedente ÷ volatilidade total. Quase invariante à alavancagem e pune mal a cauda — por isso saiu de critério de ranking. Fica como referência histórica.",
-                  },
-                  {
-                    name: "Carry ZERO (Quantfury)",
-                    cls: "text-text-secondary",
-                    desc: "Não há débito de juro de empréstimo. O custo do leverage aparece só no risco de liquidação (margin call por low), não num carrego diário.",
+                    desc: "Retorno excedente ÷ volatilidade total. Quase invariante à alavancagem e pune mal a cauda — por isso saiu de critério de ranking. Fica como referência histórica, de-emphasizado na tabela.",
                   },
                 ].map((r) => (
                   <div key={r.name} className="bg-surface-2 rounded-lg p-2.5">
