@@ -52,7 +52,7 @@ export default function BacktestComparisonPanel({
     cagr: getWinner((m) => m.cagr_pct, true),
     totalReturn: getWinner((m) => m.total_return_pct, true),
     maxDrawdown: getWinner((m) => m.max_drawdown_pct, false), // lower is better
-    sharpe: getWinner((m) => m.sharpe_ratio, true),
+    calmar: getWinner((m) => m.calmar_ratio, true), // survival-first: CAGR / |MaxDD|
   };
 
   // Score: how many metrics adaptive wins
@@ -130,10 +130,13 @@ export default function BacktestComparisonPanel({
           </div>
         </div>
 
-        {/* Sharpe Ratio */}
-        <div className={cn("card border p-4", STRATEGY_COLORS[winners.sharpe || ""])}>
+        {/* Calmar Ratio — survival-first metric */}
+        <div className={cn("card border p-4", STRATEGY_COLORS[winners.calmar || ""])}>
           <p className="text-xs font-semibold text-text-muted mb-3 uppercase">
-            ⚡ Melhor Sharpe (Risco/Retorno)
+            🛡️ Melhor Calmar — Sobrevivência
+          </p>
+          <p className="text-[10px] text-text-muted mb-2 leading-tight">
+            CAGR ÷ |MaxDrawdown| — métrica principal para horizonte previdenciário (sobreviver = tudo)
           </p>
           <div className="space-y-2">
             {[
@@ -143,7 +146,7 @@ export default function BacktestComparisonPanel({
               { m: sp500, label: "S&P 500" },
             ]
               .filter((x) => x.m)
-              .sort((a, b) => (b.m?.sharpe_ratio || 0) - (a.m?.sharpe_ratio || 0))
+              .sort((a, b) => (b.m?.calmar_ratio || 0) - (a.m?.calmar_ratio || 0))
               .map((x, i) => (
                 <div
                   key={x.label}
@@ -154,7 +157,7 @@ export default function BacktestComparisonPanel({
                 >
                   <span className="text-sm">{x.label}</span>
                   <span className="font-mono font-semibold">
-                    {x.m?.sharpe_ratio.toFixed(2)}
+                    {x.m?.calmar_ratio.toFixed(2)}
                   </span>
                 </div>
               ))}
@@ -243,18 +246,22 @@ export default function BacktestComparisonPanel({
             {" "}melhor)
           </p>
           <p>
-            <strong>Risco/Retorno (Sharpe):</strong>{" "}
-            {adaptive.sharpe_ratio > (buyHold2x?.sharpe_ratio || 0)
-              ? "O modelo Adaptativo supera B&H 2x em qualidade de retorno ajustado na simulação"
-              : "Trade-off observado: maior alavancagem associada a maior retorno e também a maior drawdown"}
+            <strong>Sobrevivência (Calmar):</strong>{" "}
+            <span className="text-primary font-semibold">{adaptive.calmar_ratio.toFixed(2)}</span>
+            {" "}vs{" "}
+            <span className="font-semibold">{buyHold1x?.calmar_ratio.toFixed(2)}</span>
+            {" em B&H 1x — "}
+            {adaptive.calmar_ratio > (buyHold2x?.calmar_ratio || 0)
+              ? "Adaptativo entrega mais CAGR por unidade de drawdown na simulação"
+              : "trade-off: mais CAGR vem com maior drawdown proporcional"}
           </p>
           <p>
-            <strong>Proteção (Drawdown):</strong> Pior caso foi{" "}
+            <strong>MaxDrawdown:</strong> Pior queda histórica foi{" "}
             <span className="font-semibold text-danger">{adaptive.max_drawdown_pct.toFixed(1)}%</span>
             {" "}
             {adaptive.max_drawdown_pct > (buyHold2x?.max_drawdown_pct || 0)
-              ? "(esperado com mais leverage)"
-              : "(melhor que esperado)"}
+              ? "(esperado com mais leverage — regra: suportar sem liquidar)"
+              : "(abaixo do B&H 2x — proteção adaptativa funcionou)"}
           </p>
         </div>
       </div>

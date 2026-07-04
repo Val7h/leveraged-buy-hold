@@ -154,14 +154,30 @@ export default function BacktestPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Estratégia", "CAGR", "Retorno Total", "Max Drawdown", "Sharpe", "Sortino", "Calmar", "Vol", "Win Rate", "Valor Final"].map((h) => (
-                      <th key={h} className="text-left text-text-muted font-medium py-2 pr-4">{h}</th>
+                    {[
+                      { label: "Estratégia", tip: "" },
+                      { label: "Calmar ★", tip: "CAGR ÷ |MaxDD| — métrica de sobrevivência (maior = melhor)" },
+                      { label: "CAGR", tip: "" },
+                      { label: "Max Drawdown", tip: "" },
+                      { label: "Retorno Total", tip: "" },
+                      { label: "Sharpe", tip: "" },
+                      { label: "Sortino", tip: "" },
+                      { label: "Vol", tip: "" },
+                      { label: "Win Rate", tip: "" },
+                      { label: "Valor Final", tip: "" },
+                    ].map((h) => (
+                      <th key={h.label} className="text-left text-text-muted font-medium py-2 pr-4" title={h.tip}>
+                        {h.label === "Calmar ★" ? (
+                          <span className="text-primary">{h.label}</span>
+                        ) : h.label}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {result.metrics.map((m) => {
                     const isAdaptive = m.strategy === "adaptive";
+                    const calmarColor = m.calmar_ratio >= 0.5 ? "text-success" : m.calmar_ratio >= 0.3 ? "text-warning" : "text-danger";
                     return (
                       <tr key={m.strategy} className={`border-b border-border/40 ${isAdaptive ? "bg-primary/5" : ""}`}>
                         <td className="py-2.5 pr-4">
@@ -169,12 +185,12 @@ export default function BacktestPage() {
                             {STRATEGY_LABELS[m.strategy] || m.strategy}
                           </span>
                         </td>
+                        <td className={`py-2.5 pr-4 font-mono font-bold ${calmarColor}`}>{m.calmar_ratio.toFixed(2)}</td>
                         <td className={`py-2.5 pr-4 font-mono font-semibold ${m.cagr_pct > 8 ? "text-success" : "text-text-primary"}`}>{m.cagr_pct.toFixed(1)}%</td>
-                        <td className={`py-2.5 pr-4 font-mono font-semibold ${m.total_return_pct > 0 ? "text-success" : "text-danger"}`}>{formatPercent(m.total_return_pct)}</td>
                         <td className="py-2.5 pr-4 font-mono text-danger">{m.max_drawdown_pct.toFixed(1)}%</td>
+                        <td className={`py-2.5 pr-4 font-mono font-semibold ${m.total_return_pct > 0 ? "text-success" : "text-danger"}`}>{formatPercent(m.total_return_pct)}</td>
                         <td className={`py-2.5 pr-4 font-mono ${m.sharpe_ratio > 1 ? "text-success" : "text-text-primary"}`}>{m.sharpe_ratio.toFixed(2)}</td>
                         <td className={`py-2.5 pr-4 font-mono ${m.sortino_ratio > 1.5 ? "text-success" : "text-text-primary"}`}>{m.sortino_ratio.toFixed(2)}</td>
-                        <td className="py-2.5 pr-4 font-mono text-text-primary">{m.calmar_ratio.toFixed(2)}</td>
                         <td className="py-2.5 pr-4 font-mono text-text-secondary">{m.annualized_vol_pct.toFixed(1)}%</td>
                         <td className="py-2.5 pr-4 font-mono text-text-secondary">{m.win_rate_pct.toFixed(1)}%</td>
                         <td className="py-2.5 pr-4 font-mono font-semibold text-text-primary">{formatCurrency(m.final_value, "USD", true)}</td>
@@ -234,32 +250,85 @@ export default function BacktestPage() {
                     {result.monte_carlo.n_paths.toLocaleString()} caminhos (bootstrap de blocos + GBM),
                     horizonte {result.monte_carlo.horizon_years}a. Não é um caminho histórico só.
                   </p>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div className={`rounded-lg p-3 ${result.monte_carlo.ruin_probability > 0.05 ? "bg-danger/10" : "bg-success/10"}`}>
-                      <p className="text-xs text-text-muted mb-1">Prob. de liquidação/ruína</p>
-                      <p className={`text-lg font-mono font-semibold ${result.monte_carlo.ruin_probability > 0.05 ? "text-danger" : "text-success"}`}>
-                        {(result.monte_carlo.ruin_probability * 100).toFixed(2)}%
-                      </p>
+
+                  {/* Hero: Prob de Ruína — grande e color-coded */}
+                  {(() => {
+                    const ruin = result.monte_carlo!.ruin_probability;
+                    const ruinPct = (ruin * 100).toFixed(2);
+                    const isRed = ruin > 0.10;
+                    const isYellow = ruin > 0.03 && ruin <= 0.10;
+                    const heroColor = isRed ? "bg-danger/10 border-danger/30" : isYellow ? "bg-warning/10 border-warning/30" : "bg-success/10 border-success/30";
+                    const textColor = isRed ? "text-danger" : isYellow ? "text-warning" : "text-success";
+                    const label = isRed ? "ALTO — revisar alavancagem" : isYellow ? "MODERADO — monitorar" : "BAIXO — estratégia defensável";
+                    return (
+                      <div className={`rounded-xl border p-4 mb-4 ${heroColor}`}>
+                        <p className="text-xs text-text-muted mb-1 uppercase font-semibold tracking-wide">Probabilidade de Ruína / Liquidação Forçada</p>
+                        <p className={`text-4xl font-mono font-bold mb-1 ${textColor}`}>{ruinPct}%</p>
+                        <p className={`text-xs font-semibold ${textColor}`}>{label}</p>
+                        <p className="text-[10px] text-text-muted mt-1">
+                          Fração dos {result.monte_carlo!.n_paths.toLocaleString()} caminhos em que o patrimônio tocou zero (margin call).
+                          Limiar defensável: &lt; 3%.
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Distribuição do patrimônio final p5/p50/p95 */}
+                  {result.monte_carlo.final_value_percentiles && (
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-text-secondary mb-2">Distribuição do Patrimônio Final</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-danger/10 rounded-lg p-2.5 text-center">
+                          <p className="text-[10px] text-text-muted mb-1">Pessimista (P5)</p>
+                          <p className="text-sm font-mono font-bold text-danger">
+                            {formatCurrency(result.monte_carlo.final_value_percentiles.p5, "USD", true)}
+                          </p>
+                        </div>
+                        <div className="bg-primary/10 rounded-lg p-2.5 text-center">
+                          <p className="text-[10px] text-text-muted mb-1">Base (P50)</p>
+                          <p className="text-sm font-mono font-bold text-primary">
+                            {formatCurrency(result.monte_carlo.final_value_percentiles.p50, "USD", true)}
+                          </p>
+                        </div>
+                        <div className="bg-success/10 rounded-lg p-2.5 text-center">
+                          <p className="text-[10px] text-text-muted mb-1">Bull (P95)</p>
+                          <p className="text-sm font-mono font-bold text-success">
+                            {formatCurrency(result.monte_carlo.final_value_percentiles.p95, "USD", true)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
+                  )}
+
+                  {/* MaxDD distribution */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
                     <div className="bg-surface-2 rounded-lg p-3">
-                      <p className="text-xs text-text-muted mb-1">Max Drawdown (p50)</p>
+                      <p className="text-xs text-text-muted mb-1">MaxDD Mediano (p50)</p>
                       <p className="text-lg font-mono font-semibold text-danger">
                         {result.monte_carlo.max_dd_distribution.p50.toFixed(1)}%
                       </p>
                     </div>
+                    <div className="bg-surface-2 rounded-lg p-3">
+                      <p className="text-xs text-text-muted mb-1">MaxDD Pior Caso</p>
+                      <p className="text-lg font-mono font-semibold text-danger">
+                        {result.monte_carlo.max_dd_distribution.worst.toFixed(1)}%
+                      </p>
+                    </div>
                   </div>
+
                   {/* Histograma de maxDD */}
                   <div className="mb-2">
+                    <p className="text-[10px] text-text-muted mb-1">Distribuição de MaxDD por caminho</p>
                     <div className="flex items-end gap-0.5 h-16">
                       {(() => {
-                        const hist = result.monte_carlo.max_dd_histogram;
+                        const hist = result.monte_carlo!.max_dd_histogram;
                         const maxC = Math.max(1, ...hist.map((b) => b.count));
                         return hist.map((b, i) => (
                           <div
                             key={i}
                             className="flex-1 bg-danger/40 rounded-t"
                             style={{ height: `${(b.count / maxC) * 100}%` }}
-                            title={`${b.bin_lo}% a ${b.bin_hi}%: ${b.count} caminhos`}
+                            title={`${b.bin_lo.toFixed(0)}% a ${b.bin_hi.toFixed(0)}%: ${b.count} caminhos`}
                           />
                         ));
                       })()}
@@ -278,6 +347,96 @@ export default function BacktestPage() {
                 </div>
               )}
             </div>
+
+            {/* Survival Dashboard: Rule of 72 + Projection Panel */}
+            {adaptiveMetrics && (
+              <div className="card">
+                <h2 className="text-sm font-semibold text-text-primary mb-4">
+                  Painel de Sobrevivência — Estratégia Adaptativa
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  {/* Calmar — hero survival metric */}
+                  {(() => {
+                    const calmar = adaptiveMetrics.calmar_ratio;
+                    const calmarColor = calmar >= 0.5 ? "bg-success/10 text-success" : calmar >= 0.3 ? "bg-warning/10 text-warning" : "bg-danger/10 text-danger";
+                    const calmarLabel = calmar >= 0.5 ? "Excelente" : calmar >= 0.3 ? "Aceitável" : "Crítico";
+                    return (
+                      <div className={`rounded-xl p-3 ${calmarColor}`}>
+                        <p className="text-[10px] uppercase font-semibold tracking-wide opacity-80 mb-1">Calmar (sobrevivência)</p>
+                        <p className="text-2xl font-mono font-bold">{calmar.toFixed(2)}</p>
+                        <p className="text-[10px] font-semibold mt-1">{calmarLabel}</p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Rule of 72 — anos para dobrar */}
+                  {(() => {
+                    const cagr = result.cost_breakdown?.cagr_net_pct ?? adaptiveMetrics.cagr_pct;
+                    const anos = cagr > 0 ? (72 / cagr).toFixed(1) : "∞";
+                    return (
+                      <div className="bg-primary/5 rounded-xl p-3">
+                        <p className="text-[10px] uppercase font-semibold tracking-wide text-text-muted mb-1">Anos p/ dobrar capital</p>
+                        <p className="text-2xl font-mono font-bold text-primary">{anos}</p>
+                        <p className="text-[10px] text-text-muted mt-1">Regra de 72 / CAGR líquido {cagr.toFixed(1)}%</p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* MaxDD */}
+                  <div className="bg-danger/10 rounded-xl p-3">
+                    <p className="text-[10px] uppercase font-semibold tracking-wide text-text-muted mb-1">MaxDrawdown histórico</p>
+                    <p className="text-2xl font-mono font-bold text-danger">{adaptiveMetrics.max_drawdown_pct.toFixed(1)}%</p>
+                    <p className="text-[10px] text-text-muted mt-1">Suportar sem liquidar = sobreviver</p>
+                  </div>
+
+                  {/* Win Rate */}
+                  <div className="bg-surface-2 rounded-xl p-3">
+                    <p className="text-[10px] uppercase font-semibold tracking-wide text-text-muted mb-1">Win Rate mensal</p>
+                    <p className="text-2xl font-mono font-bold text-text-primary">{adaptiveMetrics.win_rate_pct.toFixed(1)}%</p>
+                    <p className="text-[10px] text-text-muted mt-1">Meses positivos / total</p>
+                  </div>
+                </div>
+
+                {/* "Se você sobreviver X anos" projection */}
+                {(() => {
+                  const cagr = result.cost_breakdown?.cagr_net_pct ?? adaptiveMetrics.cagr_pct;
+                  if (cagr <= 0) return null;
+                  const horizons = [5, 10, 15, 20, 30];
+                  return (
+                    <div>
+                      <p className="text-xs font-semibold text-text-secondary mb-2">
+                        Projeção: "Se você sobreviver X anos com CAGR líquido de {cagr.toFixed(1)}%"
+                      </p>
+                      <p className="text-[10px] text-text-muted mb-3">
+                        Capital inicial + aportes mensais. Sobreviver (não liquidar) é condição necessária — não é garantia de retorno.
+                      </p>
+                      <div className="grid grid-cols-5 gap-2">
+                        {horizons.map((yr) => {
+                          const r = cagr / 100;
+                          // FV = PV*(1+r)^n + PMT*((1+r)^n - 1)/r  (monthly compounding approx)
+                          const rm = Math.pow(1 + r, 1 / 12) - 1;
+                          const n = yr * 12;
+                          const fv = initialCapital * Math.pow(1 + rm, n) +
+                            monthlyContrib * (Math.pow(1 + rm, n) - 1) / rm;
+                          const multiple = fv / (initialCapital + monthlyContrib * n);
+                          return (
+                            <div key={yr} className="bg-surface-2 rounded-lg p-2.5 text-center">
+                              <p className="text-[10px] text-text-muted mb-1">{yr} anos</p>
+                              <p className="text-sm font-mono font-bold text-text-primary">
+                                {formatCurrency(fv, "USD", true)}
+                              </p>
+                              <p className="text-[10px] text-success font-semibold mt-1">
+                                {multiple.toFixed(1)}× do investido
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             {/* Backtest Comparison Panel */}
             <BacktestComparisonPanel result={result} ticker={tickers.split(",")[0].trim().toUpperCase()} />
