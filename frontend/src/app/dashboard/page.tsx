@@ -14,8 +14,9 @@ import {
 } from "@/lib/utils";
 import {
   DollarSign, TrendingUp, BarChart2, Shield, AlertTriangle,
-  Percent, Clock, Target, Plus, RefreshCw, ArrowRight,
-  TrendingDown, Zap, Lock, RefreshCcw, Bell,
+  Clock, Target, Plus, RefreshCw, ArrowRight,
+  TrendingDown, Zap, Lock, RefreshCcw, Bell, List,
+  Layers, Eye, Wallet, CalendarClock,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -75,7 +76,7 @@ function SignalCard({ s, onBuy }: { s: any; onBuy: (ticker: string, leverage: nu
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const { activePortfolioId, metrics, positions, portfolios, analytics, fetchPortfolios, fetchMetrics, fetchPositions, fetchAnalytics } = usePortfolioStore();
-  const { opportunities, avoid, awaiting, opportunityCount, checkedAt, loading: signalLoading, setSignals, setLoading } = useSignalStore();
+  const { signals, opportunities, avoid, awaiting, opportunityCount, checkedAt, loading: signalLoading, setSignals, setLoading } = useSignalStore();
   const [creatingPortfolio, setCreatingPortfolio] = useState(false);
   const [signalError, setSignalError] = useState(false);
 
@@ -186,6 +187,20 @@ export default function DashboardPage() {
     }
   }
 
+  // ── Timestamp "dados atualizados há X min" ──────────────
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  function minutesAgo(iso: string | null): string {
+    if (!iso) return "";
+    const diff = Math.round((now.getTime() - new Date(iso).getTime()) / 60_000);
+    if (diff <= 0) return "agora mesmo";
+    if (diff === 1) return "há 1 min";
+    return `há ${diff} min`;
+  }
+
   return (
     <AppShell>
       <div className="p-6 max-w-7xl mx-auto">
@@ -202,6 +217,12 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {checkedAt && (
+              <span className="hidden sm:flex items-center gap-1 text-[10px] text-text-muted border border-border/40 px-2 py-1 rounded-lg">
+                <Clock size={9} />
+                Sinais {minutesAgo(checkedAt)}
+              </span>
+            )}
             <button onClick={fetchSignals} disabled={signalLoading}
               className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-primary border border-border hover:border-primary/30 px-3 py-1.5 rounded-lg transition-colors">
               {signalLoading ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />}
@@ -212,6 +233,28 @@ export default function DashboardPage() {
               Screening
             </Link>
           </div>
+        </div>
+
+        {/* ── Navigation chips ──────────────────────────────── */}
+        <div className="flex flex-wrap gap-2 mb-5">
+          {[
+            { href: "/portfolio",  Icon: Wallet,       label: "Portfólio",  sub: positions.length > 0 ? `${positions.length} posições` : "sem posições" },
+            { href: "/ranking",    Icon: List,          label: "Ranking",    sub: "alavancagem" },
+            { href: "/assets",     Icon: Target,        label: "Screening",  sub: opportunityCount > 0 ? `${opportunityCount} oport.` : "sem sinais" },
+            { href: "/watchlist",  Icon: Eye,           label: "Watchlist",  sub: signals.length > 0 ? `${signals.length} ativos` : "vazia" },
+            { href: "/history",    Icon: CalendarClock, label: "Histórico",  sub: "aportes" },
+            { href: "/backtest",   Icon: Layers,        label: "Backtest",   sub: "simulação" },
+          ].map(({ href, Icon, label, sub }) => (
+            <Link key={href} href={href}
+              className="flex items-center gap-2 px-3 py-2 bg-surface-2 hover:bg-surface-2/80 border border-border hover:border-primary/30 rounded-xl transition-colors group">
+              <Icon size={13} className="text-text-muted group-hover:text-primary transition-colors" />
+              <div>
+                <p className="text-xs font-semibold text-text-primary leading-none">{label}</p>
+                <p className="text-[10px] text-text-muted leading-none mt-0.5">{sub}</p>
+              </div>
+              <ArrowRight size={10} className="text-text-muted group-hover:text-primary transition-colors ml-1" />
+            </Link>
+          ))}
         </div>
 
         {/* ── Vigília de liquidação (item nº1 da doutrina — topo) ── */}
@@ -258,6 +301,80 @@ export default function DashboardPage() {
 
         {/* ── Market State ──────────────────────────────────── */}
         <MarketStateWidget riskProfile={user?.riskProfile} />
+
+        {/* ── Sua Jornada Previdenciária ────────────────────── */}
+        {metrics && (() => {
+          const equity      = metrics.total_equity ?? metrics.equity ?? 0;
+          const pnl         = metrics.total_pnl ?? 0;
+          const pnlPct      = metrics.total_pnl_pct ?? 0;
+          const leverage    = metrics.weighted_avg_leverage ?? metrics.effective_leverage ?? 1;
+          // Horizonte de 10 anos: usamos a data de criação da carteira (ou hoje se não disponível)
+          const portfolio   = portfolios.find(p => p.id === activePortfolioId);
+          const createdAt   = portfolio?.created_at ? new Date(portfolio.created_at) : null;
+          const today       = new Date();
+          const monthsInvesting = createdAt
+            ? Math.max(0, Math.round((today.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24 * 30.44)))
+            : null;
+          const horizonMonths   = 120; // 10 anos
+          const progressPct     = monthsInvesting != null
+            ? Math.min(100, (monthsInvesting / horizonMonths) * 100)
+            : null;
+          return (
+            <div className="card mb-5 border-primary/15">
+              <div className="flex items-center gap-2 mb-4">
+                <CalendarClock size={15} className="text-primary" />
+                <h2 className="text-sm font-semibold text-text-primary">Sua Jornada Previdenciária</h2>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary font-bold">10 anos</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-text-muted uppercase tracking-wider">Patrimônio</span>
+                  <span className="text-lg font-bold font-mono text-text-primary">{formatCurrency(equity, "USD", true)}</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-text-muted uppercase tracking-wider">P&amp;L Acumulado</span>
+                  <span className={cn("text-lg font-bold font-mono", getPnlColor(pnl))}>
+                    {formatCurrency(pnl, "USD", true)}
+                  </span>
+                  <span className={cn("text-[10px] font-semibold", getPnlColor(pnlPct))}>
+                    {formatPercent(pnlPct)} vs PM
+                  </span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-text-muted uppercase tracking-wider">Alavancagem Efetiva</span>
+                  <span className={cn("text-lg font-bold font-mono", getLeverageColor(leverage))}>
+                    {formatLeverage(leverage)}
+                  </span>
+                  <span className="text-[10px] text-text-muted">{positions.length} posições</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-text-muted uppercase tracking-wider">Tempo Investindo</span>
+                  <span className="text-lg font-bold font-mono text-text-primary">
+                    {monthsInvesting != null ? (monthsInvesting >= 12 ? `${Math.floor(monthsInvesting / 12)}a ${monthsInvesting % 12}m` : `${monthsInvesting}m`) : "—"}
+                  </span>
+                  <span className="text-[10px] text-text-muted">de 10 anos de horizonte</span>
+                </div>
+              </div>
+              {progressPct != null && (
+                <div>
+                  <div className="flex items-center justify-between text-[10px] text-text-muted mb-1">
+                    <span>Progresso no horizonte</span>
+                    <span>{progressPct.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-500"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-text-muted mt-1.5 leading-tight">
+                    Sobreviver é tudo — horizonte previdenciário de 10–15 anos. Mantenha a alavancagem dentro do cap agregado.
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── Cap agregado limita o próximo aporte (evita induzir over-leverage) ── */}
         {capLimita && (
