@@ -1,0 +1,154 @@
+Buscando indices...
+
+====================================================================================================
+  BR — regime NEUTRO (multiplicador 3x)
+====================================================================================================
+  Ativo     Bucket     VEREDITO       Qual  Mom  Rank StochSem DescTopo  Beta   CAGR Sharpe
+  -------------------------------------------------------------------------------------------------
+  TAEE11.SA ANCORA     COMPRAR FORTE    78   80  79.1       14    12.2%  0.85    16%   0.60
+  ITUB4.SA  ANCORA     COMPRAR FORTE    75   80  77.5       16    16.5%  1.18    16%   1.23
+  CMIG4.SA  GERADOR    COMPRAR FORTE    76   76  76.1        1    21.5%  0.95    25%   0.72
+  VIVT3.SA  GERADOR    COMPRAR FORTE    73   76  74.5        2    20.3%  0.81    12%   0.89
+  EQTL3.SA  ANCORA     COMPRAR FORTE    69   76  72.6       10    18.2%  1.20    12%   0.43
+  BPAC11.SA ACELERADOR COMPRAR FORTE    68   76  72.4        0    21.7%  1.57    24%   0.73
+  WEGE3.SA  ACELERADOR COMPRAR FORTE    69   75  72.1        5    20.8%  0.65    14%   0.26
+  KLBN11.SA GERADOR    COMPRAR FORTE    56   84  70.9       18    20.9%  0.59     5%   0.08
+  SAPR11.SA ANCORA     COMPRAR FORTE    64   76  70.5        7    21.8%  0.92     9%   0.94
+  SANB11.SA GERADOR    COMPRAR FORTE    53   78  66.7        5    26.5%  1.24     5%   0.10
+  BBDC4.SA  ANCORA     COMPRAR FORTE    53   76  65.2        4    17.8%  1.24     6%   0.38
+  RADL3.SA  ACELERADOR COMPRAR FORTE    37   81  61.3        0    38.5%  1.16    -2%  -0.41
+  B3SA3.SA  ACELERADOR COMPRAR FORTE    40   76  59.8        0    26.4%  1.61     1%   0.12
+  RENT3.SA  ACELERADOR COMPRAR FORTE    37   77  59.0        0    36.7%  1.72     3%  -0.34
+  PETR4.SA  TATICO     COMPRAR          78   72  74.4        1    20.5%  0.39    37%   1.01
+  ITSA4.SA  ACELERADOR COMPRAR          77   71  73.9       13    13.0%  1.23    18%   1.25
+  SBSP3.SA  ANCORA     COMPRAR          72   75  73.6        1    22.0%  1.13    19%   1.41
+  PRIO3.SA  TATICO     COMPRAR          76   70  72.5       18    21.3%  0.14    44%   0.51
+  VALE3.SA  TATICO     COMPRAR          73   67  69.4       26    11.4%  0.79    17%   0.60
+  BBAS3.SA  ANCORA     COMPRAR          60   68  64.3        3    32.0%  1.23    10%   0.03
+  TOTS3.SA  ACELERADOR COMPRAR          53   72  63.4       14    41.1%  0.93     6%  -0.00
+  SUZB3.SA  TATICO     COMPRAR          52   66  59.6        3    38.9%  0.42     4%  -0.04
+  RDOR3.SA  ACELERADOR COMPRAR          35   64  51.3        6    48.2%  1.23    -9%   0.20
+  PSSA3.SA  GERADOR    JUSTO            78   53  64.1       47     7.0%  0.73    19%   1.32
+  ENEV3.SA  ACELERADOR JUSTO            70   56  62.6       40    12.7%  1.06    15%   0.81
+  EGIE3.SA  ANCORA     JUSTO            63   54  58.2       53    11.7%  0.90     7%   0.35
+  ASAI3.SA  TATICO     JUSTO            29   54  42.8       34    61.7%  1.74   -10%  -0.35
+  LREN3.SA  ACELERADOR JUSTO            32   48  40.6       63    56.4%  1.46   -11%  -0.11
+  BBSE3.SA  GERADOR    ESTICADO         78   24  48.7       87     0.0%  0.54    16%   1.07
+  GGBR4.SA  TATICO     ESTICADO         71   26  45.9       91     7.5%  0.84    20%   0.26
+  ABEV3.SA  ANCORA     ESTICADO         63   26  42.5       91     4.5%  0.67     8%   0.38
+
+====================================================================================================
+  US — regime NEUTRO (multiplicador 3x)
+====================================================================================================
+  Ativo     Bucket     VEREDITO       Qual  Mom  Rank StochSem DescTopo  Beta   CAGR Sharpe
+  -------------------------------------------------------------------------------------------------
+  NKE       ACELERADOR COMPRAR FORTE    33   97  68.1       21    73.0%  0.87   -11%  -0.75
+  WMT       ANCORA     COMPRAR          83   72  76.6       23    12.0% -0.00    22%   1.32
+  COST      ACELERADOR COMPRAR          80   74  76.6       18    11.8% -0.04    23%   1.10
+  CVX       TATICO     COMPRAR          78   72  74.8       17    15.1% -0.34    17%   0.35
+  XOM       TATICO     COMPRAR          77   72  74.5       12    17.4% -0.41    26%   0.55
+  MCD       ANCORA     COMPRAR          70   70  69.6       20    15.8%  0.06     9%   0.10
+  MAIN      GERADOR    COMPRAR          78   63  69.6       31    20.5%  0.78    16%   0.80
+  MA        ACELERADOR COMPRAR          69   69  69.1       21    17.3%  0.45     9%   0.50
+  HON       ACELERADOR COMPRAR          69   60  64.0       36     7.3%  0.85    11%   0.38
+  VZ        GERADOR    COMPRAR          55   71  63.9       21     9.4% -0.21     2%   0.67
+  PEP       ANCORA     COMPRAR          57   68  63.1        5    19.3% -0.11     4%  -0.25
+  O         GERADOR    COMPRAR          59   66  62.9       32     9.2%  0.05     5%   0.29
+  META      ACELERADOR COMPRAR          63   62  62.5       31    27.9%  1.49    16%   0.69
+  HD        ACELERADOR COMPRAR          61   63  62.3       51    21.1%  0.69     7%   0.25
+  TMO       ACELERADOR COMPRAR          52   70  62.1       34    29.9%  0.88     5%  -0.15
+  ADBE      ACELERADOR COMPRAR          35   70  54.3       15    71.5%  0.50   -12%  -0.86
+  MSFT      ACELERADOR JUSTO            68   55  61.2       42    29.7%  0.88    13%   0.21
+  AVGO      ACELERADOR JUSTO            68   44  54.7       59    18.4%  2.12    56%   1.07
+  NVDA      ACELERADOR JUSTO            63   46  53.8       65    13.1%  1.84    68%   1.15
+  ORCL      ACELERADOR JUSTO            60   49  53.8       64    43.7%  1.84    25%   0.34
+  AMZN      ACELERADOR JUSTO            57   49  52.6       56    13.6%  1.45    10%   0.68
+  BRK-B     ANCORA     ESTICADO         80   36  55.9       87     9.0%  0.09    18%   0.80
+  GOOGL     ACELERADOR ESTICADO         72   38  53.4       71     9.6%  1.29    31%   1.22
+  JNJ       ANCORA     ESTICADO         78   34  53.4       74     5.2% -0.02    12%   0.89
+  ABBV      GERADOR    ESTICADO         81   30  53.3       91     7.3%  0.09    20%   0.80
+  AXP       ACELERADOR ESTICADO         75   35  53.0       77    11.0%  1.06    23%   0.87
+  V         ACELERADOR ESTICADO         72   37  52.3       88    10.8%  0.49    10%   0.70
+  MRK       ANCORA     ESTICADO         67   38  50.9       66     7.2%  0.27    11%   0.20
+  KO        ANCORA     ESTICADO         79   27  50.6       81     3.8% -0.23    13%   0.80
+  AAPL      ACELERADOR ESTICADO         74   30  50.2       78     6.1%  0.88    23%   0.64
+  JPM       GERADOR    ESTICADO         76   27  49.4      100     0.0%  0.89    26%   1.35
+  LLY       ACELERADOR ESTICADO         78   25  49.0       97     4.2%  0.53    40%   0.88
+  CSCO      GERADOR    ESTICADO         75   27  48.6       96     9.7%  1.04    20%   1.24
+  BAC       GERADOR    ESTICADO         73   27  47.9      100     0.5%  0.82    17%   0.98
+  CAT       TATICO     ESTICADO         73   21  44.5      100     0.0%  1.63    43%   1.53
+  UNH       ACELERADOR ESTICADO         53   36  43.5       99    33.4%  0.62     7%  -0.12
+  PG        ANCORA     ESTICADO         65   26  43.2       82    12.7% -0.03     7%   0.22
+
+====================================================================================================
+  ETF — regime NEUTRO (multiplicador 3x)
+====================================================================================================
+  Ativo     Bucket     VEREDITO       Qual  Mom  Rank StochSem DescTopo  Beta   CAGR Sharpe
+  -------------------------------------------------------------------------------------------------
+  JEPI      GERADOR    JUSTO            77   47  60.5       58     3.8%  0.47    11%   0.87
+  TLT       TATICO     JUSTO            42   52  47.4       73    39.7%  0.15    -7%  -0.08
+  VYM       ANCORA     ESTICADO         84   28  53.2       95     1.3%  0.64    15%   1.30
+  DGRO      ANCORA     ESTICADO         83   28  53.0       97     1.1%  0.57    15%   1.29
+  SCHD      ANCORA     ESTICADO         83   27  52.2       82     2.7%  0.34    14%   0.99
+  JEPQ      GERADOR    ESTICADO         80   28  51.4       89     1.3%  0.95    16%   1.22
+  DIA       ANCORA     ESTICADO         80   28  51.2       99     1.0%  0.85    14%   1.13
+  VOO       ANCORA     ESTICADO         79   28  50.9       87     2.4%  1.00    17%   1.28
+  SPY       ANCORA     ESTICADO         79   28  50.8       87     2.5%  1.00    17%   1.25
+  VTI       ANCORA     ESTICADO         78   28  50.6       88     2.3%  1.02    17%   1.22
+  QQQ       ACELERADOR ESTICADO         73   25  47.0       87     3.2%  1.33    21%   1.18
+  IWM       ACELERADOR ESTICADO         71   26  46.4       92     1.6%  1.31    14%   0.74
+  IEF       RESERVA    RESERVA          54   70  63.1       35    11.3%  0.09    -2%   0.42
+  SHY       RESERVA    RESERVA          67   44  54.8       62     0.4%  0.02     1%   2.39
+
+====================================================================================================
+  EUROPE — regime NEUTRO (multiplicador 3x)
+====================================================================================================
+  Ativo     Bucket     VEREDITO       Qual  Mom  Rank StochSem DescTopo  Beta   CAGR Sharpe
+  -------------------------------------------------------------------------------------------------
+  SHEL      TATICO     COMPRAR          78   73  75.2       17    13.9%  0.03    20%   0.71
+  AZN       ANCORA     COMPRAR          72   75  73.4        6    14.7%  0.02    11%   0.34
+  BTI       GERADOR    COMPRAR          82   61  70.4       45    10.8% -0.17    16%   1.33
+  SAP       ACELERADOR COMPRAR          54   65  60.0       26    48.2% -0.12     5%   0.23
+  UL        ANCORA     COMPRAR          56   59  57.4       37    21.2% -0.00     2%   0.23
+  TTE       TATICO     JUSTO            80   55  66.1       43    12.3%  0.05    20%   0.77
+  NVO       ACELERADOR JUSTO            52   54  53.1       77    68.3% -0.18     7%  -0.39
+  MC.PA     ACELERADOR JUSTO            55   46  49.8       89    39.0% -0.03     7%  -0.51
+  SNY       ANCORA     JUSTO            52   45  47.8       55    21.2%  0.02     1%  -0.04
+  NESN.SW   ANCORA     JUSTO            46   49  47.6       69    28.6%  0.14    -2%  -0.36
+  DEO       ANCORA     JUSTO            35   54  45.4       57    59.8% -0.10    -7%  -0.84
+  NVS       ANCORA     ESTICADO         80   41  58.5       63     7.8% -0.03    13%   0.90
+  RIO       TATICO     ESTICADO         78   28  50.6       85     8.4%  0.02    19%   0.81
+  SIE.DE    ACELERADOR ESTICADO         76   26  48.4       97     2.0% -0.05    23%   0.72
+  ASML      ACELERADOR ESTICADO         72   21  43.8      100     1.7%  0.00    33%   0.76
+
+====================================================================================================
+  COMMODITY — regime NEUTRO (multiplicador 3x)
+====================================================================================================
+  Ativo     Bucket     VEREDITO       Qual  Mom  Rank StochSem DescTopo  Beta   CAGR Sharpe
+  -------------------------------------------------------------------------------------------------
+  GLD       ANCORA     COMPRAR FORTE    82   76  78.6        1    21.6%  0.66    16%   1.25
+  PPLT      TATICO     COMPRAR FORTE    65   78  72.1        1    37.9%  1.42    12%   0.51
+  SLV       TATICO     COMPRAR FORTE    66   76  71.7        0    42.6%  1.72    25%   0.80
+  PALL      TATICO     COMPRAR FORTE    33   80  58.8       12    59.8%  1.39    -7%  -0.05
+  DBA       TATICO     COMPRAR          82   73  77.1       11     6.6%  0.07    14%   0.84
+  DBC       TATICO     COMPRAR          79   70  74.2       19    12.6% -0.21    17%   0.68
+  BNO       TATICO     COMPRAR          77   67  71.5       24    27.7% -1.12    27%   0.56
+  USO       TATICO     COMPRAR          76   61  67.9       30    25.3% -1.14    27%   0.58
+  UNG       TATICO     COMPRAR          37   69  54.8       54    91.4% -0.86   -19%  -0.45
+  CPER      TATICO     ESTICADO         71   26  46.4       92     4.8%  1.25    16%   0.58
+
+====================================================================================================
+  CRYPTO — regime CAPITULACAO (multiplicador 4x)
+====================================================================================================
+  Ativo     Bucket     VEREDITO       Qual  Mom  Rank StochSem DescTopo  Beta   CAGR Sharpe
+  -------------------------------------------------------------------------------------------------
+  TRX-USD   TATICO     COMPRAR          70   65  67.5       33    24.6%  0.24    41%   0.65
+  XRP-USD   TATICO     COMPRAR          63   68  65.7        8    66.6%  1.25    23%   0.40
+  ETH-USD   ACELERADOR COMPRAR          59   69  64.2        8    63.7%  1.29    26%  -0.44
+  BTC-USD   ACELERADOR COMPRAR          63   65  64.1        9    48.2%  1.00    25%  -0.04
+  SOL-USD   TATICO     COMPRAR          59   69  64.1       14    72.3%  1.32    74%  -0.45
+  BNB-USD   TATICO     COMPRAR          64   64  64.0        7    54.1%  0.94    51%   0.00
+  DOGE-USD  TATICO     COMPRAR          60   66  63.4        2    87.4%  1.27    50%  -0.28
+  ADA-USD   TATICO     COMPRAR          48   70  60.1        2    94.3%  1.39     8%  -0.44
+  LINK-USD  TATICO     COMPRAR          48   66  58.1        5    84.5%  1.33     8%  -0.33
+  AVAX-USD  TATICO     COMPRAR          39   70  56.1        1    95.0%  1.32     4%  -0.80

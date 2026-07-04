@@ -12,6 +12,46 @@ import PortfolioEquityCurve from "@/components/charts/PortfolioEquityCurve";
 import { Plus, Trash2, TrendingUp, Lightbulb, Pencil, Check, X, Loader2, Lock, Unlock, RefreshCw } from "lucide-react";
 import type { ContributionSuggestion } from "@/types";
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+/** Returns liquidation slack% for a ticker from analytics.liquidation_watch */
+function getLiqSlack(analytics: any, ticker: string): number | null {
+  const pos = (analytics?.liquidation_watch?.por_posicao ?? []) as any[];
+  const found = pos.find((p: any) => p.ticker === ticker);
+  if (found?.distance_pct != null) return Number(found.distance_pct);
+  // fallback: aggregate distance if no per-position data
+  const agg = analytics?.liquidation_watch?.aggregate;
+  if (agg?.distance_pct != null) return Number(agg.distance_pct);
+  return null;
+}
+
+function LiqSemaphore({ slack }: { slack: number | null }) {
+  if (slack === null) return <span className="text-text-muted text-[10px]">—</span>;
+  const isGreen = slack > 40;
+  const isYellow = slack >= 15 && slack <= 40;
+  // red + pulse when < 15%
+  const dot = isGreen
+    ? "bg-success"
+    : isYellow
+    ? "bg-amber-400"
+    : "bg-danger animate-pulse";
+  const textCls = isGreen ? "text-success" : isYellow ? "text-amber-400" : "text-danger";
+  return (
+    <div className="flex items-center gap-1" title={`Folga até liquidação: -${slack.toFixed(0)}%`}>
+      <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
+      <span className={`font-mono text-[10px] ${textCls}`}>-{slack.toFixed(0)}%</span>
+    </div>
+  );
+}
+
+/** Weighted average leverage by notional — computed client-side as fallback */
+function calcEffectiveLeverage(positions: any[]): number | null {
+  const totalNotional = positions.reduce((s, p) => s + (p.notional_value ?? 0), 0);
+  if (!totalNotional) return null;
+  const weighted = positions.reduce((s, p) => s + (p.notional_value ?? 0) * (p.leverage ?? 1), 0);
+  return weighted / totalNotional;
+}
+
 function PortfolioPageInner() {
   const searchParams = useSearchParams();
   const { activePortfolioId, portfolios, metrics, positions, analytics, analyticsLoading, analyticsError, fetchPortfolios, fetchMetrics, fetchPositions, fetchAnalytics, addPosition, updatePosition, removePosition, toggleSeed, toggleCycle } = usePortfolioStore();

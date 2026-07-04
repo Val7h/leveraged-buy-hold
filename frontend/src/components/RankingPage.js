@@ -495,6 +495,73 @@ function momentumRaw(a) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Helpers p/ badges novos                                             */
+/* ------------------------------------------------------------------ */
+
+function medalEmoji(rank) {
+  if (rank === 1) return "🥇";
+  if (rank === 2) return "🥈";
+  if (rank === 3) return "🥉";
+  return null;
+}
+
+// Badge Q/M/A (Qualidade / Momento / Aptidão) com seta colorida.
+function LayerBadge({ label, value }) {
+  const v = Number(value) || 0;
+  if (v >= 60) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-success bg-success/10 border border-success/30 rounded px-1.5 py-0.5">
+        ↑ {label}
+      </span>
+    );
+  }
+  if (v >= 40) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+        → {label}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-text-muted bg-surface-3 border border-border rounded px-1.5 py-0.5">
+      − {label}
+    </span>
+  );
+}
+
+// Badge de tier de sobrevivência baseado em composite_score ou score.
+function SurvivalTierBadge({ asset }) {
+  const score = asset.composite_score ?? asset.score ?? asset.quality ?? 0;
+  const v = Number(score) || 0;
+  if (v >= 75) {
+    return (
+      <span className="inline-flex items-center text-[9px] font-semibold text-[#C084FC] bg-[#C084FC]/10 border border-[#C084FC]/30 rounded px-1.5 py-0.5 shrink-0">
+        Elite
+      </span>
+    );
+  }
+  if (v >= 55) {
+    return (
+      <span className="inline-flex items-center text-[9px] font-semibold text-success bg-success/10 border border-success/30 rounded px-1.5 py-0.5 shrink-0">
+        Sólido
+      </span>
+    );
+  }
+  if (v >= 40) {
+    return (
+      <span className="inline-flex items-center text-[9px] font-semibold text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5 shrink-0">
+        Neutro
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center text-[9px] font-semibold text-danger bg-danger/10 border border-danger/30 rounded px-1.5 py-0.5 shrink-0">
+      Frágil
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Linha do ranking                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -507,6 +574,12 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy, s
     ? asset.rank_alavancado ?? asset.rank
     : asset.rank;
 
+  const medal = medalEmoji(displayRank);
+  // Momentum: pode vir como momentum, opportunity_score ou momentum_score
+  const momentumVal = asset.momentum ?? asset.opportunity_score ?? asset.momentum_score ?? 0;
+  // Aptidao: Camada 3
+  const aptidaoVal = asset.aptidao ?? null;
+
   return (
     <div className={`border-b border-border/70 last:border-b-0 ${expanded ? "bg-surface-2/30" : ""}`}>
       <button
@@ -515,17 +588,34 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy, s
       >
         <div className="col-span-5 sm:col-span-3 min-w-0">
           <div className="flex items-center gap-2">
-            <span
-              role="button"
-              title="Ver gráfico"
-              onClick={(e) => {
-                e.stopPropagation();
-                onLogoClick && onLogoClick(asset.ticker);
-              }}
-              className="cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-primary/40 rounded-full transition-all"
-            >
-              <TickerLogo ticker={asset.ticker} size={26} />
-            </span>
+            {medal ? (
+              <span className="shrink-0 text-base leading-none" aria-label={`Rank ${displayRank}`}>{medal}</span>
+            ) : (
+              <span
+                role="button"
+                title="Ver gráfico"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLogoClick && onLogoClick(asset.ticker);
+                }}
+                className="cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-primary/40 rounded-full transition-all"
+              >
+                <TickerLogo ticker={asset.ticker} size={26} />
+              </span>
+            )}
+            {medal && (
+              <span
+                role="button"
+                title="Ver gráfico"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLogoClick && onLogoClick(asset.ticker);
+                }}
+                className="cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-primary/40 rounded-full transition-all"
+              >
+                <TickerLogo ticker={asset.ticker} size={26} />
+              </span>
+            )}
             <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
             <span className="font-bold text-text-primary text-sm truncate">{asset.ticker}</span>
             {asset.dividend_yield > 0 && (
@@ -533,6 +623,13 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy, s
                 DY {fmtPct(asset.dividend_yield).replace("+", "")}
               </span>
             )}
+          </div>
+          {/* Q/M/A layer badges + Survival tier */}
+          <div className="flex items-center gap-1 mt-0.5 pl-9 flex-wrap">
+            <LayerBadge label="Q" value={asset.quality_score ?? asset.quality} />
+            <LayerBadge label="M" value={momentumVal} />
+            {aptidaoVal !== null && <LayerBadge label="A" value={aptidaoVal} />}
+            <SurvivalTierBadge asset={asset} />
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 pl-9">
             <span className="text-xs text-text-muted truncate">{asset.name}</span>
@@ -641,6 +738,15 @@ function RankingRow({ asset, expanded, onToggle, onRemove, onLogoClick, onBuy, s
           >
             📈 gráfico
           </span>
+          {/* Botão "Analisar →" — abre o screener de ativos com autorun */}
+          <a
+            href={`/assets?tickers=${encodeURIComponent(asset.ticker)}&autorun=1`}
+            title="Analisar este ativo no screener"
+            onClick={(e) => e.stopPropagation()}
+            className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-surface-2 border border-border text-text-secondary hover:border-success/50 hover:text-success hover:bg-success/5 transition-colors whitespace-nowrap"
+          >
+            Analisar →
+          </a>
           <span className="text-text-muted">
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </span>
@@ -1100,6 +1206,8 @@ export default function RankingPage() {
   // e ordem dependem só de qualidade+momento (rank base). Ligado, reordena pelo
   // melhor pick alavancável (rank_alavancado).
   const [showLeverage, setShowLeverage] = useState(false);
+  // Filtro de mercado aplicado sobre a lista da categoria ativa.
+  const [marketFilter, setMarketFilter] = useState("Todos");
 
   const fetchRanking = useCallback(async () => {
     setRankLoading(true);
@@ -1205,11 +1313,29 @@ export default function RankingPage() {
   // Ordenação condicional: modo OFF mantém a ordem do backend (rank base, foco no
   // veredito). Modo ON reordena pelo rank_alavancado — a alavancagem reordena
   // cross-veredito (um COMPRAR alavancável 3x pode subir acima de um COMPRAR FORTE 1x).
+  // Função que determina em qual "mercado" um ativo se encaixa para o filtro de chips.
+  const assetMarket = useCallback((a) => {
+    const ticker = String(a.ticker || "").toUpperCase();
+    const cat = String(a._cat || activeCat || "").toUpperCase();
+    if (cat === "CRYPTO" || ticker.endsWith("-USD")) return "Crypto";
+    if (cat === "BR" || ticker.endsWith(".SA")) {
+      // FII: sufixo 11 no código BR (heurística padrão B3)
+      if (/\d{2}$/.test(ticker.replace(".SA", "")) && ticker.replace(".SA", "").length >= 6) return "FII";
+      return "BR";
+    }
+    if (cat === "US" || cat === "ETF" || cat === "EUROPE" || cat === "COMMODITY") return "US";
+    return "US";
+  }, [activeCat]);
+
   const assets = useMemo(() => {
     const list = cat?.assets || [];
-    if (!showLeverage) return list;
-    return [...list].sort((a, b) => rankKey(b) - rankKey(a));
-  }, [cat, showLeverage, rankKey]);
+    let filtered = list;
+    if (marketFilter !== "Todos") {
+      filtered = list.filter((a) => assetMarket(a) === marketFilter);
+    }
+    if (!showLeverage) return filtered;
+    return [...filtered].sort((a, b) => rankKey(b) - rankKey(a));
+  }, [cat, showLeverage, rankKey, marketFilter, assetMarket]);
 
   return (
     <div className="flex flex-col h-full bg-background text-text-primary">
@@ -1313,6 +1439,28 @@ export default function RankingPage() {
             );
           })}
         </div>
+
+        {/* Filtro de mercado */}
+        {!rankLoading && !rankError && cat && (
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
+            {["Todos", "BR", "US", "FII", "Crypto"].map((mkt) => {
+              const active = marketFilter === mkt;
+              return (
+                <button
+                  key={mkt}
+                  onClick={() => setMarketFilter(mkt)}
+                  className={`px-3 py-1 rounded-full text-xs whitespace-nowrap border transition-all ${
+                    active
+                      ? "bg-success/20 text-success border-success/50 font-semibold shadow-[0_0_10px_rgba(0,255,136,0.15)]"
+                      : "bg-surface-2 text-text-secondary border-border hover:text-text-primary hover:border-border-light"
+                  }`}
+                >
+                  {mkt}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Cabeçalho da categoria */}
         {cat && (
