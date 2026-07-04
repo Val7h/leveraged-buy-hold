@@ -125,12 +125,21 @@ async function sweepPriceAlerts(): Promise<number> {
     const triggered = evalCondition(a.condition, price, Number(a.threshold));
     try {
       if (triggered && !a.notifiedAt) {
+        const thresh = Number(a.threshold);
+        const distPct = thresh > 0 ? Math.abs(((price - thresh) / thresh) * 100).toFixed(1) : null;
+        const condLabel =
+          a.condition === "above" || a.condition === "price_above" || a.condition === "gte"
+            ? "acima de"
+            : "abaixo de";
+        const autoBody = distPct
+          ? `${a.ticker} está $${price.toFixed(2)} — ${distPct}% ${condLabel} o alvo de $${thresh.toFixed(2)}`
+          : `${a.ticker} atingiu ${condLabel} $${thresh.toFixed(2)} (atual $${price.toFixed(2)})`;
         await prisma.notification.create({
           data: {
             userId: a.userId,
             type: "price_alert",
-            title: `Alerta: ${a.ticker}`,
-            body: a.message || `${a.ticker} atingiu ${a.condition} ${Number(a.threshold)} (atual ${price})`,
+            title: `Alerta de preço: ${a.ticker}`,
+            body: a.message ? `${a.message} — ${autoBody}` : autoBody,
             url: "/alerts",
           },
         });
