@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 const AddItemSchema = z.object({
   ticker: z.string().min(1).max(20),
   watchlistName: z.string().min(1).max(80).optional(),
+  note: z.string().max(500).optional(),
 });
 
 /**
@@ -60,12 +61,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // Aceitar ticker via body OU query (legado lib/api.ts manda em query).
+  // Aceitar ticker (e nota opcional) via query OU body.
   let rawTicker: string | null = request.nextUrl.searchParams.get("ticker");
+  let rawNote: string | null = request.nextUrl.searchParams.get("note");
   if (!rawTicker) {
     try {
       const body = await request.json();
       rawTicker = body?.ticker ?? null;
+      rawNote = rawNote ?? body?.note ?? null;
     } catch {
       // body opcional se veio via query
     }
@@ -73,7 +76,7 @@ export async function POST(request: NextRequest) {
 
   let parsed;
   try {
-    parsed = AddItemSchema.parse({ ticker: rawTicker });
+    parsed = AddItemSchema.parse({ ticker: rawTicker, note: rawNote ?? undefined });
   } catch (err) {
     return NextResponse.json(
       { error: "invalid_payload", details: (err as z.ZodError).issues ?? null },
@@ -96,7 +99,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const item = await prisma.watchlistItem.create({
-      data: { watchlistId: watchlist.id, ticker },
+      data: {
+        watchlistId: watchlist.id,
+        ticker,
+        ...(parsed.note?.trim() && { note: parsed.note.trim() }),
+      },
     });
     return NextResponse.json(item, { status: 201 });
   } catch (err: any) {

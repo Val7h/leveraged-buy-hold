@@ -9,6 +9,7 @@ import { getScoreColor } from "@/lib/utils";
 import {
   Bookmark, Plus, Trash2, RefreshCw, TrendingUp,
   ArrowRight, Loader2, AlertCircle, Target, StickyNote, Check, X, Clock,
+  Zap,
 } from "lucide-react";
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -18,7 +19,10 @@ const SIGNAL_COLORS: Record<string, string> = {
   gray: "text-text-muted bg-surface-2 border-border",
 };
 
-// "atualizado há X" a partir do cache do último sinal do motor (signalAt) — evita reanalisar.
+// RSI thresholds considered "buy zone"
+const RSI_BUY_THRESHOLD = 40;
+
+/** "atualizado há X" a partir do ISO datetime */
 function agoLabel(iso?: string | null): string | null {
   if (!iso) return null;
   const ms = Date.now() - new Date(iso).getTime();
@@ -31,10 +35,56 @@ function agoLabel(iso?: string | null): string | null {
   return `há ${Math.floor(h / 24)}d`;
 }
 
+/** "na watchlist há X" a partir do added_at */
+function watchlistAge(iso?: string | null): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!isFinite(ms) || ms < 0) return null;
+  const min = Math.floor(ms / 60000);
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d`;
+  const months = Math.floor(d / 30);
+  return `${months}m`;
+}
+
 function num(v: unknown): number | null {
   if (v == null) return null;
   const n = typeof v === "number" ? v : parseFloat(String(v));
   return isFinite(n) ? n : null;
+}
+
+/** True if the asset is currently in a technical buy zone */
+function isInBuyZone(score?: AssetScore): boolean {
+  if (!score) return false;
+  const color = score.entry_signal_color;
+  if (color === "green") return true;
+  // Also check RSI directly
+  const rsi = num(score.technicals?.rsi_14_weekly ?? score.technicals?.rsi_weekly ?? score.technicals?.rsi_14);
+  if (rsi != null && rsi <= RSI_BUY_THRESHOLD) return true;
+  return false;
+}
+
+/** Distance % from current RSI to buy threshold (negative = already in zone) */
+function rsiDistanceToBuyZone(score?: AssetScore): number | null {
+  if (!score) return null;
+  const rsi = num(score.technicals?.rsi_14_weekly ?? score.technicals?.rsi_weekly ?? score.technicals?.rsi_14);
+  if (rsi == null) return null;
+  // % distance: how far above the buy threshold (positive = above, negative = below = in zone)
+  return ((rsi - RSI_BUY_THRESHOLD) / RSI_BUY_THRESHOLD) * 100;
+}
+
+/** Distance % from current price to MA200 (negative = below MA200 = undervalued zone) */
+function ma200Distance(score?: AssetScore): number | null {
+  if (!score) return null;
+  const d = num(score.technicals?.distance_from_ma200);
+  if (d != null) return d; // already a pct
+  const cur = num(score.current_price);
+  const ma = num(score.technicals?.ma_200);
+  if (cur == null || ma == null || ma === 0) return null;
+  return ((cur - ma) / ma) * 100;
 }
 
 export default function WatchlistPage() {
@@ -43,11 +93,14 @@ export default function WatchlistPage() {
   const [scores, setScores] = useState<Record<string, AssetScore>>({});
   const [failedTickers, setFailedTickers] = useState<Set<string>>(new Set());
   const [newTicker, setNewTicker] = useState("");
+  const [newNote, setNewNote] = useState("");
+  const [showNoteField, setShowNoteField] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [addLoading, setAddLoading] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
-  // Edição de nota/tese + alvo de entrada por item (o "quique" que a watchlist espera).
+
+  // Edição de nota/tese + alvo de entrada por item
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNote, setEditNote] = useState("");
   const [editTarget, setEditTarget] = useState("");
@@ -68,7 +121,11 @@ export default function WatchlistPage() {
         note: editNote.trim() === "" ? null : editNote.trim(),
         targetPrice: tp != null && isFinite(tp) ? tp : null,
       });
-      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, note: editNote.trim() || null, targetPrice: tp } : i)));
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === id ? { ...i, note: editNote.trim() || null, targetPrice: tp } : i
+        )
+      );
       setEditingId(null);
     } catch {
       setError("Não foi possível salvar a nota/alvo.");
@@ -89,8 +146,6 @@ export default function WatchlistPage() {
     }
   };
 
-  // Carrega a lista e já dispara a análise automaticamente, para que as linhas
-  // (inclusive BDRs .SA como ROXO34.SA) populem sem o usuário clicar em «Analisar».
   useEffect(() => {
     (async () => {
       const list = await fetchList();
@@ -105,8 +160,10 @@ export default function WatchlistPage() {
     setAddLoading(true);
     setError("");
     try {
-      await watchlistApi.add(t);
+      await watchlistApi.add(t, newNote.trim() || undefined);
       setNewTicker("");
+      setNewNote("");
+      setShowNoteField(false);
       const list = await fetchList();
       analyzeTickers(list);
     } catch (e: any) {
@@ -140,7 +197,9 @@ export default function WatchlistPage() {
       const failed: string[] = res.data.failed_tickers ?? [];
       setFailedTickers(new Set(failed));
       if (failed.length) {
-        setError(`Análise parcial: ${failed.join(", ")} não retornou dados (BDR/.SA com histórico fino ou Yahoo Finance com rate limit).`);
+        setError(
+          `Análise parcial: ${failed.join(", ")} não retornou dados (BDR/.SA com histórico fino ou Yahoo Finance com rate limit).`
+        );
       }
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Erro ao analisar ativos");
@@ -170,8 +229,11 @@ export default function WatchlistPage() {
             </p>
           </div>
           {items.length > 0 && (
-            <button onClick={handleAnalyze} disabled={analyzing}
-              className="btn-primary flex items-center gap-2 text-sm">
+            <button
+              onClick={handleAnalyze}
+              disabled={analyzing}
+              className="btn-primary flex items-center gap-2 text-sm"
+            >
               {analyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
               {analyzing ? "Analisando..." : `Analisar ${items.length} ativo${items.length > 1 ? "s" : ""}`}
             </button>
@@ -194,14 +256,45 @@ export default function WatchlistPage() {
               placeholder="NEE, TAEE11.SA, KO..."
               value={newTicker}
               onChange={(e) => setNewTicker(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              onKeyDown={(e) => e.key === "Enter" && !showNoteField && handleAdd()}
             />
-            <button onClick={handleAdd} disabled={addLoading || !newTicker.trim()}
-              className="btn-primary flex items-center gap-1.5 text-sm px-4">
+            <button
+              type="button"
+              onClick={() => setShowNoteField((v) => !v)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
+                showNoteField
+                  ? "text-primary border-primary/40 bg-primary/10"
+                  : "text-text-muted border-border hover:border-primary/30 hover:text-primary"
+              }`}
+              title="Adicionar nota / motivo de interesse"
+            >
+              <StickyNote size={12} />
+              Nota
+            </button>
+            <button
+              onClick={handleAdd}
+              disabled={addLoading || !newTicker.trim()}
+              className="btn-primary flex items-center gap-1.5 text-sm px-4"
+            >
               {addLoading ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
               Adicionar
             </button>
           </div>
+
+          {/* Optional note field */}
+          {showNoteField && (
+            <div className="mt-2 flex items-center gap-2">
+              <StickyNote size={12} className="text-text-muted flex-shrink-0" />
+              <input
+                className="input text-xs flex-1 py-1"
+                placeholder='Motivo de interesse, ex: "ITUB4 – aguardando RSI ≤ 38"'
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              />
+            </div>
+          )}
+
           {error && (
             <p className="text-xs text-danger mt-2 flex items-center gap-1">
               <AlertCircle size={11} /> {error}
@@ -209,12 +302,14 @@ export default function WatchlistPage() {
           )}
         </div>
 
-        {/* Watchlist */}
+        {/* Watchlist items */}
         {items.length === 0 ? (
           <div className="card text-center py-16">
             <Bookmark size={36} className="text-text-muted mx-auto mb-3" />
             <p className="text-sm text-text-secondary">Sua watchlist está vazia.</p>
-            <p className="text-xs text-text-muted mt-1">Adicione tickers acima para monitorar sinais de entrada.</p>
+            <p className="text-xs text-text-muted mt-1">
+              Adicione tickers acima para monitorar sinais de entrada.
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -222,101 +317,191 @@ export default function WatchlistPage() {
               const score = scores[item.ticker];
               const cur = num(score?.current_price);
               const tgt = num(item.targetPrice);
-              const toTargetPct = cur != null && tgt != null && cur > 0 ? ((tgt - cur) / cur) * 100 : null;
+              const toTargetPct =
+                cur != null && tgt != null && cur > 0
+                  ? ((tgt - cur) / cur) * 100
+                  : null;
               const ago = agoLabel(item.signalAt);
               const cachedVerdict = item.lastVerdict;
               const cachedColor = item.lastSignalColor || "gray";
+              const inBuyZone = isInBuyZone(score);
+              const age = watchlistAge(item.createdAt ?? item.added_at);
+
+              // RSI distance to buy zone
+              const rsiDist = rsiDistanceToBuyZone(score);
+              const rsiVal = num(
+                score?.technicals?.rsi_14_weekly ??
+                  score?.technicals?.rsi_weekly ??
+                  score?.technicals?.rsi_14
+              );
+
+              // MA200 distance
+              const ma200Dist = ma200Distance(score);
+
               return (
-                <div key={item.id}
-                  className="card group hover:border-primary/30 transition-colors">
-                 <div className="flex items-center gap-4">
-                  {/* Ticker */}
-                  <div className="flex items-center gap-3 w-44 flex-shrink-0">
-                    <TickerLogo ticker={item.ticker} size={36} />
-                    <div>
-                      <p className="font-mono font-bold text-text-primary">{item.ticker}</p>
-                      {score?.company_name && (
-                        <p className="text-[10px] text-text-muted truncate max-w-[96px]">{score.company_name}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Scores — shown after analysis */}
-                  {score ? (
-                    <>
-                      {/* Composite score */}
-                      <div className="w-20 flex-shrink-0 text-center">
-                        <p className="text-[10px] text-text-muted mb-0.5">Score</p>
-                        <p className={`text-lg font-mono font-bold ${getScoreColor(score.composite_score)}`}>
-                          {score.composite_score.toFixed(0)}
-                        </p>
-                      </div>
-
-                      {/* Entry signal */}
-                      <div className="flex-1 min-w-0">
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold border ${SIGNAL_COLORS[score.entry_signal_color || "gray"]}`}>
-                          {score.entry_signal || "—"}
-                        </span>
-                        {score.entry_rationale && (
-                          <p className="text-[10px] text-text-muted mt-1 truncate">{score.entry_rationale}</p>
+                <div
+                  key={item.id}
+                  className={`card group transition-colors ${
+                    inBuyZone
+                      ? "border-success/40 hover:border-success/60 bg-success/[0.02]"
+                      : "hover:border-primary/30"
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    {/* Ticker + age badge */}
+                    <div className="flex items-center gap-3 w-44 flex-shrink-0">
+                      <TickerLogo ticker={item.ticker} size={36} />
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-mono font-bold text-text-primary">{item.ticker}</p>
+                          {inBuyZone && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-success/20 text-success border border-success/30 uppercase tracking-wide">
+                              <Zap size={8} />
+                              Zona Ativa
+                            </span>
+                          )}
+                        </div>
+                        {score?.company_name && (
+                          <p className="text-[10px] text-text-muted truncate max-w-[96px]">
+                            {score.company_name}
+                          </p>
+                        )}
+                        {age && (
+                          <p className="text-[9px] text-text-muted/70 flex items-center gap-0.5 mt-0.5">
+                            <Clock size={8} />
+                            na lista há {age}
+                          </p>
                         )}
                       </div>
-
-                      {/* Leverage */}
-                      <div className="w-24 flex-shrink-0 text-center">
-                        <p className="text-[10px] text-text-muted mb-0.5">Alavancagem</p>
-                        <p className="text-sm font-mono font-bold text-primary">
-                          {(score.entry_leverage ?? score.recommended_leverage)?.toFixed(2) || "—"}x
-                        </p>
-                      </div>
-
-                      {/* RSI semanal */}
-                      <div className="w-16 flex-shrink-0 text-center">
-                        <p className="text-[10px] text-text-muted mb-0.5">RSI Sem.</p>
-                        <p className="text-sm font-mono text-text-primary">
-                          {score.technicals?.rsi_weekly?.toFixed(1) ?? score.technicals?.rsi_14_weekly?.toFixed(1) ?? score.technicals?.rsi_14?.toFixed(1) ?? "—"}
-                        </p>
-                      </div>
-
-                      {/* CTA */}
-                      <button
-                        onClick={() => handleBought(item.ticker, score.entry_leverage ?? score.recommended_leverage ?? 1)}
-                        className="flex items-center gap-1.5 text-xs font-semibold text-success bg-success/10 border border-success/20 hover:bg-success/20 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
-                        title="Registrar posição na carteira simulada">
-                        Adicionar à carteira
-                        <ArrowRight size={11} />
-                      </button>
-                    </>
-                  ) : (
-                    <div className="flex-1 flex items-center gap-2">
-                      <p className={`text-xs italic flex items-center gap-1 ${failedTickers.has(item.ticker) ? "text-warning" : "text-text-muted"}`}>
-                        {failedTickers.has(item.ticker) && !analyzing && <AlertCircle size={11} />}
-                        {analyzing
-                          ? "Analisando..."
-                          : failedTickers.has(item.ticker)
-                            ? "Dados de mercado indisponíveis (BDR/.SA com histórico fino ou rate limit). Tente novamente."
-                            : "Clique em «Analisar» para ver o sinal"}
-                      </p>
-                      {analyzing && <Loader2 size={11} className="animate-spin text-text-muted" />}
-                      {/* Show buy button even without analysis */}
-                      {!analyzing && (
-                        <button
-                          onClick={() => handleBought(item.ticker, 1)}
-                          className="ml-auto flex items-center gap-1.5 text-xs text-text-muted hover:text-success border border-border hover:border-success/30 px-3 py-1.5 rounded-lg transition-colors"
-                          title="Registrar posição na carteira simulada">
-                          Adicionar à carteira <ArrowRight size={11} />
-                        </button>
-                      )}
                     </div>
-                  )}
 
-                  {/* Remove */}
-                  <button onClick={() => handleRemove(item.id)}
-                    className="text-text-muted hover:text-danger transition-colors p-1 flex-shrink-0 opacity-0 group-hover:opacity-100"
-                    title="Remover da watchlist">
-                    <Trash2 size={14} />
-                  </button>
-                 </div>
+                    {/* Scores — shown after analysis */}
+                    {score ? (
+                      <>
+                        {/* Composite score */}
+                        <div className="w-16 flex-shrink-0 text-center">
+                          <p className="text-[10px] text-text-muted mb-0.5">Score</p>
+                          <p className={`text-lg font-mono font-bold ${getScoreColor(score.composite_score)}`}>
+                            {score.composite_score.toFixed(0)}
+                          </p>
+                        </div>
+
+                        {/* Entry signal (verdict) */}
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold border ${
+                              SIGNAL_COLORS[score.entry_signal_color || "gray"]
+                            }`}
+                          >
+                            {score.entry_signal || "—"}
+                          </span>
+                          {score.entry_rationale && (
+                            <p className="text-[10px] text-text-muted mt-1 truncate">
+                              {score.entry_rationale}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Distance to buy zone: RSI + MA200 */}
+                        <div className="w-28 flex-shrink-0 text-right space-y-0.5">
+                          {rsiVal != null && (
+                            <div className="flex items-center justify-end gap-1">
+                              <span className="text-[9px] text-text-muted">RSI sem.</span>
+                              <span
+                                className={`text-xs font-mono font-semibold ${
+                                  rsiVal <= RSI_BUY_THRESHOLD
+                                    ? "text-success"
+                                    : rsiVal <= 50
+                                    ? "text-warning"
+                                    : "text-text-secondary"
+                                }`}
+                              >
+                                {rsiVal.toFixed(1)}
+                              </span>
+                            </div>
+                          )}
+                          {rsiDist != null && rsiDist > 0 && (
+                            <p className="text-[9px] text-text-muted">
+                              falta {rsiDist.toFixed(1)}% p/ zona
+                            </p>
+                          )}
+                          {rsiDist != null && rsiDist <= 0 && (
+                            <p className="text-[9px] text-success font-semibold">RSI em zona ✓</p>
+                          )}
+                          {ma200Dist != null && (
+                            <div className="flex items-center justify-end gap-1">
+                              <span className="text-[9px] text-text-muted">vs MM200</span>
+                              <span
+                                className={`text-[10px] font-mono ${
+                                  ma200Dist < 0 ? "text-success" : "text-text-secondary"
+                                }`}
+                              >
+                                {ma200Dist > 0 ? "+" : ""}{ma200Dist.toFixed(1)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Leverage */}
+                        <div className="w-20 flex-shrink-0 text-center">
+                          <p className="text-[10px] text-text-muted mb-0.5">Alavancagem</p>
+                          <p className="text-sm font-mono font-bold text-primary">
+                            {(score.entry_leverage ?? score.recommended_leverage)?.toFixed(2) || "—"}x
+                          </p>
+                        </div>
+
+                        {/* CTA */}
+                        <button
+                          onClick={() =>
+                            handleBought(
+                              item.ticker,
+                              score.entry_leverage ?? score.recommended_leverage ?? 1
+                            )
+                          }
+                          className="flex items-center gap-1.5 text-xs font-semibold text-success bg-success/10 border border-success/20 hover:bg-success/20 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+                          title="Registrar posição na carteira simulada"
+                        >
+                          Carteira
+                          <ArrowRight size={11} />
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex items-center gap-2">
+                        <p
+                          className={`text-xs italic flex items-center gap-1 ${
+                            failedTickers.has(item.ticker) ? "text-warning" : "text-text-muted"
+                          }`}
+                        >
+                          {failedTickers.has(item.ticker) && !analyzing && (
+                            <AlertCircle size={11} />
+                          )}
+                          {analyzing
+                            ? "Analisando..."
+                            : failedTickers.has(item.ticker)
+                            ? "Dados indisponíveis (rate limit ou histórico fino). Tente novamente."
+                            : "Clique em «Analisar» para ver o sinal"}
+                        </p>
+                        {analyzing && <Loader2 size={11} className="animate-spin text-text-muted" />}
+                        {!analyzing && (
+                          <button
+                            onClick={() => handleBought(item.ticker, 1)}
+                            className="ml-auto flex items-center gap-1.5 text-xs text-text-muted hover:text-success border border-border hover:border-success/30 px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Carteira <ArrowRight size={11} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Remove */}
+                    <button
+                      onClick={() => handleRemove(item.id)}
+                      className="text-text-muted hover:text-danger transition-colors p-1 flex-shrink-0 opacity-0 group-hover:opacity-100"
+                      title="Remover da watchlist"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
 
                   {/* ── Sentinela: nota/tese + alvo de entrada + cache do sinal ── */}
                   <div className="mt-3 pt-3 border-t border-border/40">
@@ -326,7 +511,7 @@ export default function WatchlistPage() {
                           <StickyNote size={12} className="text-text-muted flex-shrink-0" />
                           <input
                             className="input text-xs flex-1 py-1"
-                            placeholder="Tese / por que esperar este ativo (o quique)"
+                            placeholder='Tese / motivo de interesse, ex: "aguardando RSI ≤ 38"'
                             value={editNote}
                             onChange={(e) => setEditNote(e.target.value)}
                           />
@@ -335,27 +520,50 @@ export default function WatchlistPage() {
                           <Target size={12} className="text-text-muted flex-shrink-0" />
                           <input
                             className="input text-xs font-mono w-28 py-1"
-                            type="number" step="0.01" placeholder="Alvo entrada $"
+                            type="number"
+                            step="0.01"
+                            placeholder="Alvo entrada $"
                             value={editTarget}
                             onChange={(e) => setEditTarget(e.target.value)}
                           />
                         </div>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => saveMeta(item.id)} disabled={savingMeta}
-                            className="p-1 text-success hover:bg-success/10 rounded" title="Salvar">
-                            {savingMeta ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                          <button
+                            onClick={() => saveMeta(item.id)}
+                            disabled={savingMeta}
+                            className="p-1 text-success hover:bg-success/10 rounded"
+                            title="Salvar"
+                          >
+                            {savingMeta ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Check size={13} />
+                            )}
                           </button>
-                          <button onClick={() => setEditingId(null)}
-                            className="p-1 text-text-muted hover:bg-surface-2 rounded" title="Cancelar">
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="p-1 text-text-muted hover:bg-surface-2 rounded"
+                            title="Cancelar"
+                          >
                             <X size={13} />
                           </button>
                         </div>
                       </div>
                     ) : (
                       <div className="flex items-center gap-3 flex-wrap text-xs">
+                        {/* Nota do usuário — destaque se existir */}
+                        {item.note && (
+                          <span className="inline-flex items-center gap-1 text-text-secondary bg-surface-2 border border-border rounded-lg px-2 py-0.5 max-w-[55%] truncate">
+                            <StickyNote size={10} className="text-primary flex-shrink-0" />
+                            <span className="truncate italic">"{item.note}"</span>
+                          </span>
+                        )}
+
                         {/* Cached signal + atualizado há X */}
                         {cachedVerdict && (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${SIGNAL_COLORS[cachedColor]}`}>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${SIGNAL_COLORS[cachedColor]}`}
+                          >
                             {cachedVerdict}
                           </span>
                         )}
@@ -364,7 +572,8 @@ export default function WatchlistPage() {
                             <Clock size={10} /> atualizado {ago}
                           </span>
                         )}
-                        {/* Falta X% pro alvo */}
+
+                        {/* Distance to target price */}
                         {toTargetPct != null && (
                           <span className="inline-flex items-center gap-1 text-text-secondary">
                             <Target size={11} className="text-primary" />
@@ -378,9 +587,11 @@ export default function WatchlistPage() {
                             <Target size={11} /> alvo {tgt.toFixed(2)}
                           </span>
                         )}
-                        {item.note && <span className="text-text-muted italic truncate max-w-[40%]">“{item.note}”</span>}
-                        <button onClick={() => startEdit(item)}
-                          className="ml-auto text-text-muted hover:text-primary transition-colors">
+
+                        <button
+                          onClick={() => startEdit(item)}
+                          className="ml-auto text-text-muted hover:text-primary transition-colors"
+                        >
                           {item.note || tgt != null ? "editar nota/alvo" : "+ nota/alvo"}
                         </button>
                       </div>
@@ -397,12 +608,15 @@ export default function WatchlistPage() {
                   <span className="text-primary font-semibold">Fluxo sugerido (cenário simulado):</span>{" "}
                   Watchlist → analise o sinal técnico do modelo (OPORTUNIDADE/NEUTRO/DESFAVORÁVEL) →
                   decida por sua conta e risco se executa a operação no seu broker →
-                  registre a posição clicando em <span className="text-success font-semibold">Adicionar à carteira →</span> →
-                  classifique como <span className="text-warning font-semibold">🔒 Semente</span> (posição permanente)
+                  registre a posição clicando em{" "}
+                  <span className="text-success font-semibold">Carteira →</span> →
+                  classifique como{" "}
+                  <span className="text-warning font-semibold">🔒 Semente</span> (posição permanente)
                   ou <span className="text-primary font-semibold">🔄 Ciclo</span> (rotação).
                 </p>
                 <p className="text-[10px] text-text-muted/70 mt-2 italic">
-                  ⚠️ Sinais técnicos NÃO são recomendações de compra/venda. Sistema informativo. CVM Of-Circ 04/2023.
+                  ⚠️ Sinais técnicos NÃO são recomendações de compra/venda. Sistema informativo. CVM Of-Circ
+                  04/2023.
                 </p>
               </div>
             )}

@@ -130,7 +130,8 @@ export const simulatorApi = {
 // Watchlist
 export const watchlistApi = {
   list: () => api.get("/api/v1/watchlist"),
-  add: (ticker: string) => api.post(`/api/v1/watchlist?ticker=${encodeURIComponent(ticker)}`),
+  add: (ticker: string, note?: string) =>
+    api.post(`/api/v1/watchlist?ticker=${encodeURIComponent(ticker)}${note ? `&note=${encodeURIComponent(note)}` : ""}`),
   remove: (id: string) => api.delete(`/api/v1/watchlist/${id}`),
   getSignals: () => api.get("/api/v1/watchlist/signals"),
   update: (id: string, data: { note?: string | null; targetPrice?: number | null }) =>

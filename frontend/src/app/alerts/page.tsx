@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { alertsApi } from "@/lib/api";
-import { Bell, Plus, Trash2, CheckCircle, Clock, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
+import { Bell, Plus, Trash2, CheckCircle, Clock, RefreshCw, TrendingUp, TrendingDown, ShieldAlert, AlertTriangle, Info } from "lucide-react";
 import TickerLogo from "@/components/ui/TickerLogo";
 
 // Condition display labels
@@ -34,7 +34,28 @@ type EnrichedAlert = {
   current_price: number | null;
   triggered: boolean;
   distance_pct: number | null;
+  context: string | null;
   created_at: string;
+};
+
+// Status em tempo real de uma sentinela de sobrevivência (por posição)
+type SurvivalPositionStatus = {
+  ticker: string;
+  price: number | null;
+  pm: number;
+  leverage?: number;
+  isSeed: boolean | null;
+  stopStatus: {
+    level: number;      // nível de stop já cruzado (0 se nenhum)
+    hit: boolean;       // true se algum nível foi cruzado
+    dropPct: number;    // queda atual do PM (positivo = abaixo)
+    nextLevel: number | null;  // próximo nível a cruzar
+  } | null;
+  liqStatus: {
+    slackPct: number;         // folga restante até liquidação (%)
+    nearestBand: number | null;
+    critical: boolean;
+  } | null;
 };
 
 const CONDITION_OPTIONS = [
@@ -44,18 +65,23 @@ const CONDITION_OPTIONS = [
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<EnrichedAlert[]>([]);
+  const [survivalStatus, setSurvivalStatus] = useState<SurvivalPositionStatus[]>([]);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState({ ticker: "", condition: "above", threshold: "", message: "" });
   const [creating, setCreating] = useState(false);
 
-  // Load enriched alerts (price + triggered status)
+  // Load enriched alerts (price + triggered status + survival_status)
   const loadAlerts = async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
     try {
       const res = await alertsApi.check();
       setAlerts(res.data?.alerts ?? []);
+      setSurvivalStatus(res.data?.survival_status ?? []);
+      setCheckedAt(res.data?.checked_at ?? null);
     } catch {
       // fallback to plain list
       try {
@@ -66,6 +92,7 @@ export default function AlertsPage() {
             current_price: null,
             triggered: false,
             distance_pct: null,
+            context: null,
           }))
         );
       } catch {}
@@ -83,13 +110,19 @@ export default function AlertsPage() {
   };
 
   const handleCreate = async () => {
-    if (!form.ticker || !form.threshold) return;
+    setFormError(null);
+    if (!form.ticker.trim()) { setFormError("Informe o ticker."); return; }
+    const thresh = parseFloat(form.threshold);
+    if (!form.threshold || isNaN(thresh) || thresh <= 0) {
+      setFormError("Preço alvo deve ser um número positivo.");
+      return;
+    }
     setCreating(true);
     try {
       await alertsApi.create({
         ticker: form.ticker.toUpperCase(),
         alert_type: form.condition,
-        threshold: parseFloat(form.threshold),
+        threshold: thresh,
         message: form.message || undefined,
       });
       setShowForm(false);
@@ -123,6 +156,25 @@ export default function AlertsPage() {
   const triggeredAlerts = alerts.filter((a) => a.triggered);
   const condLabel = (c: string) => CONDITION_LABELS[c] ?? c;
 
+  // Ordena alertas: disparados primeiro, depois por proximidade (menor distância absoluta)
+  const sortedAlerts = [...alerts].sort((a, b) => {
+    if (a.triggered && !b.triggered) return -1;
+    if (!a.triggered && b.triggered) return 1;
+    const da = a.distance_pct != null ? Math.abs(a.distance_pct) : Infinity;
+    const db = b.distance_pct != null ? Math.abs(b.distance_pct) : Infinity;
+    return da - db;
+  });
+
+  // Formata timestamp relativo legível
+  const relativeTime = (iso: string | null): string => {
+    if (!iso) return "";
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60) return "agora mesmo";
+    if (diff < 3600) return `há ${Math.floor(diff / 60)}min`;
+    if (diff < 86400) return `há ${Math.floor(diff / 3600)}h`;
+    return `há ${Math.floor(diff / 86400)}d`;
+  };
+
   return (
     <AppShell>
       <div className="p-6 max-w-4xl mx-auto">
@@ -134,6 +186,9 @@ export default function AlertsPage() {
               {alerts.length} alerta{alerts.length !== 1 ? "s" : ""} configurado{alerts.length !== 1 ? "s" : ""}
               {triggeredAlerts.length > 0 && (
                 <span className="ml-2 text-warning font-medium">· {triggeredAlerts.length} disparado{triggeredAlerts.length !== 1 ? "s" : ""}</span>
+              )}
+              {checkedAt && (
+                <span className="ml-2 text-text-muted text-xs">· verificado {relativeTime(checkedAt)}</span>
               )}
             </p>
           </div>
@@ -165,17 +220,76 @@ export default function AlertsPage() {
           </div>
         </div>
 
-        {/* Camada Sentinela — explicação dos alertas de sobrevivência (chegam por notificação/e-mail) */}
+        {/* Camada Sentinela — status dinâmico das sentinelas de sobrevivência por posição */}
         <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 mb-5">
-          <p className="text-xs text-text-secondary leading-relaxed">
-            <span className="text-primary font-semibold">Sentinela de sobrevivência:</span>{" "}
-            além dos alertas de preço abaixo, o sistema vigia suas posições sozinho e avisa por
-            notificação (e e-mail nos casos críticos) quando: o preço cai{" "}
-            <span className="font-semibold">-10/-20/-30% do PM real</span> da posição (stop ancorado,
-            re-âncora a cada aporte) ou quando a{" "}
-            <span className="font-semibold">folga até a liquidação</span> encolhe (25/15/8%).
-            Posições <span className="text-warning font-semibold">🔒 Semente</span> nunca viram alerta de venda.
-          </p>
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert size={14} className="text-primary" />
+            <span className="text-xs font-semibold text-primary">Sentinela de sobrevivência</span>
+            <span className="text-xs text-text-muted">(automático — vigia todas as posições)</span>
+          </div>
+
+          {survivalStatus.length > 0 ? (
+            <div className="space-y-2">
+              {survivalStatus.map((s) => {
+                const hasAlert = s.stopStatus?.hit || s.liqStatus?.critical;
+                const borderColor = s.liqStatus?.critical ? "border-danger/30" : s.stopStatus?.hit ? "border-warning/30" : "border-border/30";
+                return (
+                  <div key={s.ticker} className={`rounded-lg border px-3 py-2 bg-surface-2 ${borderColor}`}>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <TickerLogo ticker={s.ticker} size={20} />
+                        <span className="font-mono font-bold text-text-primary text-xs">{s.ticker}</span>
+                        {s.isSeed && <span className="text-xs text-warning">🔒 Semente</span>}
+                        {s.price != null && (
+                          <span className="text-xs text-text-muted font-mono">${s.price.toFixed(2)}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {/* Status stop PM */}
+                        {s.stopStatus && (
+                          <div className="text-xs">
+                            {s.stopStatus.hit ? (
+                              <span className={`flex items-center gap-1 font-medium ${s.stopStatus.level >= 20 ? "text-danger" : "text-warning"}`}>
+                                <AlertTriangle size={10} />
+                                Stop -{s.stopStatus.level}% acionado
+                                {s.stopStatus.nextLevel && ` (próx: -${s.stopStatus.nextLevel}%)`}
+                              </span>
+                            ) : (
+                              <span className="text-text-muted flex items-center gap-1">
+                                <Info size={10} />
+                                {s.stopStatus.dropPct > 0
+                                  ? `Caiu ${s.stopStatus.dropPct}% do PM — stop em -${s.stopStatus.nextLevel ?? 10}%`
+                                  : `+${Math.abs(s.stopStatus.dropPct)}% acima do PM — ok`
+                                }
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {/* Status liquidação */}
+                        {s.liqStatus && (
+                          <div className="text-xs">
+                            <span className={`flex items-center gap-1 ${s.liqStatus.critical ? "text-danger font-semibold" : s.liqStatus.slackPct <= 25 ? "text-warning" : "text-text-muted"}`}>
+                              {s.liqStatus.critical ? <AlertTriangle size={10} /> : <Info size={10} />}
+                              Folga liq: {s.liqStatus.slackPct.toFixed(0)}%
+                              {s.liqStatus.critical && " ⚠ crítico"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-text-secondary leading-relaxed">
+              O sistema vigia suas posições e avisa por notificação (e e-mail nos casos críticos) quando:
+              o preço cai <span className="font-semibold">-10/-20/-30% do PM real</span> (stop ancorado,
+              re-âncora a cada aporte) ou a{" "}
+              <span className="font-semibold">folga até a liquidação</span> encolhe (25/15/8%).
+              Posições <span className="text-warning font-semibold">🔒 Semente</span> nunca viram alerta de venda.
+            </p>
+          )}
         </div>
 
         {/* Create form */}
@@ -225,11 +339,17 @@ export default function AlertsPage() {
                 />
               </div>
             </div>
+            {formError && (
+              <p className="text-xs text-danger mb-3 flex items-center gap-1">
+                <AlertTriangle size={12} />
+                {formError}
+              </p>
+            )}
             <div className="flex gap-2">
               <button onClick={handleCreate} disabled={creating} className="btn-primary text-sm">
                 {creating ? "Criando..." : "Criar Alerta"}
               </button>
-              <button onClick={() => setShowForm(false)} className="btn-ghost text-sm">Cancelar</button>
+              <button onClick={() => { setShowForm(false); setFormError(null); }} className="btn-ghost text-sm">Cancelar</button>
             </div>
           </div>
         )}
@@ -269,7 +389,7 @@ export default function AlertsPage() {
         ) : alerts.length > 0 ? (
           <div className="card">
             <div className="space-y-2">
-              {alerts.map((alert) => (
+              {sortedAlerts.map((alert) => (
                 <div
                   key={alert.id}
                   className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
@@ -302,6 +422,12 @@ export default function AlertsPage() {
                         )}
                       </div>
                       {alert.message && <p className="text-xs text-text-muted mt-0.5">{alert.message}</p>}
+                      {alert.context && (
+                        <p className={`text-xs mt-0.5 flex items-center gap-1 ${alert.triggered ? "text-warning" : "text-text-muted"}`}>
+                          <Info size={10} />
+                          {alert.context}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -335,6 +461,23 @@ export default function AlertsPage() {
                       <Trash2 size={13} />
                     </button>
                   </div>
+                  {/* Barra de proximidade ao threshold */}
+                  {alert.active && !alert.triggered && alert.distance_pct != null && (
+                    <div className="mt-2 px-3 pb-2">
+                      <div className="flex justify-between text-[10px] text-text-muted mb-1">
+                        <span>Proximidade ao gatilho</span>
+                        <span className={Math.abs(alert.distance_pct) < 5 ? "text-warning font-semibold" : ""}>
+                          {Math.abs(alert.distance_pct).toFixed(1)}% restante
+                        </span>
+                      </div>
+                      <div className="h-1 bg-surface-3 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${Math.abs(alert.distance_pct) < 5 ? "bg-warning" : "bg-primary/50"}`}
+                          style={{ width: `${Math.max(2, Math.min(100, 100 - Math.abs(alert.distance_pct)))}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
+  Tooltip, ResponsiveContainer, ReferenceLine, Legend,
 } from "recharts";
 import AppShell from "@/components/layout/AppShell";
 import TickerLogo from "@/components/ui/TickerLogo";
@@ -12,6 +12,7 @@ import type { TradeHistoryItem } from "@/types";
 import {
   History, RefreshCw, TrendingUp, TrendingDown, SlidersHorizontal,
   Lock, RefreshCcw, Gauge, Banknote, LineChart as LineChartIcon, Flag, Info,
+  CalendarDays, Target, Compass,
 } from "lucide-react";
 import { formatCurrency, cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ const ACTION_CONFIG: Record<string, { label: string; color: string; bg: string; 
   AJUSTE:   { label: "Ajuste",   color: "text-primary", bg: "bg-primary/10 border-primary/20",  icon: <SlidersHorizontal size={11} /> },
   SEMENTE:  { label: "Semente",  color: "text-warning", bg: "bg-warning/10 border-warning/20",  icon: <Lock size={11} /> },
   CICLO:    { label: "Ciclo",    color: "text-primary", bg: "bg-primary/10 border-primary/20",  icon: <RefreshCcw size={11} /> },
+  INICIO:   { label: "Início",   color: "text-primary", bg: "bg-primary/15 border-primary/30",  icon: <Compass size={11} /> },
 };
 
 function ActionBadge({ action }: { action: string }) {
@@ -60,6 +62,7 @@ type CompoundPoint = {
   netInvested: number;  // capital aportado líquido acumulado (compras − vendas, isCash)
   leverage: number;     // alavancagem efetiva ponderada por exposição (carry-forward)
   cumRealized: number;  // P&L realizado acumulado
+  totalReturn: number;  // netInvested + cumRealized (visão "o composto")
 };
 
 type Milestone = {
@@ -126,6 +129,7 @@ function buildCompoundStory(events: TradeHistoryItem[]) {
       netInvested,
       leverage: Number(effLev.toFixed(3)),
       cumRealized: Number(cumRealized.toFixed(2)),
+      totalReturn: Number((netInvested + cumRealized).toFixed(2)),
     });
 
     if (e.action === "SEMENTE") {
@@ -133,6 +137,12 @@ function buildCompoundStory(events: TradeHistoryItem[]) {
     } else if (e.action === "CICLO") {
       milestones.push({ iso: e.executed_at, action: e.action, ticker: e.ticker, label: `Ciclo — ${e.ticker}` });
     }
+  }
+
+  // Injeta o "início da jornada" como primeiro marco se houver eventos
+  if (asc.length > 0) {
+    const first = asc[0];
+    milestones.unshift({ iso: first.executed_at, action: "INICIO", ticker: first.ticker, label: `Início da jornada — primeiro aporte em ${first.ticker}` });
   }
 
   // P&L realizado por ANO (trilha fiscal honesta).
@@ -213,6 +223,48 @@ export default function HistoryPage() {
   // Existe algum evento de ações (não-cripto)? heurística simples por ticker.
   const hasEquity = history.some(h => !/(-USD|USDT|BTC|ETH|\bSOL\b)/i.test(h.ticker));
 
+  // === Dados da jornada (para o painel "Onde estou") ===
+  const journeyStats = useMemo(() => {
+    if (history.length === 0) return null;
+    const asc = [...history].sort(
+      (a, b) => new Date(a.executed_at).getTime() - new Date(b.executed_at).getTime()
+    );
+    const firstDate = new Date(asc[0].executed_at);
+    const now = new Date();
+    const diffMs = now.getTime() - firstDate.getTime();
+    const totalDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const totalMonths = Math.floor(totalDays / 30.44);
+    const years = Math.floor(totalMonths / 12);
+    const months = totalMonths % 12;
+
+    // Contribuição média mensal (só compras de caixa)
+    const cashBuyCount = history.filter(h => h.action === "COMPRA" && isCashEvent(h)).length;
+    const avgMonthly = totalMonths > 0 ? (totalCompras / Math.max(totalMonths, 1)) : 0;
+
+    // Capital efficiency: P&L realizado / capital aportado bruto
+    const efficiency = totalCompras > 0 ? (realizedPnl / totalCompras) * 100 : 0;
+
+    // Progresso num horizonte de 10 anos (120 meses)
+    const horizonMonths = 120;
+    const progressPct = Math.min((totalMonths / horizonMonths) * 100, 100);
+
+    // Projeção linear simples: se continuar aportando avgMonthly, em quanto meses atinge 10 anos?
+    const monthsLeft = Math.max(0, horizonMonths - totalMonths);
+
+    return {
+      firstDate,
+      years,
+      months,
+      totalMonths,
+      totalDays,
+      avgMonthly,
+      efficiency,
+      progressPct,
+      monthsLeft,
+      eventsPerMonth: totalMonths > 0 ? (cashBuyCount / Math.max(totalMonths, 1)).toFixed(1) : "—",
+    };
+  }, [history, totalCompras, realizedPnl]);
+
   return (
     <AppShell>
       <div className="p-6 max-w-6xl mx-auto">
@@ -260,51 +312,150 @@ export default function HistoryPage() {
           </div>
         )}
 
+        {/* ====== ONDE ESTOU NA JORNADA ====== */}
+        {!loading && journeyStats && (
+          <div className="card p-4 mb-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Compass size={15} className="text-primary" />
+              <h2 className="text-sm font-semibold text-text-primary">Onde Estou na Jornada</h2>
+              <span className="text-[10px] text-text-muted ml-1">(horizonte de referência: 10 anos)</span>
+            </div>
+
+            {/* Barra de progresso */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="text-text-muted">
+                  Início: {journeyStats.firstDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                </span>
+                <span className="font-mono font-semibold text-primary">
+                  {journeyStats.progressPct.toFixed(1)}% do horizonte de 10 anos
+                </span>
+                <span className="text-text-muted">
+                  {journeyStats.monthsLeft} meses restantes
+                </span>
+              </div>
+              <div className="h-3 bg-surface-3 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary transition-all duration-500"
+                  style={{ width: `${journeyStats.progressPct}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-text-muted mt-1">
+                <span>Ano 0</span>
+                <span>Ano 2</span>
+                <span>Ano 5</span>
+                <span>Ano 7</span>
+                <span>Ano 10</span>
+              </div>
+            </div>
+
+            {/* Métricas da jornada */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-surface-2 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <CalendarDays size={12} className="text-primary" />
+                  <p className="text-[11px] text-text-muted">Tempo investindo</p>
+                </div>
+                <p className="font-mono font-semibold text-text-primary text-sm">
+                  {journeyStats.years > 0
+                    ? `${journeyStats.years}a ${journeyStats.months}m`
+                    : `${journeyStats.totalMonths}m`}
+                </p>
+                <p className="text-[10px] text-text-muted">{journeyStats.totalDays} dias</p>
+              </div>
+
+              <div className="bg-surface-2 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Banknote size={12} className="text-success" />
+                  <p className="text-[11px] text-text-muted">Aporte médio/mês</p>
+                </div>
+                <p className="font-mono font-semibold text-success text-sm">
+                  {formatCurrency(journeyStats.avgMonthly, "USD", true)}
+                </p>
+                <p className="text-[10px] text-text-muted">{journeyStats.eventsPerMonth} compras/mês</p>
+              </div>
+
+              <div className="bg-surface-2 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Target size={12} className="text-warning" />
+                  <p className="text-[11px] text-text-muted">Eficiência do capital</p>
+                </div>
+                <p className={cn("font-mono font-semibold text-sm", journeyStats.efficiency >= 0 ? "text-success" : "text-danger")}>
+                  {(journeyStats.efficiency >= 0 ? "+" : "") + journeyStats.efficiency.toFixed(1)}%
+                </p>
+                <p className="text-[10px] text-text-muted">P&L realizado / aportado</p>
+              </div>
+
+              <div className="bg-surface-2 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Gauge size={12} className="text-warning" />
+                  <p className="text-[11px] text-text-muted">Alav. efetiva atual</p>
+                </div>
+                <p className="font-mono font-semibold text-warning text-sm">
+                  {lastPoint && lastPoint.leverage > 0 ? `${lastPoint.leverage.toFixed(2)}x` : "n/d"}
+                </p>
+                <p className="text-[10px] text-text-muted">ponderada pela exposição</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ====== A HISTÓRIA DO COMPOSTO (gráficos derivados) ====== */}
         {!loading && points.length >= 2 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-            {/* Capital aportado líquido no tempo */}
+            {/* Capital aportado líquido + retorno composto no tempo */}
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-1">
                 <Banknote size={15} className="text-success" />
-                <h2 className="text-sm font-semibold text-text-primary">Capital Aportado Líquido</h2>
+                <h2 className="text-sm font-semibold text-text-primary">Capital: Aportado vs. Composto</h2>
               </div>
               <p className="text-[11px] text-text-muted mb-3">
-                Dinheiro de verdade colocado (compras − vendas reais) ao longo dos eventos. Curva honesta, não backtest.
+                Verde = dinheiro real colocado (compras − vendas). Azul = aportado + P&L realizado acumulado. A distância entre as curvas é o juro do composto já realizado.
               </p>
-              <ResponsiveContainer width="100%" height={200}>
+              <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={points} margin={{ top: 5, right: 10, left: 5, bottom: 5 }}>
                   <defs>
                     <linearGradient id="netInvFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#16C784" stopOpacity={0.35} />
+                      <stop offset="0%" stopColor="#16C784" stopOpacity={0.25} />
                       <stop offset="100%" stopColor="#16C784" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="totalRetFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.20} />
+                      <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1E2730" />
                   <XAxis dataKey="label" tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis tickFormatter={(v) => formatCurrency(v, "USD", true)} tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} width={52} />
+                  <YAxis tickFormatter={(v) => formatCurrency(v, "USD", true)} tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} width={56} />
                   <Tooltip content={<ChartTooltip fmt={(v: number) => formatCurrency(v)} />} />
+                  <Legend wrapperStyle={{ fontSize: 10, color: "#475569" }} />
+                  <Area type="monotone" name="Composto (aport.+P&L)" dataKey="totalReturn" stroke="#3B82F6" strokeWidth={1.5} fill="url(#totalRetFill)" dot={false} />
                   <Area type="monotone" name="Aportado líq." dataKey="netInvested" stroke="#16C784" strokeWidth={2} fill="url(#netInvFill)" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
 
-            {/* Alavancagem efetiva no tempo */}
+            {/* Alavancagem efetiva no tempo — com zonas de doutrina */}
             <div className="card p-4">
               <div className="flex items-center gap-2 mb-1">
                 <Gauge size={15} className="text-warning" />
                 <h2 className="text-sm font-semibold text-text-primary">Alavancagem Efetiva no Tempo</h2>
               </div>
               <p className="text-[11px] text-text-muted mb-3">
-                Alavancagem ponderada pela exposição — sobe no aporte, cai na desalavancagem. O instrumento do disjuntor.
+                Ponderada pela exposição — sobe no aporte, cai na desalavancagem. Linhas de referência: zonas da doutrina (2x/3x/4x/5x).
               </p>
-              <ResponsiveContainer width="100%" height={200}>
+              <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={points} margin={{ top: 5, right: 10, left: 5, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1E2730" />
                   <XAxis dataKey="label" tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis tickFormatter={(v) => `${v.toFixed(1)}x`} tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} width={36} domain={[0, "dataMax + 0.3"]} />
+                  <YAxis tickFormatter={(v) => `${v.toFixed(1)}x`} tick={{ fill: "#475569", fontSize: 10 }} tickLine={false} axisLine={false} width={36} domain={[0, "dataMax + 0.5"]} />
                   <Tooltip content={<ChartTooltip fmt={(v: number) => `${Number(v).toFixed(2)}x`} />} />
-                  <ReferenceLine y={1} stroke="#2D3748" strokeDasharray="4 2" />
+                  {/* Zonas de doutrina */}
+                  <ReferenceLine y={1} stroke="#334155" strokeDasharray="4 2" label={{ value: "1×", fill: "#475569", fontSize: 9, position: "insideTopRight" }} />
+                  <ReferenceLine y={2} stroke="#1e40af55" strokeDasharray="3 3" label={{ value: "2×", fill: "#3B82F6", fontSize: 9, position: "insideTopRight" }} />
+                  <ReferenceLine y={3} stroke="#d9770655" strokeDasharray="3 3" label={{ value: "3×", fill: "#f59e0b", fontSize: 9, position: "insideTopRight" }} />
+                  <ReferenceLine y={4} stroke="#b9112755" strokeDasharray="3 3" label={{ value: "4×", fill: "#ef4444", fontSize: 9, position: "insideTopRight" }} />
+                  <ReferenceLine y={5} stroke="#7f1d1d55" strokeDasharray="3 3" label={{ value: "5×", fill: "#ef4444", fontSize: 9, position: "insideTopRight" }} />
                   <Line type="stepAfter" name="Alav. efetiva" dataKey="leverage" stroke="#FFB800" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -379,7 +530,7 @@ export default function HistoryPage() {
                 <li key={`${m.iso}-${i}`} className="ml-4">
                   <span className={cn(
                     "absolute -left-1.5 mt-1 h-3 w-3 rounded-full border-2 border-surface",
-                    m.action === "SEMENTE" ? "bg-warning" : "bg-primary"
+                    m.action === "SEMENTE" ? "bg-warning" : m.action === "INICIO" ? "bg-primary ring-2 ring-primary/30" : "bg-primary"
                   )} />
                   <div className="flex items-center gap-2 flex-wrap">
                     <ActionBadge action={m.action} />
