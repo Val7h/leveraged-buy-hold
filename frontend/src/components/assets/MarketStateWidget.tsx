@@ -16,9 +16,6 @@ function normalizeRiskProfile(raw: string | null | undefined): RiskProfile {
 }
 
 // Multiplicador de APORTE por perfil × estado de mercado (presets do motor, valores EXATOS).
-// Espelha os presets: conservador 1/1/2/2 · moderado 2/2/3/3 · agressivo 2/3/4/5.
-// Mapa de estados do widget → buckets do preset:
-//   TOPO→topo · NORMAL→neutro · CORREÇÃO→capit · CAPITULAÇÃO→extrema
 const APORTE_PRESETS: Record<RiskProfile, Record<MarketState["state"], number>> = {
   conservador: { TOPO: 1, NORMAL: 1, "CORREÇÃO": 2, "CAPITULAÇÃO": 2 },
   moderado:    { TOPO: 2, NORMAL: 2, "CORREÇÃO": 3, "CAPITULAÇÃO": 3 },
@@ -29,46 +26,62 @@ function aporteMultiplier(state: MarketState["state"], profile: RiskProfile): nu
   return APORTE_PRESETS[profile][state] ?? APORTE_PRESETS[profile].NORMAL;
 }
 
+// One-line action guidance per state
+const STATE_ACTION: Record<MarketState["state"], string> = {
+  TOPO:        "Reduzir novos aportes, proteger posições",
+  NORMAL:      "Ritmo normal de aportes",
+  "CORREÇÃO":  "Começar a aumentar aportes gradualmente",
+  "CAPITULAÇÃO": "Momento de aportar mais agressivamente",
+};
+
 const STATE_CONFIG = {
   TOPO: {
-    Icon:         TrendingUp,
-    bg:           "bg-danger/8",
-    border:       "border-danger/25",
-    iconBg:       "bg-danger/15",
-    textColor:    "text-danger",
-    badgeBg:      "bg-danger",
-    badgeText:    "text-white",
+    Icon:            TrendingUp,
+    bg:              "bg-danger/8",
+    border:          "border-danger/40",
+    borderPulse:     false,
+    iconBg:          "bg-danger/15",
+    textColor:       "text-danger",
+    badgeBg:         "bg-danger",
+    badgeText:       "text-white",
     multiplierColor: "text-danger",
+    ringColor:       "ring-danger/50",
   },
   NORMAL: {
-    Icon:         Minus,
-    bg:           "bg-warning/8",
-    border:       "border-warning/25",
-    iconBg:       "bg-warning/15",
-    textColor:    "text-warning",
-    badgeBg:      "bg-warning",
-    badgeText:    "text-black",
+    Icon:            Minus,
+    bg:              "bg-warning/8",
+    border:          "border-warning/25",
+    borderPulse:     false,
+    iconBg:          "bg-warning/15",
+    textColor:       "text-warning",
+    badgeBg:         "bg-warning",
+    badgeText:       "text-black",
     multiplierColor: "text-warning",
+    ringColor:       "",
   },
-  CORREÇÃO: {
-    Icon:         TrendingDown,
-    bg:           "bg-primary/8",
-    border:       "border-primary/25",
-    iconBg:       "bg-primary/15",
-    textColor:    "text-primary",
-    badgeBg:      "bg-primary",
-    badgeText:    "text-white",
+  "CORREÇÃO": {
+    Icon:            TrendingDown,
+    bg:              "bg-primary/8",
+    border:          "border-primary/25",
+    borderPulse:     false,
+    iconBg:          "bg-primary/15",
+    textColor:       "text-primary",
+    badgeBg:         "bg-primary",
+    badgeText:       "text-white",
     multiplierColor: "text-primary",
+    ringColor:       "",
   },
   CAPITULAÇÃO: {
-    Icon:         TrendingDown,
-    bg:           "bg-success/8",
-    border:       "border-success/25",
-    iconBg:       "bg-success/15",
-    textColor:    "text-success",
-    badgeBg:      "bg-success",
-    badgeText:    "text-white",
+    Icon:            TrendingDown,
+    bg:              "bg-success/8",
+    border:          "border-success/50",
+    borderPulse:     true,
+    iconBg:          "bg-success/15",
+    textColor:       "text-success",
+    badgeBg:         "bg-success",
+    badgeText:       "text-white",
     multiplierColor: "text-success",
+    ringColor:       "ring-success/40",
   },
 } as const;
 
@@ -77,7 +90,7 @@ interface SignalPillProps {
   value?: number | null;
   unit?: string;
   sign?: boolean;
-  lowGood?: boolean;   // true = lower value = green (e.g. dist from top negative is good)
+  lowGood?: boolean;
 }
 
 function SignalPill({ label, value, unit = "", sign = false, lowGood = false }: SignalPillProps) {
@@ -101,11 +114,21 @@ function SignalPill({ label, value, unit = "", sign = false, lowGood = false }: 
   );
 }
 
+// Skeleton shimmer for loading state
+function SkeletonBar({ w = "100%", h = "0.75rem" }: { w?: string; h?: string }) {
+  return (
+    <div
+      className="rounded animate-pulse bg-surface-3"
+      style={{ width: w, height: h }}
+    />
+  );
+}
+
 export default function MarketStateWidget({ riskProfile }: { riskProfile?: string | null }) {
   const profile = normalizeRiskProfile(riskProfile);
-  const [state, setState]   = useState<MarketState | null>(null);
+  const [state, setState]     = useState<MarketState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState(false);
+  const [error, setError]     = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -122,15 +145,33 @@ export default function MarketStateWidget({ riskProfile }: { riskProfile?: strin
 
   useEffect(() => { load(); }, []);
 
+  // ── Skeleton loading state ──────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="card mb-5 flex items-center gap-3 py-4 border-border/40">
-        <RefreshCw size={13} className="animate-spin text-text-muted" />
-        <span className="text-xs text-text-muted">Detectando estado do mercado via SPY...</span>
+      <div className="card mb-5 border border-border/30 bg-surface-2/30 p-4">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-11 h-11 rounded-xl bg-surface-3 animate-pulse flex-shrink-0" />
+            <div className="space-y-2">
+              <SkeletonBar w="7rem" h="0.625rem" />
+              <SkeletonBar w="10rem" h="1.25rem" />
+              <SkeletonBar w="14rem" h="0.75rem" />
+            </div>
+          </div>
+          <div className="flex items-center gap-5">
+            {[72, 72, 72, 56, 56].map((w, i) => (
+              <div key={i} className="flex flex-col items-center gap-1.5">
+                <SkeletonBar w={`${w * 0.6}px`} h="0.625rem" />
+                <SkeletonBar w={`${w * 0.7}px`} h="1rem" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
+  // ── Error state ─────────────────────────────────────────────────────────────
   if (error || !state) {
     return (
       <div className="card mb-5 flex items-center justify-between py-3 border-border/40">
@@ -143,14 +184,31 @@ export default function MarketStateWidget({ riskProfile }: { riskProfile?: strin
   const cfg = STATE_CONFIG[state.state] ?? STATE_CONFIG.NORMAL;
   const { Icon } = cfg;
   const s = state.signals;
+  const mult = aporteMultiplier(state.state, profile);
+  const actionText = STATE_ACTION[state.state] ?? "";
+
+  // Pulsing border style injected via inline style for CAPITULAÇÃO (green) / TOPO (red-orange)
+  const pulseStyle: React.CSSProperties =
+    cfg.borderPulse
+      ? { boxShadow: "0 0 0 2px rgba(0,255,136,0.25), 0 0 12px rgba(0,255,136,0.15)" }
+      : state.state === "TOPO"
+      ? { boxShadow: "0 0 0 2px rgba(255,77,77,0.20), 0 0 10px rgba(255,77,77,0.12)" }
+      : {};
 
   return (
-    <div className={cn("card mb-5 border", cfg.border, cfg.bg)}>
+    <div
+      className={cn("card mb-5 border transition-shadow", cfg.border, cfg.bg, cfg.borderPulse && "animate-pulse-border")}
+      style={pulseStyle}
+    >
       <div className="flex items-center justify-between flex-wrap gap-4">
 
-        {/* ── Bloco esquerdo: estado + descrição ───────────────── */}
+        {/* ── Bloco esquerdo: estado + descrição ──────────────────────── */}
         <div className="flex items-center gap-4">
-          <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0", cfg.iconBg)}>
+          <div className={cn(
+            "w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0",
+            cfg.iconBg,
+            cfg.ringColor && `ring-2 ${cfg.ringColor}`
+          )}>
             <Icon size={20} className={cfg.textColor} />
           </div>
           <div>
@@ -158,22 +216,27 @@ export default function MarketStateWidget({ riskProfile }: { riskProfile?: strin
               <Zap size={9} />
               Estado do Mercado · SPY
             </p>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 mb-0.5">
               <span className={cn("text-lg font-bold font-mono tracking-tight", cfg.textColor)}>
                 {state.state}
               </span>
+              {/* Large active multiplier badge */}
               <span className={cn(
-                "px-2.5 py-0.5 rounded-full text-sm font-bold leading-none",
+                "px-3 py-0.5 rounded-full text-sm font-bold leading-none",
                 cfg.badgeBg, cfg.badgeText
               )}>
-                {state.multiplier}x
+                Multiplicador ativo: {state.multiplier}x
               </span>
             </div>
-            <p className="text-xs text-text-secondary mt-0.5 max-w-xs">{state.description}</p>
+            <p className="text-xs text-text-secondary max-w-xs">{state.description}</p>
+            {/* Action guidance */}
+            <p className={cn("text-[11px] font-medium mt-1", cfg.textColor)}>
+              → {actionText}
+            </p>
           </div>
         </div>
 
-        {/* ── Bloco direito: sinais + refresh ──────────────────── */}
+        {/* ── Bloco direito: sinais + refresh ─────────────────────────── */}
         <div className="flex items-center gap-5 flex-wrap">
           <SignalPill
             label="RSI Sem. SPY"
@@ -205,11 +268,11 @@ export default function MarketStateWidget({ riskProfile }: { riskProfile?: strin
             </span>
           </div>
           <div className="w-px h-8 bg-border/50" />
-          {/* Próximo aporte = preset PERFIL × estado (bate com Screening/Aporte/Portfólio). */}
+          {/* Próximo aporte = preset PERFIL × estado */}
           <div className="flex flex-col items-center gap-1">
             <span className="text-[10px] text-text-muted">Próximo aporte</span>
             <span className={cn("text-base font-bold font-mono", cfg.multiplierColor)}>
-              {aporteMultiplier(state.state, profile)}x
+              {mult}x
             </span>
           </div>
           <button
