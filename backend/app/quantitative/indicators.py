@@ -138,10 +138,11 @@ def sortino_ratio(close: pd.Series, risk_free_rate: float = 0.04) -> float:
     if len(log_returns) < 30:
         return 0.0
     excess = log_returns - risk_free_rate / 252
-    downside = excess[excess < 0]
-    if len(downside) == 0 or downside.std() == 0:
+    downside_sq = np.minimum(excess, 0) ** 2
+    sigma_d = float(np.sqrt(downside_sq.mean()))
+    if sigma_d == 0:
         return float("inf")
-    return float(excess.mean() / downside.std() * np.sqrt(252))
+    return float(excess.mean() / sigma_d * np.sqrt(252))
 
 
 def compute_weekly_indicators(df: pd.DataFrame) -> Dict:

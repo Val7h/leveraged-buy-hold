@@ -430,9 +430,9 @@ def compute_strategy_metrics(
     ann_vol      = float(log_returns.std() * np.sqrt(252)) if len(log_returns) > 0 else 0.0
     excess       = log_returns - risk_free / 252
     sharpe_val   = float(excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 0 else 0.0
-    downside     = excess[excess < 0]
-    sortino_val  = (float(excess.mean() / downside.std() * np.sqrt(252))
-                    if len(downside) > 0 and downside.std() > 0 else 0.0)
+    downside_sq  = np.minimum(excess, 0) ** 2
+    sigma_d      = float(np.sqrt(downside_sq.mean()))
+    sortino_val  = float(excess.mean() / sigma_d * np.sqrt(252)) if sigma_d > 0 else 0.0
     calmar       = _compute_calmar(cagr, max_dd)
     wins         = log_returns[log_returns > 0]
     win_rate     = float(len(wins) / len(log_returns)) if len(log_returns) > 0 else 0.0

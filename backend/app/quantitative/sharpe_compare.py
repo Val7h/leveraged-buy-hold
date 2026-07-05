@@ -150,8 +150,8 @@ def _simulate_leveraged_hold(
         sharpe_val = float(excess.mean() / excess.std() * (252 ** 0.5)) if excess.std() > 0 else 0.0
 
         # Sortino ratio: penaliza só o downside (retornos abaixo da TLR diária)
-        downside        = excess[excess < 0]
-        downside_dev    = float(np.sqrt((downside ** 2).mean())) if len(downside) > 0 else 0.0
+        downside_sq     = np.minimum(excess, 0) ** 2
+        downside_dev    = float(np.sqrt(downside_sq.mean()))
         if margin_called:
             sortino_val = -99.0
         elif downside_dev > 0:

@@ -21,7 +21,7 @@ NODE_PID=$!
 ( sleep 90
   while true; do
     node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/v1/alerts/sweep',{method:'POST',headers:{'X-Internal-Token':process.env.BACKEND_INTERNAL_TOKEN||''}}).then(r=>r.text()).then(t=>console.log('[alert-sweep]',t)).catch(e=>console.log('[alert-sweep] skip',e.message))" 2>/dev/null || true
-    sleep "${ALERT_SWEEP_SECONDS:-600}"
+    sleep "${ALERT_SWEEP_SECONDS:-120}"
   done ) &
 
 # 5) ETL CVM Dados Abertos (fundamentos B3) — baixa os ZIPs e popula o cache em disco.

@@ -51,12 +51,13 @@ def _basket_risk(position_data: List[dict]) -> Optional[Dict]:
     cum = np.cumprod(1 + port)
     rm = np.maximum.accumulate(cum)
     dd = (cum - rm) / rm
-    downside = port[port < 0]
+    downside_sq = np.minimum(port, 0) ** 2
+    sigma_d = float(np.sqrt(downside_sq.mean()))
     return {
         "var": float(-p5 * 100),
         "cvar": float(-port[port <= p5].mean() * 100) if (port <= p5).any() else float(-p5 * 100),
         "sharpe": float(port.mean() / port.std() * math.sqrt(252)) if port.std() > 0 else None,
-        "sortino": float(port.mean() / downside.std() * math.sqrt(252)) if len(downside) and downside.std() > 0 else None,
+        "sortino": float(port.mean() / sigma_d * math.sqrt(252)) if sigma_d > 0 else None,
         "max_dd": float(dd.min() * 100),
         "current_dd": float(dd[-1] * 100),
     }

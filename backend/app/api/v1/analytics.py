@@ -360,8 +360,8 @@ def get_sharpe_ratio_metrics(
         sharpe = np.mean(excess_ret) / np.std(excess_ret) * np.sqrt(252) if np.std(excess_ret) > 0 else 0
 
         # Sortino ratio (only downside volatility)
-        downside_ret = returns[returns < 0]
-        downside_vol = np.std(downside_ret) if len(downside_ret) > 0 else np.std(returns)
+        downside_sq  = np.minimum(excess_ret, 0) ** 2
+        downside_vol = float(np.sqrt(downside_sq.mean()))
         sortino = np.mean(excess_ret) / downside_vol * np.sqrt(252) if downside_vol > 0 else 0
 
         # Calmar ratio
