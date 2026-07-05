@@ -37,11 +37,86 @@ const entryConfig: Record<string, { bg: string; border: string; text: string }> 
   "EVITAR":                     { bg: "bg-danger/8",   border: "border-danger/20",  text: "text-danger" },
 };
 
+// ── Layer badge helper ───────────────────────────────────────────────────────
+function LayerBadge({ label, score }: { label: string; score: number }) {
+  const { icon, cls } =
+    score >= 60
+      ? { icon: "↑", cls: "bg-success/15 border-success/30 text-success" }
+      : score >= 40
+      ? { icon: "→", cls: "bg-warning/15 border-warning/30 text-warning" }
+      : { icon: "−", cls: "bg-surface-2 border-border/40 text-text-muted" };
+
+  return (
+    <Tooltip content={`${label}: ${score.toFixed(1)}`} side="top" delay={200}>
+      <span className={cn("inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold border", cls)}>
+        <span className="font-mono">{label}</span>
+        <span>{icon}</span>
+      </span>
+    </Tooltip>
+  );
+}
+
+// ── Survival tier helper ─────────────────────────────────────────────────────
+function SurvivalPill({ score }: { score: number }) {
+  const { label, cls } =
+    score >= 75
+      ? { label: "Elite",  cls: "bg-purple-500/15 border-purple-500/35 text-purple-300" }
+      : score >= 55
+      ? { label: "Sólido", cls: "bg-success/15 border-success/30 text-success" }
+      : score >= 40
+      ? { label: "Neutro", cls: "bg-warning/15 border-warning/30 text-warning" }
+      : { label: "Frágil", cls: "bg-danger/15 border-danger/30 text-danger" };
+
+  return (
+    <Tooltip content={`Score composto ${score.toFixed(1)} — Tier de sobrevivência`} side="top" delay={200}>
+      <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border", cls)}>
+        {label}
+      </span>
+    </Tooltip>
+  );
+}
+
+// ── Kelly progress bar ───────────────────────────────────────────────────────
+function KellyBar({ kellyHalf }: { kellyHalf: number }) {
+  // Cap at 1.0 for display (100% Kelly). Show ½K as fraction of full Kelly.
+  const pct = Math.min(kellyHalf / 1.0, 1) * 100;
+  const barCls =
+    kellyHalf <= 0.3
+      ? "bg-success"
+      : kellyHalf <= 0.6
+      ? "bg-warning"
+      : "bg-danger";
+
+  return (
+    <Tooltip content={`½ Kelly = ${kellyHalf.toFixed(2)}x (${pct.toFixed(0)}% do tamanho máximo Kelly)`} side="top" delay={200}>
+      <div className="mt-2">
+        <div className="flex items-center justify-between text-[9px] text-text-muted mb-0.5">
+          <span>Agressividade Kelly</span>
+          <span className="font-mono">{pct.toFixed(0)}%</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-surface-2 border border-border/30 overflow-hidden">
+          <div
+            className={cn("h-full rounded-full transition-all", barCls)}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+    </Tooltip>
+  );
+}
+
 function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetCardProps) {
   const [showChart, setShowChart] = useState(false);
   const tech  = asset.technicals;
   const entry = asset.entry_signal ? (entryConfig[asset.entry_signal] ?? entryConfig["SEM DADOS"]) : null;
   const kelly = asset.kelly;
+
+  // ── Zona de compra detection ─────────────────────────────────────────────
+  const rsiWeekly = tech?.rsi_14_weekly ?? tech?.rsi_14;
+  const distMa200 = tech?.distance_from_ma200;
+  const isZonaCompra =
+    (rsiWeekly != null && rsiWeekly <= 38) ||
+    (distMa200 != null && distMa200 <= -10);
 
   return (
     <>
@@ -49,7 +124,8 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
     <div
       className={cn(
         "card hover:border-primary/40 hover:shadow-card-lg hover:bg-surface/80 transition-all cursor-pointer group duration-300 relative",
-        selected && "border-primary/50 bg-primary/5 shadow-glow"
+        selected && "border-primary/50 bg-primary/5 shadow-glow",
+        isZonaCompra && !selected && "border-success/40 shadow-[0_0_12px_rgba(34,197,94,0.15)]"
       )}
       onClick={() => { onSelect?.(asset.ticker); }}
     >
@@ -89,6 +165,18 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
         📈 Gráfico
       </button>
 
+      {/* ── Layer badges Q / M / A ───────────────────────────────────────── */}
+      <div className="flex items-center gap-1.5 mb-3">
+        <LayerBadge label="Q" score={asset.quality_score} />
+        <LayerBadge label="M" score={asset.opportunity_score} />
+        <LayerBadge label="A" score={asset.leverage_score} />
+        {isZonaCompra && (
+          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-success/15 border border-success/30 text-success">
+            🎯 Zona compra
+          </span>
+        )}
+      </div>
+
       {/* ── Header ──────────────────────────────────────── */}
       <div className="flex items-start justify-between mb-5 pb-4 border-b border-border/40">
         <div className="flex items-start gap-3">
@@ -113,7 +201,9 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
               <span className="text-base">{sectorIcon(asset.sector)}</span>
             </div>
             <p className="text-xs text-text-muted truncate max-w-40">{asset.company_name || "—"}</p>
-            <p className="text-xs text-text-muted/70">{asset.sector || "—"}</p>
+            <p className="text-xs text-text-muted/70 mb-1">{asset.sector || "—"}</p>
+            {/* Survival tier pill */}
+            <SurvivalPill score={asset.composite_score} />
           </div>
         </div>
         <div className="text-right">
@@ -240,46 +330,48 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
       {/* ── Kelly Criterion ─────────────────────────────── */}
       {kelly?.kelly_half != null && (
         <Tooltip content="Sugestão de alavancagem pelo modelo Kelly Criterion: f* = (b·p - q)/b. Sem histórico real, p e b são heurísticas." side="top" delay={300}>
-          <div className="rounded-lg bg-surface-2 px-3 py-2 mb-3 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] text-text-muted mb-0.5 flex items-center gap-1.5">
-                Kelly Criterion
-                {kelly.is_heuristic && (
-                  <HeuristicBadge tooltip="Win rate e payoff ratio são estimativas heurísticas derivadas do composite_score e da volatilidade — não há histórico de trades real. Para Kelly verdadeiro: ≥30 trades fechados." />
-                )}
-              </p>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono font-semibold text-primary">
-                  ½K {kelly.kelly_half?.toFixed(2)}x
-                </span>
-                <span className="text-[10px] text-text-muted">
-                  · ¼K {kelly.kelly_quarter?.toFixed(2)}x
-                </span>
-              </div>
-            </div>
-            {(() => {
-              // Prefer the new `confidence_score` field; fall back to legacy
-              // `win_rate` during the deprecation window (1 release).
-              const conf = kelly.confidence_score ?? kelly.win_rate;
-              if (conf == null) return null;
-              return (
-                <div className="text-right">
-                  <p className="text-[10px] text-text-muted flex items-center gap-1 justify-end">
-                    Confianca
-                    <Tooltip
-                      content="Score heuristico derivado do composite. Nao representa taxa historica de acertos."
-                      side="top"
-                      delay={200}
-                    >
-                      <span className="text-warning cursor-help" aria-label="heuristica">⚠</span>
-                    </Tooltip>
-                  </p>
-                  <p className="text-xs font-mono font-semibold text-text-primary">
-                    {conf.toFixed(1)}%
-                  </p>
+          <div className="rounded-lg bg-surface-2 px-3 py-2 mb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-text-muted mb-0.5 flex items-center gap-1.5">
+                  Kelly Criterion
+                  {kelly.is_heuristic && (
+                    <HeuristicBadge tooltip="Win rate e payoff ratio são estimativas heurísticas derivadas do composite_score e da volatilidade — não há histórico de trades real. Para Kelly verdadeiro: ≥30 trades fechados." />
+                  )}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono font-semibold text-primary">
+                    ½K {kelly.kelly_half?.toFixed(2)}x
+                  </span>
+                  <span className="text-[10px] text-text-muted">
+                    · ¼K {kelly.kelly_quarter?.toFixed(2)}x
+                  </span>
                 </div>
-              );
-            })()}
+              </div>
+              {(() => {
+                const conf = kelly.confidence_score ?? kelly.win_rate;
+                if (conf == null) return null;
+                return (
+                  <div className="text-right">
+                    <p className="text-[10px] text-text-muted flex items-center gap-1 justify-end">
+                      Confianca
+                      <Tooltip
+                        content="Score heuristico derivado do composite. Nao representa taxa historica de acertos."
+                        side="top"
+                        delay={200}
+                      >
+                        <span className="text-warning cursor-help" aria-label="heuristica">⚠</span>
+                      </Tooltip>
+                    </p>
+                    <p className="text-xs font-mono font-semibold text-text-primary">
+                      {conf.toFixed(1)}%
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+            {/* Visual Kelly bar */}
+            <KellyBar kellyHalf={kelly.kelly_half} />
           </div>
         </Tooltip>
       )}
