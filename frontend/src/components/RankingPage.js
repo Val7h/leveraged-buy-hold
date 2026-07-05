@@ -789,7 +789,7 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
           <div>
             <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">Dados de entrada</div>
             {asset.is_crypto ? (
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
                 <Stat label="Stoch sem." value={fmtNum(asset.slow_stoch_weekly, 0)} />
                 <Stat label="Desc. topo" value={fmtPct(asset.discount_from_top)} />
                 <Stat label="Dist. MM200" value={fmtPct(asset.distance_ma200)} />
@@ -803,7 +803,7 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
                 />
               </div>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
                 <Stat label="Stoch sem." value={fmtNum(asset.slow_stoch_weekly, 0)} />
                 <Stat label="Desc. topo" value={fmtPct(asset.discount_from_top)} />
                 <Stat label="Dist. MM200" value={fmtPct(asset.distance_ma200)} />

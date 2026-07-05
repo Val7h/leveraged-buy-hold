@@ -206,8 +206,8 @@ export default function DashboardPage() {
       <div className="p-6 max-w-7xl mx-auto">
 
         {/* ── Header ────────────────────────────────────────── */}
-        <div className="flex items-center justify-between mb-5">
-          <div>
+        <div className="flex items-start justify-between mb-5 gap-3 flex-wrap">
+          <div className="min-w-0">
             <h1 className="text-xl font-semibold text-text-primary">
               {greeting}, {user?.fullName?.split(" ")[0] || "Investidor"} 👋
             </h1>
@@ -216,7 +216,7 @@ export default function DashboardPage() {
               {" "}· Simulador Buy &amp; Hold Alavancado Adaptativo
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             {checkedAt && (
               <span className="hidden sm:flex items-center gap-1 text-[10px] text-text-muted border border-border/40 px-2 py-1 rounded-lg">
                 <Clock size={9} />

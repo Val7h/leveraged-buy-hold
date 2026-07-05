@@ -410,7 +410,7 @@ export default function BacktestPage() {
                       <p className="text-[10px] text-text-muted mb-3">
                         Capital inicial + aportes mensais. Sobreviver (não liquidar) é condição necessária — não é garantia de retorno.
                       </p>
-                      <div className="grid grid-cols-5 gap-2">
+                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                         {horizons.map((yr) => {
                           const r = cagr / 100;
                           // FV = PV*(1+r)^n + PMT*((1+r)^n - 1)/r  (monthly compounding approx)
