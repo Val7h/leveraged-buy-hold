@@ -58,8 +58,40 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
+/** Skeleton shimmer for loading state */
+function SkeletonBlock({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-2 animate-pulse">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-4 bg-surface-2 rounded" style={{ width: `${70 + (i % 3) * 10}%` }} />
+      ))}
+    </div>
+  );
+}
+
 export default function PortfolioIntelligence({ analytics }: { analytics: Analytics | null }) {
-  if (!analytics || !analytics.assets || analytics.assets.length === 0) return null;
+  // Loading / empty state
+  if (!analytics) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <section key={i} className="bg-surface rounded-xl border border-border p-4">
+            <div className="h-4 bg-surface-2 rounded w-40 mb-3 animate-pulse" />
+            <SkeletonBlock rows={4} />
+          </section>
+        ))}
+      </div>
+    );
+  }
+
+  if (!analytics.assets || analytics.assets.length === 0) {
+    return (
+      <div className="bg-surface rounded-xl border border-border p-6 text-center">
+        <div className="text-text-muted text-sm">Nenhum ativo na carteira — adicione posições para ver a inteligência.</div>
+      </div>
+    );
+  }
+
   const t = analytics.totals || {};
   const buckets = analytics.buckets || [];
   const assets = [...(analytics.assets || [])].sort(
@@ -102,10 +134,15 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
     : liqStatus === "alerta" ? "text-amber-400"
     : liqStatus === "indisponivel" ? "text-text-muted"
     : "text-success";
-  const liqSectionCls =
+  const liqSectionBaseCls =
     liqStatus === "critico" ? "bg-danger/5 border-danger/40"
     : liqStatus === "alerta" ? "bg-amber-500/5 border-amber-500/40"
     : "bg-surface border-border";
+  // Pulsing red border when critical (any position < 15% slack)
+  const liqIsCritical = liqStatus === "critico" || liqPos.some((p: any) => p.status === "critico");
+  const liqSectionCls = liqIsCritical
+    ? `${liqSectionBaseCls} ring-2 ring-danger animate-pulse`
+    : liqSectionBaseCls;
   const liqPosStatusCls = (st: string) =>
     st === "critico" ? "text-danger"
     : st === "alerta" ? "text-amber-400"
@@ -139,8 +176,52 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
   const levCapLimiting = levAgg && levRegime != null && levAgg.max_lev_novo_fluxo != null
     && Number(levAgg.max_lev_novo_fluxo) < Number(levRegime);
 
+  // Thesis stops with danger threshold classification
+  const thesisStopsWithDanger = thesisStops.map((s: any) => ({
+    ...s,
+    dangerLevel:
+      (s.pnl_pct != null && Number(s.pnl_pct) <= -30) ? "critical"
+      : (s.pnl_pct != null && Number(s.pnl_pct) <= -20) ? "danger"
+      : "normal",
+  }));
+
+  // Survival signal banners (C.2 / C.3) — shown at top if triggered
+  const showDisjuntorBanner = disjAfetados.length > 0;
+  const showLevEstouradoBanner = levStatus === "estourado";
+  const showTopBanners = showDisjuntorBanner || showLevEstouradoBanner;
+
   return (
     <div className="space-y-4">
+      {/* ──────────────────────────────────────────────────────────────────────
+          TOP BANNERS — C.2 / C.3 triggered (must be above everything else)
+      ────────────────────────────────────────────────────────────────────── */}
+      {showTopBanners && (
+        <div className="space-y-2">
+          {showLevEstouradoBanner && (
+            <div className="bg-danger/10 rounded-xl border border-danger px-4 py-3 flex items-start gap-3">
+              <span className="text-danger text-base shrink-0 font-bold">⚠</span>
+              <div>
+                <div className="text-danger font-bold text-sm">C.3 — Cap de alavancagem ESTOURADO</div>
+                <div className="text-[11px] text-danger/80 mt-0.5">
+                  Carteira acima do teto de segurança ({fmt(levAgg?.effective_leverage, "x", 2)} &gt; {fmt(levAgg?.cap, "x", 1)}). Novos aportes forçados a 1x até desalavancar. Reduza exposição imediatamente.
+                </div>
+              </div>
+            </div>
+          )}
+          {showDisjuntorBanner && (
+            <div className="bg-amber-500/10 rounded-xl border border-amber-500 px-4 py-3 flex items-start gap-3">
+              <span className="text-amber-400 text-base shrink-0 font-bold">⚡</span>
+              <div>
+                <div className="text-amber-400 font-bold text-sm">C.2 — Disjuntor ativo: averaging-down alavancado detectado</div>
+                <div className="text-[11px] text-amber-400/80 mt-0.5">
+                  {disjAfetados.map((d: any) => d.ticker).join(", ")} — alavancagem do próximo aporte automaticamente degradada. Ver detalhes abaixo.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* EQUITY DESATUALIZADO — todo o painel de sobrevivência depende do equity real */}
       {isStale && (
         <div className="bg-amber-500/10 rounded-xl border border-amber-500/40 px-4 py-3 flex items-start gap-2">
@@ -333,7 +414,7 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
         </section>
       )}
 
-      {/* TRAVA 1. Stop de TESE objetivo — fundamento quebrou (vermelho) */}
+      {/* TRAVA 1. Stop de TESE objetivo — fundamento quebrou (vermelho) — com destaque por pnl_pct */}
       {thesisStops.length > 0 && (
         <section className="bg-danger/5 rounded-xl border border-danger/40 p-4">
           <h3 className="text-sm font-semibold text-danger mb-1">⚠ Stop de tese (fundamento quebrou)</h3>
@@ -342,14 +423,31 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
             Diferente do stop de sobrevivência (-10%) e do stop de preço.
           </p>
           <div className="space-y-1.5">
-            {thesisStops.map((s: any) => (
-              <div key={s.ticker} className="flex items-start gap-2 text-xs">
-                <span className="px-1.5 py-0.5 rounded bg-danger/20 border border-danger/50 text-danger font-semibold text-[10px] shrink-0">TESE</span>
-                <span className="font-semibold text-text-primary shrink-0">{s.ticker}</span>
-                <span className="text-text-muted">— {s.reason}</span>
-                {s.is_seed && <span className="text-[9px] text-emerald-400 shrink-0">(semente — não imune; você decide)</span>}
-              </div>
-            ))}
+            {thesisStopsWithDanger.map((s: any) => {
+              const isCritical = s.dangerLevel === "critical";
+              const isDanger = s.dangerLevel === "danger";
+              return (
+                <div
+                  key={s.ticker}
+                  className={`flex items-start gap-2 text-xs rounded px-2 py-1.5 ${
+                    isCritical ? "bg-danger/20 border border-danger/60" :
+                    isDanger ? "bg-danger/10 border border-danger/30" : ""
+                  }`}
+                >
+                  <span className="px-1.5 py-0.5 rounded bg-danger/20 border border-danger/50 text-danger font-semibold text-[10px] shrink-0">TESE</span>
+                  <span className="font-semibold text-text-primary shrink-0">{s.ticker}</span>
+                  {s.pnl_pct != null && (
+                    <span className={`font-mono shrink-0 ${isCritical || isDanger ? "text-danger font-bold" : "text-text-muted"}`}>
+                      {fmt(s.pnl_pct, "%", 1)}
+                      {isCritical && " ⚠ -30%+"}
+                      {isDanger && !isCritical && " ⚠ -20%+"}
+                    </span>
+                  )}
+                  <span className="text-text-muted">— {s.reason}</span>
+                  {s.is_seed && <span className="text-[9px] text-emerald-400 shrink-0">(semente — não imune; você decide)</span>}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -399,9 +497,12 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
       {stress.length > 0 && (
         <section className="bg-surface rounded-xl border border-border p-4">
           <h3 className="text-sm font-semibold text-text-primary mb-1">Stress test — se o crash acontecesse hoje</h3>
-          <p className="text-[11px] text-text-muted mb-3">
+          <p className="text-[11px] text-text-muted mb-1">
             Replay de crises reais na carteira ATUAL com a alavancagem de hoje. <b>Pior caso</b> = entrada no topo;
             <b> ajustado</b> = considerando que você compra descontado (cai menos).
+          </p>
+          <p className="text-xs text-text-muted mb-3">
+            Simula crises históricas na sua carteira atual
           </p>
           <div className="space-y-1.5">
             {stress.map((s: any) => (
@@ -484,14 +585,32 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
         {sells.length === 0 ? (
           <div className="text-[12px] text-success mb-2">Nenhuma venda sugerida agora — nenhuma posição de ciclo esticada. 🟢</div>
         ) : (
-          <div className="space-y-1.5 mb-3">
-            {sells.map((s: any) => (
-              <div key={s.ticker} className="flex items-center gap-2 text-xs">
-                <span className="px-1.5 py-0.5 rounded bg-danger/15 border border-danger/40 text-danger font-semibold text-[10px]">VENDER</span>
-                <span className="font-semibold text-text-primary">{s.ticker}</span>
-                <span className="text-text-muted">— {s.reason}</span>
-              </div>
-            ))}
+          <div className="space-y-2 mb-3">
+            {sells.map((s: any) => {
+              // Find a matching rotate-into candidate for visual VENDER → COMPRAR flow
+              const buyCandidate = rotateInto[0];
+              return (
+                <div key={s.ticker} className="flex flex-wrap items-center gap-2 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 rounded bg-danger/15 border border-danger/40 text-danger font-semibold text-[10px]">VENDER</span>
+                    <span className="font-semibold text-text-primary">{s.ticker}</span>
+                  </div>
+                  {buyCandidate && (
+                    <>
+                      <span className="text-text-muted text-base font-bold px-1">→</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-success/15 border border-success/40 text-success font-semibold text-[10px]">COMPRAR</span>
+                        <span className="font-semibold text-text-primary">{buyCandidate.ticker}</span>
+                        {buyCandidate.verdict === "COMPRAR FORTE" && (
+                          <span className="px-1 py-0 rounded bg-success/20 border border-success/50 text-success font-semibold text-[9px]">FORTE</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  <span className="text-text-muted text-[10px] w-full pl-0">— {s.reason}</span>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -585,7 +704,7 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
             </span>
           )}
         </div>
-        <p className="text-[11px] text-text-muted mb-3">
+        <p className="text-[11px] text-text-muted mb-1">
           {structTargets?.targets ? (
             <>
               {Object.entries(structTargets.targets).map(([k, v]: any, i: number) => (
@@ -597,6 +716,9 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
           ) : (
             <>Âncoras 55% · Geradores 30% · Aceleradores 15% (banda ±5%). Desvio &gt; 5% sugere rebalanceamento.</>
           )}
+        </p>
+        <p className="text-xs text-text-muted mb-3">
+          Alvo × real: quão longe da alocação doutrinária
         </p>
         <div className="space-y-2">
           {buckets.map((b: any) => {
@@ -658,8 +780,11 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
       {/* 3. Contribuição de risco (Dalio) */}
       <section className="bg-surface rounded-xl border border-border p-4">
         <h3 className="text-sm font-semibold text-text-primary mb-1">Contribuição de risco</h3>
-        <p className="text-[11px] text-text-muted mb-3">
+        <p className="text-[11px] text-text-muted mb-1">
           Quanto cada ativo pesa no RISCO da carteira — não só em $. Método: <b>{t.risk_method || "—"}</b> (considera volatilidade e correlação entre os ativos; hedge reduz risco).
+        </p>
+        <p className="text-xs text-text-muted mb-3">
+          Dalio: cada ativo deve contribuir igualmente ao risco total
         </p>
         <div className="space-y-1.5">
           {assets.map((a: any) => (
@@ -683,8 +808,11 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
       {/* 4. Correlação / descorrelação */}
       <section className="bg-surface rounded-xl border border-border p-4">
         <h3 className="text-sm font-semibold text-text-primary mb-1">Diversificação — correlação</h3>
-        <p className="text-[11px] text-text-muted mb-3">
+        <p className="text-[11px] text-text-muted mb-1">
           Correlação média dos ativos (≈3 anos). Quanto MENOR, melhor a diversificação — sua regra: baixa correlação na crise.
+        </p>
+        <p className="text-xs text-text-muted mb-3">
+          Correlação alta = ilusão de diversificação; alvo &lt; 0.5 entre pares
         </p>
         <div className="flex items-center gap-2 mb-3">
           <Stat
