@@ -19,19 +19,19 @@ export default function MobileBottomNav() {
   function getBadge(badge: string | null) {
     if (badge === "alerts" && alertTriggeredCount > 0) {
       return (
-        <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-danger text-white text-[8px] font-bold leading-none">
+        <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-danger text-white text-[8px] font-bold leading-none">
           {alertTriggeredCount > 9 ? "9+" : alertTriggeredCount}
         </span>
       );
     }
     if (badge === "portfolio_critical" && portfolioCritical) {
       return (
-        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-danger shadow-[0_0_4px_1px_rgba(239,68,68,0.6)]" />
+        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-danger animate-pulse shadow-[0_0_4px_1px_rgba(239,68,68,0.6)]" />
       );
     }
     if (badge === "watchlist" && watchlistZonaAtivaCount > 0) {
       return (
-        <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 rounded-full bg-success text-white text-[8px] font-bold leading-none">
+        <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-success text-white text-[8px] font-bold leading-none">
           {watchlistZonaAtivaCount > 9 ? "9+" : watchlistZonaAtivaCount}
         </span>
       );
