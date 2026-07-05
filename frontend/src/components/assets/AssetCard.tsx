@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, memo } from "react";
 import { cn, formatCurrency, formatPercent, getScoreColor, getScoreBg, sectorIcon } from "@/lib/utils";
 import ScoreGauge from "@/components/ui/ScoreGauge";
@@ -166,12 +166,13 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
       </button>
 
       {/* ── Layer badges Q / M / A ───────────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 mb-3">
+      <div className="flex items-center flex-wrap gap-1 mb-3">
         <LayerBadge label="Q" score={asset.quality_score} />
         <LayerBadge label="M" score={asset.opportunity_score} />
         <LayerBadge label="A" score={asset.leverage_score} />
+        <SurvivalPill score={asset.composite_score} />
         {isZonaCompra && (
-          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-success/15 border border-success/30 text-success">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-success/15 border border-success/30 text-success">
             🎯 Zona compra
           </span>
         )}
@@ -201,9 +202,7 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
               <span className="text-base">{sectorIcon(asset.sector)}</span>
             </div>
             <p className="text-xs text-text-muted truncate max-w-40">{asset.company_name || "—"}</p>
-            <p className="text-xs text-text-muted/70 mb-1">{asset.sector || "—"}</p>
-            {/* Survival tier pill */}
-            <SurvivalPill score={asset.composite_score} />
+            <p className="text-xs text-text-muted/70">{asset.sector || "—"}</p>
           </div>
         </div>
         <div className="text-right">

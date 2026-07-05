@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import Link from "next/link";
 import {
   Loader2,
   AlertCircle,
@@ -744,14 +745,14 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
             📈 gráfico
           </span>
           {/* Botão "Analisar →" — abre o screener de ativos com autorun */}
-          <a
+          <Link
             href={`/assets?tickers=${encodeURIComponent(asset.ticker)}&autorun=1`}
             title="Analisar este ativo no screener"
             onClick={(e) => e.stopPropagation()}
             className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-surface-2 border border-border text-text-secondary hover:border-success/50 hover:text-success hover:bg-success/5 transition-colors whitespace-nowrap"
           >
             Analisar →
-          </a>
+          </Link>
           <span className="text-text-muted">
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </span>
