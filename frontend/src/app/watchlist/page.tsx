@@ -5,6 +5,7 @@ import AppShell from "@/components/layout/AppShell";
 import TickerLogo from "@/components/ui/TickerLogo";
 import { watchlistApi, assetsApi } from "@/lib/api";
 import type { WatchlistItem, AssetScore } from "@/types";
+import { useNavStore } from "@/store/navStore";
 import { getScoreColor } from "@/lib/utils";
 import {
   Bookmark, Plus, Trash2, RefreshCw, TrendingUp,
@@ -89,6 +90,7 @@ function ma200Distance(score?: AssetScore): number | null {
 
 export default function WatchlistPage() {
   const router = useRouter();
+  const { setWatchlistZonaAtivaCount } = useNavStore();
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [scores, setScores] = useState<Record<string, AssetScore>>({});
   const [failedTickers, setFailedTickers] = useState<Set<string>>(new Set());
@@ -194,6 +196,9 @@ export default function WatchlistPage() {
       const map: Record<string, AssetScore> = {};
       (res.data.assets as AssetScore[]).forEach((a) => { map[a.ticker] = a; });
       setScores(map);
+      // Update sidebar badge: items in ZONA ATIVA (green signal or RSI ≤ 40)
+      const zonaAtivaCount = list.filter((i) => isInBuyZone(map[i.ticker])).length;
+      setWatchlistZonaAtivaCount(zonaAtivaCount);
       const failed: string[] = res.data.failed_tickers ?? [];
       setFailedTickers(new Set(failed));
       if (failed.length) {

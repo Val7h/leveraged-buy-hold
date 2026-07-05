@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
-import { useSignalStore } from "@/store/signalStore";
+import { useNavStore } from "@/store/navStore";
 import { cn } from "@/lib/utils";
 import Tooltip from "@/components/ui/Tooltip";
 import {
@@ -10,24 +10,101 @@ import {
   TrendingUp, Bell, LogOut, ChevronRight, Bookmark, History, BarChart3, X, Trophy,
 } from "lucide-react";
 
+// ── Nav definition — SURVIVAL-FIRST ordering ──────────────────────────────
+// Section keys drive the rendered group headers.
 const navItems = [
-  // ── CORE (Main workflow) ──────────────────────────────
-  { href: "/dashboard",      label: "Dashboard",  icon: LayoutDashboard, badge: null, section: "CORE", tooltip: "Estado do mercado, RSI SPY, e overview da carteira" },
-  { href: "/ranking",        label: "Ranking",    icon: Trophy,          badge: null, section: "CORE", tooltip: "Ranking de aporte por categoria: qualidade, momentum, veredito e stops escalonados" },
-  { href: "/assets",         label: "Screening",  icon: Search,          badge: null, section: "CORE", tooltip: "Encontre ativos com scores de qualidade e oportunidade. Compare lado a lado" },
-  { href: "/portfolio",      label: "Carteira",   icon: Briefcase,       badge: null, section: "CORE", tooltip: "Gerencie posições, P&L, drawdown e composição por setor" },
+  // ── CORE ─────────────────────────────────────────────────────────────────
+  {
+    href: "/portfolio",
+    label: "Carteira",
+    icon: Briefcase,
+    badge: "portfolio_critical",
+    section: "CORE",
+    tooltip: "Gerencie posições, P&L, drawdown e composição por setor",
+  },
+  {
+    href: "/alerts",
+    label: "Alertas",
+    icon: Bell,
+    badge: "alerts",
+    section: "CORE",
+    tooltip: "Crie alertas: RSI, preço, drawdown, sinais automáticos",
+  },
+  {
+    href: "/ranking",
+    label: "Ranking",
+    icon: Trophy,
+    badge: null,
+    section: "CORE",
+    tooltip: "Ranking de aporte por categoria: qualidade, momentum, veredito e stops escalonados",
+  },
+  {
+    href: "/watchlist",
+    label: "Watchlist",
+    icon: Bookmark,
+    badge: "watchlist",
+    section: "CORE",
+    tooltip: "Monitore ativos favoritados. Alertas automáticos quando signal muda",
+  },
 
-  // ── MANAGEMENT (Monitoring & Control) ──────────────────
-  { href: "/alerts",         label: "Alertas",    icon: Bell,            badge: null, section: "GERENCIAMENTO", tooltip: "Crie alertas: RSI, preço, drawdown, sinais automáticos" },
-  { href: "/watchlist",      label: "Watchlist",  icon: Bookmark,        badge: "opportunities", section: "GERENCIAMENTO", tooltip: "Monitore ativos favoritados. Alertas automáticos quando signal muda" },
+  // ── HISTÓRICO ─────────────────────────────────────────────────────────────
+  {
+    href: "/history",
+    label: "Histórico",
+    icon: History,
+    badge: null,
+    section: "HISTÓRICO",
+    tooltip: "Todas as operações, P&L, estatísticas de win rate",
+  },
 
-  // ── RESEARCH (Validation & Analysis) ──────────────────
-  { href: "/backtest",       label: "Backtest",   icon: FlaskConical,    badge: null, section: "PESQUISA", tooltip: "Valide estratégias com 20+ anos de dados. Compare alternativas" },
-  { href: "/simulator",      label: "Simulador",  icon: TrendingUp,      badge: null, section: "PESQUISA", tooltip: "Simule 1.000 cenários futuros. Veja distribuição de resultados" },
-  { href: "/sharpe-compare", label: "Sharpe",     icon: BarChart3,       badge: null, section: "PESQUISA", tooltip: "Ranking de ativos por Sharpe ratio desde 2015. Análise de sobrevivência" },
+  // ── PESQUISA ─────────────────────────────────────────────────────────────
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    badge: null,
+    section: "PESQUISA",
+    tooltip: "Estado do mercado, RSI SPY, e overview da carteira",
+  },
+  {
+    href: "/assets",
+    label: "Screening",
+    icon: Search,
+    badge: null,
+    section: "PESQUISA",
+    tooltip: "Encontre ativos com scores de qualidade e oportunidade. Compare lado a lado",
+  },
+  {
+    href: "/backtest",
+    label: "Backtest",
+    icon: FlaskConical,
+    badge: null,
+    section: "PESQUISA",
+    tooltip: "Valide estratégias com 20+ anos de dados. Compare alternativas",
+  },
+  {
+    href: "/simulator",
+    label: "Simulador",
+    icon: TrendingUp,
+    badge: null,
+    section: "PESQUISA",
+    tooltip: "Simule 1.000 cenários futuros. Veja distribuição de resultados",
+  },
+  {
+    href: "/sharpe-compare",
+    label: "Sharpe",
+    icon: BarChart3,
+    badge: null,
+    section: "PESQUISA",
+    tooltip: "Ranking de ativos por Sharpe ratio desde 2015. Análise de sobrevivência",
+  },
+];
 
-  // ── HISTORY (Reference) ───────────────────────────────
-  { href: "/history",        label: "Histórico",  icon: History,         badge: null, section: "HISTÓRICO", tooltip: "Todas as operações, P&L, estatísticas de win rate" },
+// Section order controls render sequence
+const SECTIONS: Array<{ key: string; label: string }> = [
+  { key: "CORE",      label: "CORE" },
+  { key: "HISTÓRICO", label: "HISTÓRICO" },
+  { key: "PESQUISA",  label: "PESQUISA" },
 ];
 
 interface SidebarProps {
@@ -38,7 +115,38 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
-  const { opportunityCount } = useSignalStore();
+  const { alertTriggeredCount, portfolioCritical, watchlistZonaAtivaCount } = useNavStore();
+
+  function getBadgeEl(badge: string | null) {
+    if (!badge) return null;
+
+    if (badge === "alerts" && alertTriggeredCount > 0) {
+      return (
+        <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[9px] font-bold leading-none">
+          {alertTriggeredCount > 9 ? "9+" : alertTriggeredCount}
+        </span>
+      );
+    }
+
+    if (badge === "portfolio_critical" && portfolioCritical) {
+      return (
+        <span
+          className="w-2 h-2 rounded-full bg-danger shadow-[0_0_4px_1px_rgba(239,68,68,0.6)] flex-shrink-0"
+          title="Posição com liquidação crítica"
+        />
+      );
+    }
+
+    if (badge === "watchlist" && watchlistZonaAtivaCount > 0) {
+      return (
+        <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-success text-white text-[9px] font-bold leading-none">
+          {watchlistZonaAtivaCount > 9 ? "9+" : watchlistZonaAtivaCount}
+        </span>
+      );
+    }
+
+    return null;
+  }
 
   return (
     <aside
@@ -72,33 +180,38 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Nav */}
       <nav className="flex-1 px-4 py-5 space-y-6 overflow-y-auto">
-        {["CORE", "GERENCIAMENTO", "PESQUISA", "HISTÓRICO"].map((section) => (
-          <div key={section}>
-            <h3 className="text-xs font-bold text-text-muted/60 px-2 mb-2.5 tracking-widest">{section}</h3>
+        {SECTIONS.map(({ key, label }) => (
+          <div key={key}>
+            <h3 className="text-xs font-bold text-text-muted/60 px-2 mb-2.5 tracking-widest">{label}</h3>
             <div className="space-y-1">
               {navItems
-                .filter((item) => item.section === section)
-                .map(({ href, label, icon: Icon, badge, tooltip }) => {
+                .filter((item) => item.section === key)
+                .map(({ href, label: itemLabel, icon: Icon, badge, tooltip }) => {
                   const active = pathname.startsWith(href);
-                  const showBadge = badge === "opportunities" && opportunityCount > 0;
+                  const badgeEl = getBadgeEl(badge);
+
                   const navLink = (
                     <Link
                       href={href}
                       className={cn(
                         "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
                         active
-                          ? "bg-primary/15 text-primary border border-primary/30 shadow-glow"
+                          ? "bg-primary/15 text-primary border border-primary/30 shadow-glow font-semibold"
                           : "text-text-secondary hover:text-text-primary hover:bg-surface-2/50"
                       )}
                     >
-                      <Icon size={18} className={cn(active ? "text-primary" : "text-text-muted group-hover:text-text-secondary")} />
-                      <span className="flex-1">{label}</span>
-                      {showBadge && (
-                        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-success text-white text-[9px] font-bold leading-none">
-                          {opportunityCount > 9 ? "9+" : opportunityCount}
-                        </span>
+                      <Icon
+                        size={18}
+                        className={cn(
+                          "flex-shrink-0",
+                          active ? "text-primary" : "text-text-muted group-hover:text-text-secondary"
+                        )}
+                      />
+                      <span className="flex-1">{itemLabel}</span>
+                      {badgeEl}
+                      {active && !badgeEl && (
+                        <ChevronRight size={14} className="text-primary opacity-50 flex-shrink-0" />
                       )}
-                      {active && !showBadge && <ChevronRight size={14} className="text-primary opacity-50" />}
                     </Link>
                   );
 

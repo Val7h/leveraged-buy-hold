@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { alertsApi } from "@/lib/api";
+import { useNavStore } from "@/store/navStore";
 import { Bell, Plus, Trash2, CheckCircle, Clock, RefreshCw, TrendingUp, TrendingDown, ShieldAlert, AlertTriangle, Info } from "lucide-react";
 import TickerLogo from "@/components/ui/TickerLogo";
 
@@ -64,6 +65,7 @@ const CONDITION_OPTIONS = [
 ];
 
 export default function AlertsPage() {
+  const { setAlertTriggeredCount } = useNavStore();
   const [alerts, setAlerts] = useState<EnrichedAlert[]>([]);
   const [survivalStatus, setSurvivalStatus] = useState<SurvivalPositionStatus[]>([]);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
@@ -79,9 +81,11 @@ export default function AlertsPage() {
     if (showSpinner) setLoading(true);
     try {
       const res = await alertsApi.check();
-      setAlerts(res.data?.alerts ?? []);
+      const loadedAlerts: EnrichedAlert[] = res.data?.alerts ?? [];
+      setAlerts(loadedAlerts);
       setSurvivalStatus(res.data?.survival_status ?? []);
       setCheckedAt(res.data?.checked_at ?? null);
+      setAlertTriggeredCount(loadedAlerts.filter((a) => a.triggered && a.active).length);
     } catch {
       // fallback to plain list
       try {

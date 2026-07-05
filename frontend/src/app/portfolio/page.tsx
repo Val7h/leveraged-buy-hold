@@ -5,6 +5,7 @@ import AppShell from "@/components/layout/AppShell";
 import SectorBreakdownWidget from "@/components/portfolio/SectorBreakdownWidget";
 import PortfolioIntelligence from "@/components/portfolio/PortfolioIntelligence";
 import { usePortfolioStore } from "@/store/portfolioStore";
+import { useNavStore } from "@/store/navStore";
 import { portfolioApi, assetsApi } from "@/lib/api";
 import { formatCurrency, formatPercent, formatLeverage, getLeverageColor, getPnlColor } from "@/lib/utils";
 import TickerLogo from "@/components/ui/TickerLogo";
@@ -55,6 +56,7 @@ function calcEffectiveLeverage(positions: any[]): number | null {
 function PortfolioPageInner() {
   const searchParams = useSearchParams();
   const { activePortfolioId, portfolios, metrics, positions, analytics, analyticsLoading, analyticsError, fetchPortfolios, fetchMetrics, fetchPositions, fetchAnalytics, addPosition, updatePosition, removePosition, toggleSeed, toggleCycle } = usePortfolioStore();
+  const { setPortfolioCritical } = useNavStore();
   const [suggestions, setSuggestions] = useState<ContributionSuggestion[]>([]);
   const [capital, setCapital] = useState(1000);
   const [equityCurve, setEquityCurve] = useState<any>(null);
@@ -96,6 +98,17 @@ function PortfolioPageInner() {
         .finally(() => setCurveLoading(false));
     }
   }, [activePortfolioId]);
+
+  // Update sidebar critical-liq dot whenever analytics refreshes
+  useEffect(() => {
+    if (!analytics) return;
+    const positions = (analytics?.liquidation_watch?.por_posicao ?? []) as any[];
+    const hasCritical = positions.some((p: any) => {
+      const slack = p.distance_pct != null ? Number(p.distance_pct) : null;
+      return slack !== null && slack < 15;
+    });
+    setPortfolioCritical(hasCritical);
+  }, [analytics]);
 
   // Pre-fill from watchlist / dashboard "Simular → Portfólio" button
   useEffect(() => {

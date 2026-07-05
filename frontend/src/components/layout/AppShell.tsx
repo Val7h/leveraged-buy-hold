@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import Sidebar from "./Sidebar";
+import MobileBottomNav from "./MobileBottomNav";
 import NotificationBell from "./NotificationBell";
 import Footer from "./Footer";
 import BetaBanner from "@/components/BetaBanner";
@@ -108,11 +109,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <BetaBanner />
-        <main className="flex-1">
+        {/* pb-16 ensures content isn't hidden behind mobile bottom nav */}
+        <main className="flex-1 pb-16 lg:pb-0">
           {children}
         </main>
         <Footer />
       </div>
+
+      {/* Mobile bottom navigation bar */}
+      <MobileBottomNav />
     </div>
   );
 }
