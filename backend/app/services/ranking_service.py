@@ -403,6 +403,30 @@ def _cache_set(key: str, value: dict) -> None:
 # ─────────────────────────── Persistência do universo ───────────────────────────
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 _UNIVERSE_FILE = os.path.join(_DATA_DIR, "ranking_universe.json")
+_RANKING_CACHE_FILE = os.path.join(_DATA_DIR, "ranking_cache.json")
+
+
+def _load_ranking_from_disk() -> Optional[dict]:
+    """Carrega o último ranking salvo em disco (sobrevive a restarts do container)."""
+    try:
+        if os.path.exists(_RANKING_CACHE_FILE):
+            with open(_RANKING_CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"[RANKING][DISK] erro ao carregar cache: {e}")
+    return None
+
+
+def _save_ranking_to_disk(result: dict) -> None:
+    """Persiste o ranking em disco para sobreviver a cold-starts."""
+    try:
+        os.makedirs(_DATA_DIR, exist_ok=True)
+        tmp = _RANKING_CACHE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(result, f)
+        os.replace(tmp, _RANKING_CACHE_FILE)
+    except Exception as e:
+        logger.warning(f"[RANKING][DISK] erro ao salvar cache: {e}")
 
 
 def _load_overrides() -> Dict[str, dict]:
@@ -2077,12 +2101,25 @@ def _recompute_ranking(force: bool = False) -> dict:
     force=True: IGNORA o cache fresco e recalcula de verdade. BUG corrigido — antes
     o re-check de TTL aqui dentro anulava o force vindo do endpoint (?force=true),
     deixando o ranking CONGELADO por até RANKING_TTL mesmo após dado novo (ex: CVM
-    populou o disco mas o ranking servia o cache thin do boot)."""
+    populou o disco mas o ranking servia o cache thin do boot).
+
+    COLD-START: se a memória está vazia mas o disco tem resultado anterior, serve o
+    disco imediatamente e dispara recompute em background — elimina tela branca pós-restart."""
     with _compute_lock:
         entry = _cache.get("ranking")
         if not force and entry is not None and (time.time() - entry[0]) < RANKING_TTL:
             return entry[1]
-        return _recompute_ranking_inner()
+        # Cache de memória vazio ou expirado: tentar disco (sobrevive a restarts)
+        if not force and entry is None:
+            disk = _load_ranking_from_disk()
+            if disk is not None:
+                logger.info("[RANKING][DISK] servindo cache do disco enquanto recomputa em background")
+                _cache["ranking"] = (0.0, disk)  # TTL=0 → expira imediatamente no próximo ciclo
+                _threading.Thread(target=_recompute_ranking_inner, daemon=True).start()
+                return disk
+        result = _recompute_ranking_inner()
+        _save_ranking_to_disk(result)
+        return result
 
 
 def _recompute_ranking_inner() -> dict:
@@ -2095,8 +2132,8 @@ def _recompute_ranking_inner() -> dict:
     tasks = [(cat, r) for cat, rows in universe.items() for r in rows]
     by_cat: Dict[str, list] = {cat: [] for cat in universe.keys()}
 
-    _WORKERS = int(os.environ.get("RANKING_MAX_WORKERS", "3"))
-    _FETCH_DELAY = float(os.environ.get("RANKING_FETCH_DELAY", "0.25"))
+    _WORKERS = int(os.environ.get("RANKING_MAX_WORKERS", "4"))
+    _FETCH_DELAY = float(os.environ.get("RANKING_FETCH_DELAY", "0.10"))
 
     def _work(cat, r):
         _time.sleep(_FETCH_DELAY)  # evita burst Yahoo Finance → rate-limit 429
@@ -2162,6 +2199,7 @@ def _recompute_ranking_inner() -> dict:
 
     result = {"categories": categories, "generated_at": dt.datetime.utcnow().isoformat() + "Z"}
     _cache_set("ranking", result)
+    _save_ranking_to_disk(result)  # persiste p/ sobreviver a cold-start
     return result
 
 
