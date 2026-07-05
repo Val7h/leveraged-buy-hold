@@ -82,13 +82,18 @@ def _yahoo_chart_json(ticker: str, query: str):
     Só cai p/ sem-verificação se ALLOW_INSECURE_SSL=1. Retorna dict JSON ou None."""
     last = None
     for host in _CHART_HOSTS:
-        try:
-            req = _urlreq.Request(f"https://{host}/v8/finance/chart/{ticker}?{query}",
-                                  headers={"User-Agent": "Mozilla/5.0"})
-            with _urlreq.urlopen(req, timeout=20, context=_CHART_CTX) as r:
-                return _json.loads(r.read())
-        except Exception as e:
-            last = e
+        for attempt in range(2):  # retry único em 429 com backoff
+            try:
+                req = _urlreq.Request(f"https://{host}/v8/finance/chart/{ticker}?{query}",
+                                      headers={"User-Agent": "Mozilla/5.0"})
+                with _urlreq.urlopen(req, timeout=20, context=_CHART_CTX) as r:
+                    return _json.loads(r.read())
+            except Exception as e:
+                last = e
+                if hasattr(e, "code") and e.code == 429 and attempt == 0:
+                    _time.sleep(2.0)  # back-off no rate-limit
+                    continue
+                break
     if _ALLOW_INSECURE:
         # Fallback SEM verificação de cert — risco de MITM (preço forjado). NÃO silencioso:
         # loga ERRO. Desligue com ALLOW_INSECURE_SSL=0 no ambiente (recomendado em prod).
@@ -2090,11 +2095,15 @@ def _recompute_ranking_inner() -> dict:
     tasks = [(cat, r) for cat, rows in universe.items() for r in rows]
     by_cat: Dict[str, list] = {cat: [] for cat in universe.keys()}
 
+    _WORKERS = int(os.environ.get("RANKING_MAX_WORKERS", "3"))
+    _FETCH_DELAY = float(os.environ.get("RANKING_FETCH_DELAY", "0.25"))
+
     def _work(cat, r):
+        _time.sleep(_FETCH_DELAY)  # evita burst Yahoo Finance → rate-limit 429
         return cat, _analyze(r["ticker"], r["bucket"], r.get("name", r["ticker"]),
                              cat, idxc, idxdm, equity_regime)
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=_WORKERS) as ex:
         futures = [ex.submit(_work, cat, r) for cat, r in tasks]
         for fut in as_completed(futures):
             try:
