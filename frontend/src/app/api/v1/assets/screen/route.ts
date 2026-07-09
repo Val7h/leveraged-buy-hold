@@ -53,7 +53,19 @@ function mapAsset(a: any) {
 
   // Racional do sinal = veredito + o que está prendendo a alavancagem (binding da Camada 3).
   const binding = a.leverage_teto_binding ? ` · trava: ${a.leverage_teto_binding}` : "";
-  const rationale = verdict ? `${verdict}${binding}` : "";
+  let sigLabel = vm.label;
+  let sigColor = vm.color;
+  let rationale = verdict ? `${verdict}${binding}` : "";
+
+  // GUARDA DE SOBRECOMPRADO (Qualidade ≠ Timing): um nome ESTICADO (RSI semanal ≥ 70)
+  // NÃO pode ostentar "OPORTUNIDADE (FORTE)" — empresa ótima não é boa HORA de entrar.
+  // Rebaixa o rótulo verde p/ amarelo "ESTICADO" e explica; NÃO mexe nos scores do motor.
+  const rsiW = typeof a.rsi === "number" ? a.rsi : null;
+  if (rsiW != null && rsiW >= 70 && sigColor === "green") {
+    sigLabel = "ESTICADO";
+    sigColor = "yellow";
+    rationale = `${verdict || "Qualidade OK"} · RSI semanal ${rsiW.toFixed(0)} sobrecomprado — aguardar recuo p/ entrar`;
+  }
 
   return {
     ticker: a.ticker,
@@ -76,8 +88,8 @@ function mapAsset(a: any) {
     opportunity_rating: vm.label,
 
     // Campos que a UI lê e que ANTES nunca eram gerados (sinal cinza / leverage 1x):
-    entry_signal: vm.label,
-    entry_signal_color: vm.color,
+    entry_signal: sigLabel,
+    entry_signal_color: sigColor,
     entry_leverage: leverage,
     entry_rationale: rationale,
 
