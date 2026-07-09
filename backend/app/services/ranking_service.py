@@ -1577,6 +1577,14 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # EXCEÇÃO: REITs, Utilities e Infrastructure têm PE estruturalmente alto por depreciação
         # real (D&A não-caixa); o múltiplo correto seria EV/AFFO ou EV/FFO. Aplicar haircut linear
         # de PE neles seria punir com métrica errada de valuation → isentos.
+        # HOLDING (equity-method, ex ITSA4/BRAP4/CXSE3): valor está nas participadas, não em operação
+        # própria (ROIC/FCF da controladora ~0). FINANCEIRA (banco/seguradora) e REGULADA (utility de
+        # fluxo contratado). Holding tem precedência. Computado AQUI (antes do haircut de PE abaixo)
+        # porque _pe_haircut_exempt depende de is_regulated — senão dá UnboundLocalError.
+        is_holding = (cat not in ("ETF", "COMMODITY", "CRYPTO")) and _is_holding(tk, fund)
+        is_financial = (not is_holding) and (cat not in ("ETF", "COMMODITY", "CRYPTO")) and _is_financial(tk)
+        is_regulated = (not is_holding and not is_financial) and _is_regulated(tk)
+
         _g5_for_tsr = g5 or 0.0
         _pe_tsr = fund.get("pe_ratio")
         _pe_haircut_exempt = _is_pe_haircut_exempt(tk) or is_regulated
@@ -1618,16 +1626,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             divergence=divergence, rel_momentum_percentile=None,
             estrutura=estrutura,
         )
-        # HOLDING de participações (equity-method, ex ITSA4/BRAP4/CXSE3): o valor está nas
-        # participadas, NÃO em operação própria → ROIC/FCF da controladora dão ~0 e a Camada 1
-        # operacional dava nota ABSURDA (ITSA4 q3, BRAP4/CXSE3 q0), afundando a holding no ranking.
-        # Crivo de HOLDING (análogo ao ETF/financeira): a Qualidade vem de dividendo consistente +
-        # safety da controladora — não de métricas operacionais ausentes. Set CURADO (_is_holding).
-        is_holding = (cat not in ("ETF", "COMMODITY", "CRYPTO")) and _is_holding(tk, fund)
-        # FINANCEIRA (banco/seguradora) e REGULADA (utility de fluxo contratado) — painel sênior.
-        # Holding tem precedência (CXSE3 é holding de seguros, não vai p/ financeira).
-        is_financial = (not is_holding) and (cat not in ("ETF", "COMMODITY", "CRYPTO")) and _is_financial(tk)
-        is_regulated = (not is_holding and not is_financial) and _is_regulated(tk)
+        # is_holding / is_financial / is_regulated foram MOVIDOS p/ cima (antes do haircut de PE),
+        # porque _pe_haircut_exempt na Camada de TSR já depende de is_regulated. Manter aqui causava
+        # UnboundLocalError e derrubava TODO ticker ao vivo (_analyze) → failed_tickers no screen.
         # Mercado p/ o SHRINKAGE da nota (Camada 1): BR conta a cobertura contra os 3 pilares
         # OBTENÍVEIS no BR (roic+safety+fcf) → BR bem-coberto (3/3) sai ILESO (w=1). HOLDING/FINANCIAL
         # usam o crivo próprio. Mesmo _qmkt usado depois no guardrail Bug D.
