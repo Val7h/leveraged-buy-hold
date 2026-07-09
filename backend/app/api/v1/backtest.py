@@ -1,3 +1,5 @@
+import math
+
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 
@@ -9,6 +11,18 @@ from app.quantitative.sharpe_compare import run_sharpe_compare
 router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 
+def _sanitize_floats(obj):
+    """NaN/Inf → 0.0 recursivamente. FastAPI/JSON não aceitam NaN/Inf (dá 500);
+    o schema exige float (não Optional), então 0.0 é o sentinela seguro."""
+    if isinstance(obj, float):
+        return 0.0 if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_floats(v) for v in obj]
+    return obj
+
+
 @router.post("", response_model=BacktestResult)
 def run(request: BacktestRequest):
     all_tickers = list(set(request.tickers + ["SPY"]))
@@ -16,6 +30,18 @@ def run(request: BacktestRequest):
 
     if not price_data:
         raise HTTPException(400, "Não foi possível obter dados históricos para os tickers informados")
+
+    # start_date do usuário é RESPEITADO: filtra o histórico ANTES do backtest.
+    # (antes era ignorado → a curva vinha sempre dos últimos ~5a, escondendo p.ex. a COVID.)
+    _start = getattr(request, "start_date", None)
+    if _start:
+        for _t in list(price_data.keys()):
+            try:
+                _df = price_data[_t].loc[str(_start):]
+                if len(_df) >= 60:          # mantém só se sobra histórico utilizável
+                    price_data[_t] = _df
+            except Exception:
+                pass
 
     results = run_backtest(
         price_data=price_data,
@@ -66,6 +92,9 @@ def sharpe_compare(request: SharpeCompareRequest):
         leverage=request.leverage,
         risk_free=request.risk_free,
     )
+    # XOM (e outros) podiam gerar NaN/Inf (ex: vol/beta em série com gap) → 500 na
+    # serialização JSON. Sanitiza p/ 0.0 e nunca derruba a comparação inteira.
+    items = _sanitize_floats(items)
 
     period_end = request.end or datetime.utcnow().strftime("%Y-%m-%d")
 

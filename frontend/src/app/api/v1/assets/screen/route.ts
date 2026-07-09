@@ -60,6 +60,7 @@ function mapAsset(a: any) {
     company_name: a.name,
     sector: a.is_crypto ? "Cripto" : a.is_tatico ? "Tático/Cíclico" : undefined,
     current_price: a.current_price ?? 0,
+    change_pct: a.day_change_pct ?? null,   // variação do dia (motor: day_change_pct)
     currency: a.currency || (String(a.ticker).endsWith(".SA") ? "BRL" : "USD"),
     is_brazilian: String(a.ticker).toUpperCase().endsWith(".SA"),
 
