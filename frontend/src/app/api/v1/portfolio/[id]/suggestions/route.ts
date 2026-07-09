@@ -69,7 +69,22 @@ export async function GET(req: NextRequest, { params: { id } }: RouteCtx) {
   });
   if (!portfolio) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const positions = portfolio.positions;
+  // Agrega por ticker: lotes duplicados (ex: 2× NEE) viram 1 posição (qty somada,
+  // PM ponderado) — senão a sugestão listava o MESMO ticker várias vezes.
+  const byTicker = new Map<string, { ticker: string; quantity: number; avgPrice: number }>();
+  for (const p of portfolio.positions) {
+    const q = Number(p.quantity);
+    const pm = Number(p.avgPrice);
+    const ex = byTicker.get(p.ticker);
+    if (ex) {
+      const totQ = ex.quantity + q;
+      ex.avgPrice = totQ > 0 ? (ex.quantity * ex.avgPrice + q * pm) / totQ : pm;
+      ex.quantity = totQ;
+    } else {
+      byTicker.set(p.ticker, { ticker: p.ticker, quantity: q, avgPrice: pm });
+    }
+  }
+  const positions = [...byTicker.values()];
   if (!positions.length) {
     return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
   }
