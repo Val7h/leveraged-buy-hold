@@ -429,6 +429,33 @@ def _save_ranking_to_disk(result: dict) -> None:
         logger.warning(f"[RANKING][DISK] erro ao salvar cache: {e}")
 
 
+# ── Serve-stale por ticker do screen (Watchlist/Screening) ───────────────────
+# Quando o Yahoo rate-limita um ticker, servimos o último resultado bom do disco
+# (marcado stale) em vez de sumir com o ativo. Blindado — nunca derruba o app.
+_SCREEN_CACHE_FILE = os.path.join(_DATA_DIR, "screen_assets_cache.json")
+
+
+def _load_screen_cache() -> Dict[str, dict]:
+    try:
+        if os.path.exists(_SCREEN_CACHE_FILE):
+            with open(_SCREEN_CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"[SCREEN][DISK] erro ao carregar cache: {e}")
+    return {}
+
+
+def _save_screen_cache(cache: Dict[str, dict]) -> None:
+    try:
+        os.makedirs(_DATA_DIR, exist_ok=True)
+        tmp = _SCREEN_CACHE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+        os.replace(tmp, _SCREEN_CACHE_FILE)
+    except Exception as e:
+        logger.warning(f"[SCREEN][DISK] erro ao salvar cache: {e}")
+
+
 def _load_overrides() -> Dict[str, dict]:
     """{'added': {cat: [[ticker,bucket,name],...]}, 'removed': {cat: [ticker,...]}}"""
     try:
@@ -2482,6 +2509,32 @@ def screen_assets(tickers: List[str], profile: str = "agressivo") -> dict:
     assets = [a for a in analyzed if not a.get("failed")]
     failed = [a["ticker"] for a in analyzed if a.get("failed")]
 
+    # ── Serve-stale: salva os bons; p/ os que o Yahoo derrubou, serve o último bom
+    #    do disco (marcado stale) em vez de sumir com o ativo. Tudo blindado.
+    served_stale: List[str] = []
+    try:
+        cache = _load_screen_cache()
+        now_iso = dt.datetime.utcnow().isoformat() + "Z"
+        for a in assets:
+            tk = str(a.get("ticker", "")).upper()
+            if tk:
+                cache[tk] = {"asset": a, "saved_at": now_iso}
+        still_failed: List[str] = []
+        for tk in failed:
+            entry = cache.get(str(tk).upper())
+            if entry and entry.get("asset"):
+                stale = dict(entry["asset"])
+                stale["stale"] = True
+                stale["stale_since"] = entry.get("saved_at")
+                assets.append(stale)
+                served_stale.append(tk)
+            else:
+                still_failed.append(tk)
+        failed = still_failed
+        _save_screen_cache(cache)
+    except Exception as e:
+        logger.warning(f"[SCREEN][STALE] fallback falhou: {e}")
+
     # market_state REAL: regime do S&P 500 (^GSPC) — mesma fonte/regra do Ranking. NÃO hardcoded.
     state, mult = "NEUTRO", 3
     try:
@@ -2494,6 +2547,7 @@ def screen_assets(tickers: List[str], profile: str = "agressivo") -> dict:
     return {
         "assets": assets,
         "failed_tickers": failed,
+        "served_stale": served_stale,
         "attempted_count": len(tickers or []),
         "market_state": {"state": state, "multiplier": mult},
         "generated_at": dt.datetime.utcnow().isoformat() + "Z",
