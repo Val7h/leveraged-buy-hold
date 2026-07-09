@@ -24,6 +24,7 @@ import logging
 from io import StringIO
 from typing import Optional
 
+import json
 import requests
 import pandas as pd
 
@@ -85,3 +86,57 @@ def cache_set_df(key: str, df: pd.DataFrame, ttl_seconds: int = 21600) -> None:
         logger.debug(f"[REDIS SET] {key} ({len(df)} rows, ttl={ttl_seconds}s)")
     except Exception as e:
         logger.warning(f"[REDIS SET ERROR] {key}: {e}")
+
+
+# ── Envelope p/ o _chart_api_df do ranking: df + attrs (adv_dollar, dy_headline)
+#    + dy (trailing) + annual ({ano: dy%}). Preserva tudo que o motor de 3 camadas usa.
+def cache_get_chart(key: str) -> Optional[dict]:
+    """Return {"df", "dy", "annual"} (df com attrs restaurados) ou None em miss/erro."""
+    if not _ENABLED:
+        return None
+    try:
+        resp = requests.get(f"{_URL}/get/{key}", headers=_headers(), timeout=_TIMEOUT)
+        if resp.status_code != 200:
+            return None
+        payload = resp.json().get("result")
+        if not payload:
+            return None
+        env = json.loads(payload)
+        df = pd.read_json(StringIO(env["df"]), orient="table")
+        for k, v in (env.get("attrs") or {}).items():
+            df.attrs[k] = v
+        # JSON força chaves de dict a string → volta pra int no annual ({ano: dy%})
+        annual_raw = env.get("annual") or {}
+        annual = {}
+        for k, v in annual_raw.items():
+            try:
+                annual[int(k)] = v
+            except Exception:
+                annual[k] = v
+        return {"df": df, "dy": env.get("dy"), "annual": annual}
+    except Exception as e:
+        logger.warning(f"[REDIS GET CHART ERROR] {key}: {e}")
+        return None
+
+
+def cache_set_chart(key: str, df: pd.DataFrame, dy, annual, ttl_seconds: int = 21600) -> None:
+    """Store the chart envelope (df+attrs+dy+annual). Silent no-op on disabled / erro."""
+    if not _ENABLED or df is None or df.empty:
+        return
+    try:
+        env = {
+            "df": df.to_json(orient="table"),
+            "dy": dy,
+            "annual": annual or {},
+            "attrs": {k: v for k, v in dict(df.attrs or {}).items()},
+        }
+        requests.post(
+            f"{_URL}/set/{key}",
+            params={"EX": ttl_seconds},
+            data=json.dumps(env).encode("utf-8"),
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        logger.debug(f"[REDIS SET CHART] {key} ({len(df)} rows)")
+    except Exception as e:
+        logger.warning(f"[REDIS SET CHART ERROR] {key}: {e}")

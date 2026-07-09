@@ -253,6 +253,34 @@ def _recurring_annual_amount(year_amounts: list, peer_year_totals: list) -> Opti
 
 
 def _chart_api_df(ticker: str, days: int, want_div: bool = False, want_annual: bool = False):
+    """Casca com cache Upstash sobre _chart_api_df_uncached. 100% blindada: qualquer erro
+    no cache cai pro fetch ao vivo. Chave estável por (ticker, days, want_div, want_annual)
+    — os timestamps do Yahoo mudam a cada chamada, então cacheamos o RESULTADO, não a query.
+    TTL 6h (barra diária). Serve o screening frio (44s) instantâneo e sobrevive a restart."""
+    ck = f"chart:{ticker.upper()}:{int(days)}:{int(bool(want_div))}:{int(bool(want_annual))}"
+    try:
+        from app.cache import redis_cache
+        c = redis_cache.cache_get_chart(ck)
+        if c is not None and c.get("df") is not None and len(c["df"]) >= 60:
+            return (c["df"], c["dy"], c["annual"]) if want_annual else (c["df"], c["dy"])
+    except Exception:
+        pass
+
+    res = _chart_api_df_uncached(ticker, days, want_div=want_div, want_annual=want_annual)
+
+    try:
+        df0 = res[0] if isinstance(res, tuple) else None
+        if df0 is not None and len(df0) >= 60:
+            from app.cache import redis_cache
+            dy0 = res[1] if len(res) > 1 else None
+            annual0 = res[2] if len(res) > 2 else {}
+            redis_cache.cache_set_chart(ck, df0, dy0, annual0)
+    except Exception:
+        pass
+    return res
+
+
+def _chart_api_df_uncached(ticker: str, days: int, want_div: bool = False, want_annual: bool = False):
     """
     (DataFrame[index=datetime, Close], dy_trailing[, annual_dy]) via Yahoo chart API.
     Substitui fetch_price_history (que cai em dados SINTÉTICOS qd yfinance falha).
