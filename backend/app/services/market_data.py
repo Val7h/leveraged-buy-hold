@@ -256,9 +256,12 @@ def _synthetic_price_history(ticker: str, period: str) -> pd.DataFrame:
 
 
 # period → dias corridos (p/ o chart API, que pede janela em dias, não "period")
+# 15y/20y/25y ADICIONADOS: sem eles, "20y" caía no default 1830d (=5a) e o backtest
+# só via 5 anos — escondia COVID/2008 e ignorava start_date anterior a ~2021.
 _PERIOD_DAYS: dict = {
     "1mo": 31, "3mo": 93, "6mo": 186,
-    "1y": 366, "2y": 732, "5y": 1830, "10y": 3660, "max": 9000,
+    "1y": 366, "2y": 732, "3y": 1098, "5y": 1830, "10y": 3660,
+    "15y": 5490, "20y": 7320, "25y": 9150, "max": 9200,
 }
 
 
