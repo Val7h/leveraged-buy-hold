@@ -140,3 +140,35 @@ def cache_set_chart(key: str, df: pd.DataFrame, dy, annual, ttl_seconds: int = 2
         logger.debug(f"[REDIS SET CHART] {key} ({len(df)} rows)")
     except Exception as e:
         logger.warning(f"[REDIS SET CHART ERROR] {key}: {e}")
+
+
+# ── Cache genérico de JSON (dicts) — ex: fundamentos (roe/roic/fcf/...).
+def cache_get_json(key: str):
+    """Return dict/obj cacheado ou None em miss/disabled/erro."""
+    if not _ENABLED:
+        return None
+    try:
+        resp = requests.get(f"{_URL}/get/{key}", headers=_headers(), timeout=_TIMEOUT)
+        if resp.status_code != 200:
+            return None
+        payload = resp.json().get("result")
+        return json.loads(payload) if payload else None
+    except Exception as e:
+        logger.warning(f"[REDIS GET JSON ERROR] {key}: {e}")
+        return None
+
+
+def cache_set_json(key: str, obj, ttl_seconds: int = 604800) -> None:
+    """Store dict/obj JSON com TTL (default 7d). Silent no-op em disabled/erro."""
+    if not _ENABLED or obj is None:
+        return
+    try:
+        requests.post(
+            f"{_URL}/set/{key}",
+            params={"EX": ttl_seconds},
+            data=json.dumps(obj).encode("utf-8"),
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+    except Exception as e:
+        logger.warning(f"[REDIS SET JSON ERROR] {key}: {e}")

@@ -627,6 +627,19 @@ def get_fundamentals(ticker: str) -> dict:
                     _CACHE[key] = (now + _CACHE_TTL, dict(cached))
             return cached
 
+        # Upstash (sobrevive a restart → não colapsa a Qualidade p/ 50 no cold start).
+        # Só US/não-.SA: BR usa a CVM em disco + auto-cura, não misturar. Só resultados
+        # COM fonte real são gravados (nunca o vazio degradado). Blindado.
+        if not key.endswith(".SA"):
+            try:
+                from app.cache import redis_cache
+                _c = redis_cache.cache_get_json(f"fund:{key}")
+                if _c and _c.get("source"):
+                    _CACHE[key] = (now + _CACHE_TTL, dict(_c))
+                    return dict(_c)
+            except Exception:
+                pass
+
         # sem fundamentos (crypto/índice/câmbio)
         _no_fund = _is_no_fundamentals(key)
         if _no_fund:
@@ -740,6 +753,14 @@ def get_fundamentals(ticker: str) -> dict:
                     result["data_origin"] = "ausente"
 
         _CACHE[key] = (now + _CACHE_TTL, dict(result))
+        # Persiste no Upstash só US/não-.SA e só COM fonte real (nunca o vazio degradado)
+        # → o próximo cold start serve daqui em vez de colapsar a Qualidade.
+        if not key.endswith(".SA") and result.get("source"):
+            try:
+                from app.cache import redis_cache
+                redis_cache.cache_set_json(f"fund:{key}", result, ttl_seconds=604800)
+            except Exception:
+                pass
         return result
     except Exception as e:
         logger.warning(f"[FUNDAMENTALS] get_fundamentals({ticker!r}) falhou: {e}")
