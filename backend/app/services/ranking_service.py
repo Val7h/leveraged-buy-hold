@@ -948,6 +948,12 @@ _FINANCIALS = {
     "BBSE3.SA",                 # BB Seguridade (seguradora)
     "PSSA3.SA",                 # Porto Seguro
     "BBSE3.SA",
+    # US — bancos/corretoras/seguradoras. Estavam SÓ em _FINANCEIRAS → como is_financial usa
+    # ESTE set, o crivo financeiro (elif is_financial) NUNCA rodava p/ eles → caíam no crivo
+    # industrial (ROIC/FCF inválidos p/ banco) → JPM/BAC/GS Q29. Adicionados aqui p/ ativar o
+    # crivo ROE-âncora. (V/MA ficam de fora: são redes de pagamento, não bancos — ROIC industrial vale.)
+    "JPM", "BAC", "WFC", "C", "GS", "MS", "USB", "PNC", "SCHW", "TFC", "COF", "AXP",
+    "BK", "STT", "BLK", "AIG", "MET", "PRU", "TRV", "ALL", "CB", "PGR", "AFL",
 }
 
 # UTILITIES REGULADAS / FLUXO CONTRATADO (transmissão, geração contratada, saneamento) — painel
