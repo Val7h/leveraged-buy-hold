@@ -172,6 +172,13 @@ def btc_dominance():
         val = _to_float(((d or {}).get("data") or {}).get("market_cap_percentage", {}).get("btc"))
     except Exception:
         val = None
+    if val is None:
+        # fallback Coinpaprika (datacenter-friendly) quando o CoinGecko /global está bloqueado
+        try:
+            g = _http_json("https://api.coinpaprika.com/v1/global")
+            val = _to_float((g or {}).get("bitcoin_dominance_percentage"))
+        except Exception:
+            val = None
     if val is not None:
         _cache_set("btc_dominance", val)
     return val
@@ -211,13 +218,52 @@ def _markets_snapshot():
     return out
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# FALLBACK Coinpaprika — /v1/tickers (volume 24h, market cap, rank). GRÁTIS, SEM
+# CHAVE e aceita IP de DATACENTER (o CoinGecko free BLOQUEIA o IP do Render → volume/
+# marketcap vinham None em prod, colapsando a qualidade de cripto só p/ idade/Lindy).
+# Keyed por SÍMBOLO (BTC/ETH...), primeira ocorrência = maior rank. Cache ~10min.
+# ═══════════════════════════════════════════════════════════════════════════════
+_PAPRIKA_TTL = 600
+
+
+def _markets_snapshot_paprika():
+    """{SYMBOL: {volume, market_cap, rank}} p/ top ~100. {} em falha. Cache ~10min."""
+    cached = _cache_get("markets_cp", _PAPRIKA_TTL)
+    if cached is not None:
+        return cached
+    data = _http_json("https://api.coinpaprika.com/v1/tickers?limit=100")
+    out = {}
+    if isinstance(data, list):
+        for row in data:
+            try:
+                sym = (row.get("symbol") or "").upper()
+                if not sym or sym in out:          # 1ª ocorrência = maior rank (dominante)
+                    continue
+                q = (row.get("quotes") or {}).get("USD") or {}
+                out[sym] = {
+                    "volume": _to_float(q.get("volume_24h")),
+                    "market_cap": _to_float(q.get("market_cap")),
+                    "rank": row.get("rank"),
+                }
+            except Exception:
+                continue
+    if out:
+        _cache_set("markets_cp", out)
+    return out
+
+
 def market_data(ticker: str):
-    """{volume, market_cap, rank} da moeda. None se desconhecida/sem cobertura/falha."""
-    cid = COINGECKO_ID.get(base_symbol(ticker))
-    if not cid:
-        return None
-    snap = _markets_snapshot()
-    return snap.get(cid)
+    """{volume, market_cap, rank} da moeda. CoinGecko 1º; fallback Coinpaprika (datacenter-
+    friendly) quando o CoinGecko não cobre/está bloqueado. None se ambos falharem."""
+    sym = base_symbol(ticker)
+    cid = COINGECKO_ID.get(sym)
+    if cid:
+        row = _markets_snapshot().get(cid)
+        if row and row.get("market_cap") is not None:
+            return row
+    # CoinGecko vazio (ex: IP do Render bloqueado) → fonte alternativa por símbolo
+    return _markets_snapshot_paprika().get(sym)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
