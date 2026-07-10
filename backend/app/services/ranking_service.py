@@ -370,9 +370,19 @@ def _chart_api_df_uncached(ticker: str, days: int, want_div: bool = False, want_
                 rec = _recurring_annual_amount(amts, peers)
                 by_year_rec[y] = rec if rec is not None else by_year[y]
 
-            # TRAILING 365d: usa os pagamentos reais dos últimos 365d, MAS escala pelo fator
-            # recorrente/bruto do ano de cada pagamento (assim o extraordinário do ano sai do
-            # trailing também). Conservador: nunca infla o trailing.
+            # ANUALIZAÇÃO POR FREQUÊNCIA (robusta a borda de janela): a soma crua dos últimos
+            # 365d captura 3, 4 ou 5 pagamentos conforme o calendário → subestima (JPM saía
+            # 1.0 vs 1.79 real; NEE 1.4 vs 2.84) ou infla. Correção: infere a frequência pelo
+            # GAP MEDIANO entre pagamentos e soma os N mais recentes (N = pagtos/ano), já com o
+            # fator recorrente (extraordinário removido). Piso na soma trailing-365d — nunca
+            # devolve MENOS que o que de fato caiu no ano (conservador, sem inflar).
+            all_pays = []  # (ts, amt_recorrente) — todos os pagamentos, mais recente primeiro
+            for y, lst in pagtos_ano.items():
+                fator = (by_year_rec[y] / by_year[y]) if by_year.get(y) else 1.0
+                for tsd, amt in lst:
+                    all_pays.append((tsd, amt * fator))
+            all_pays.sort(key=lambda p: p[0], reverse=True)
+
             total_brut = 0.0
             total_rec = 0.0
             for y, lst in pagtos_ano.items():
@@ -381,7 +391,33 @@ def _chart_api_df_uncached(ticker: str, days: int, want_div: bool = False, want_
                     if tsd >= cutoff:
                         total_brut += amt
                         total_rec += amt * fator
-            dy = round(total_rec / price * 100, 2) if (price and total_rec > 0) else 0.0
+
+            # GUARD DE COMPLETUDE: o Yahoo dropa eventos de dividendo de forma intermitente
+            # p/ alguns tickers (ex: JPM às vezes volta com 0 eventos → dy sairia 1.0 vs 1.79).
+            # Só confiamos no dy_chart quando ele capturou um ANO COMPLETO de pagamentos RECENTES
+            # (>= n_year nos últimos ~400d). Caso contrário devolvemos None → o _analyze cai no
+            # provider (FMP div/preço → Finnhub), que cobre o buraco. Assim o dy_chart nunca
+            # entrega um número SUBESTIMADO por falha de dados (o antigo "metade do real").
+            recent_cut = end - 400 * 86400
+            recent = [(ts, a) for ts, a in all_pays if ts >= recent_cut]
+            n_year = 4  # default trimestral
+            if len(all_pays) >= 2:
+                gaps = [all_pays[i][0] - all_pays[i + 1][0]
+                        for i in range(min(6, len(all_pays) - 1))]
+                gaps = [g for g in gaps if g > 0]
+                if gaps:
+                    med_gap = float(np.median(gaps))
+                    n_year = max(1, min(12, int(round(365 * 86400 / med_gap))))
+            if len(recent) >= n_year:
+                # ano completo recente → soma os N mais recentes (= 1 ano p/ o payer)
+                annual_rec = sum(a for _, a in recent[:n_year])
+                dy = round(annual_rec / price * 100, 2) if (price and annual_rec > 0) else 0.0
+            elif not all_pays:
+                # nenhum evento de dividendo → provável não-pagador; 0.0 (provider confirma se paga)
+                dy = 0.0
+            else:
+                # pagador com dados INCOMPLETOS (Yahoo dropou eventos) → None p/ cair no provider
+                dy = None
             # Headline informativo (DY bruto, com extraordinário) — só p/ display/transparência.
             # NÃO entra no score. Guardado em df.attrs p/ não mudar a assinatura do retorno.
             try:
