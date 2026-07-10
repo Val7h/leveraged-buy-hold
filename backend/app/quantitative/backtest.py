@@ -96,7 +96,20 @@ def _irr_monthly(cashflows: List[float]) -> Optional[float]:
     cashflows[i] = fluxo no mês i (saídas negativas: aporte inicial + mensais;
     entrada positiva: valor final). Retorna a taxa MENSAL ou None se não bracketar."""
     def npv(r: float) -> float:
-        return sum(cf / ((1.0 + r) ** i) for i, cf in enumerate(cashflows))
+        # Fator de desconto ITERATIVO com guarda de underflow: (1+r)**i com r≈-0.99 e i
+        # grande (até ~240 meses) fazia (0.01)**i → 0.0 → cf/0.0 = ZeroDivisionError (500 em
+        # backtest de história longa/volátil). Piso no df evita a divisão por zero.
+        base = 1.0 + r
+        if base < 1e-9:
+            base = 1e-9
+        total = 0.0
+        df = 1.0
+        for cf in cashflows:
+            total += cf / df
+            df *= base
+            if df < 1e-300:
+                df = 1e-300
+        return total
     lo, hi = -0.99, 1.0
     flo, fhi = npv(lo), npv(hi)
     if flo == 0:
