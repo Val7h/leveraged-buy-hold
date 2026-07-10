@@ -300,9 +300,14 @@ def _from_brapi(ticker: str) -> dict:
         out["roe"] = roe if roe is not None else None   # FRAÇÃO (brapi já manda fração; score usa roe>=0.20)
 
         # brapi às vezes manda D/E em PERCENTUAL (152.0 = 1.52x); o score usa MÚLTIPLO
-        # (limiares 0.5/3.0). D/E real > 5x é raríssimo → se vier > 5, quase certamente é % → ÷100.
+        # (limiares 0.5/3.0). AUDITORIA #5: o cutoff antigo (>5 → ÷100) INVERTIA a segurança
+        # de firmas GENUINAMENTE muito alavancadas — D/E 6-8x real (forma-razão) virava 0.06-0.08
+        # ("balanço impecável") → sobre-rating perigoso p/ leverage. Cutoff subido p/ >20: um D/E
+        # RAZÃO >20x é praticamente inexistente (quase-insolvência), então só aí é seguramente %.
+        # A zona 5-20 fica como está (razão real de firma alavancada preservada; se for % baixo,
+        # sub-estima a segurança = direção CONSERVADORA, aceitável). Fonte primária BR = CVM.
         _de = _to_float(fin.get("debtToEquity"))
-        out["debt_to_equity"] = (_de / 100.0) if (_de is not None and _de > 5.0) else _de
+        out["debt_to_equity"] = (_de / 100.0) if (_de is not None and _de > 20.0) else _de
 
         # dividendYield aparece em defaultKeyStatistics (fração, ex 0.06); fallback p/ results
         dy = _to_float(stats.get("dividendYield"))
@@ -464,7 +469,9 @@ def _from_finnhub(ticker: str) -> dict:
         # Crescimento REAL da empresa (#15a) — Finnhub manda em % (ex 8.5). O score (score_growth_5y)
         # ESPERA % (limiares 15/-5), igual ao g5 de preço que substituímos → SEM conversão (≠ roe/roic
         # que viram fração). Custo ZERO de request (mesmo metric=all). Fallback p/ YoY se não houver 5Y.
-        # ⚠️ VALIDAR AO VIVO: confirmar que o valor real vem em % (ex 8.5), não fração (0.085).
+        # ✅ VALIDADO AO VIVO (auditoria): AAPL revenueGrowthTTMYoy=12.76, revenueGrowth5Y=8.68,
+        # epsGrowthTTMYoy=29.01 — vêm em % (não fração 0.0x). Anti-faca (_KNIFE_RECENT_PCT) e score
+        # de crescimento estão na escala CERTA. NÃO converter.
         out["rev_growth_5y"] = pick("revenueGrowth5Y", "revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy")
         out["eps_growth_5y"] = pick("epsGrowth5Y", "epsGrowthTTMYoy", "epsGrowthQuarterlyYoy")
         # RECENTE (TTM YoY) separado — p/ o anti-faca #15c (apodrecimento atual). Em %.
