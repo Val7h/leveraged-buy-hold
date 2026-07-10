@@ -178,8 +178,22 @@ def _simulate_leveraged_hold(
         beta_val = 0.0
         if benchmark_df is not None:
             try:
+                # BLINDAGEM tz: normaliza índice (tira timezone + zera hora) ANTES do join.
+                # Sem isso, asset tz-aware × benchmark tz-naive não alinhavam no join="inner"
+                # → <30 pontos → beta caía p/ 0 (ex: NEE beta=0, pego por analista sênior).
+                def _tznaive(s):
+                    idx = pd.to_datetime(s.index)
+                    try:
+                        idx = idx.tz_localize(None)
+                    except (TypeError, AttributeError):
+                        try:
+                            idx = idx.tz_convert(None)
+                        except (TypeError, AttributeError):
+                            pass
+                    return pd.Series(pd.to_numeric(s.values, errors="coerce"), index=idx.normalize())
                 bench_close = benchmark_df["Close"].squeeze()
-                aligned     = pd.concat([close, bench_close], axis=1, join="inner")
+                aligned     = pd.concat([_tznaive(close), _tznaive(bench_close)],
+                                        axis=1, join="inner")
                 aligned.columns = ["asset", "bench"]
                 asset_rets  = aligned["asset"].pct_change().dropna()
                 bench_rets  = aligned["bench"].pct_change().dropna()

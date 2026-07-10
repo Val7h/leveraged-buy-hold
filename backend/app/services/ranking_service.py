@@ -1571,10 +1571,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         shp = _sharpe(a)
         rsi = _rsi(wclose if use_wk else a)                   # RSI SEMANAL
 
-        # Dividendo por CONSISTÊNCIA (média 10a + pior ano) — BR. Fallback: trailing.
-        # dy_chart já é o DY RECORRENTE (extraordinário/forward removidos em _chart_api_df) — é o
-        # que entra no score. O headline (bruto, com extraordinário) fica só p/ display.
-        dy = dy_chart if dy_chart else fund.get("dividend_yield")  # dividendos reais; fallback fund
+        # DY: FMP TTM (fund['dividend_yield']) é a fonte CONFIÁVEL — bate com a realidade
+        # (verificado por analista sênior: JPM 1.79%, NEE 2.82%). O dy_chart (recorrente do
+        # chart-API) estava saindo ~METADE do real (bug no cálculo/eventos de dividendo do Yahoo)
+        # → agora só usado como FALLBACK quando o fund não tem DY (ex: alguns .SA sem FMP).
+        _fmp_dy = fund.get("dividend_yield")
+        dy = _fmp_dy if (_fmp_dy is not None and _fmp_dy > 0) else dy_chart
         try:
             _dyh = df_full.attrs.get("dy_headline")
         except Exception:

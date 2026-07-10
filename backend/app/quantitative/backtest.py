@@ -91,6 +91,48 @@ def _compute_cagr(start_val: float, end_val: float, years: float) -> float:
     return (end_val / start_val) ** (1 / years) - 1
 
 
+def _irr_monthly(cashflows: List[float]) -> Optional[float]:
+    """Taxa mensal (IRR) que zera o NPV do fluxo de caixa. Bissecção robusta.
+    cashflows[i] = fluxo no mês i (saídas negativas: aporte inicial + mensais;
+    entrada positiva: valor final). Retorna a taxa MENSAL ou None se não bracketar."""
+    def npv(r: float) -> float:
+        return sum(cf / ((1.0 + r) ** i) for i, cf in enumerate(cashflows))
+    lo, hi = -0.99, 1.0
+    flo, fhi = npv(lo), npv(hi)
+    if flo == 0:
+        return lo
+    if flo * fhi > 0:            # sem troca de sinal → não dá p/ bracketar
+        return None
+    for _ in range(200):
+        mid = (lo + hi) / 2.0
+        fm = npv(mid)
+        if abs(fm) < 1e-7:
+            return mid
+        if flo * fm < 0:
+            hi = mid
+        else:
+            lo, flo = mid, fm
+    return (lo + hi) / 2.0
+
+
+def _money_weighted_cagr(start_val: float, monthly_contribution: float,
+                         end_val: float, years: float) -> float:
+    """CAGR money-weighted (IRR anualizado) p/ carteira COM aportes. Sem aporte,
+    reduz ao CAGR simples. Corrige o bug de contar os aportes como 'retorno'."""
+    n_months = max(1, int(round(years * 12)))
+    mc = monthly_contribution if monthly_contribution and monthly_contribution > 0 else 0.0
+    if mc <= 0:
+        return _compute_cagr(start_val, end_val, years)
+    cf = [-start_val] + [-mc] * n_months
+    cf[-1] += end_val                       # valor final entra no último mês
+    r = _irr_monthly(cf)
+    if r is None:
+        # fallback: retorno sobre o capital TOTAL investido, anualizado
+        total_in = start_val + mc * n_months
+        return _compute_cagr(total_in, end_val, years)
+    return (1.0 + r) ** 12 - 1.0
+
+
 def _compute_calmar(cagr: float, max_dd_pct: float) -> float:
     if max_dd_pct == 0:
         return 0.0
@@ -399,10 +441,16 @@ def compute_strategy_metrics(
     equity_series: pd.Series,
     strategy_name: str,
     risk_free: float = 0.04,
+    monthly_contribution: float = 0.0,
 ) -> Dict:
     start_val = float(equity_series.iloc[0])
     end_val   = float(equity_series.iloc[-1])
     years     = len(equity_series) / 252
+    # Capital REALMENTE investido = inicial + aportes. Sem isso, os aportes eram
+    # contados como 'retorno' → CAGR/retorno inflados ~3x (ex NEE 2020-26: 19% vs ~7% real).
+    _n_months  = max(1, int(round(years * 12)))
+    _mc        = monthly_contribution if monthly_contribution and monthly_contribution > 0 else 0.0
+    total_invested = start_val + _mc * _n_months
 
     # Handle margin-call scenario (equity reached 0)
     if end_val <= 0 or start_val <= 0:
@@ -425,8 +473,9 @@ def compute_strategy_metrics(
     log_returns  = np.log(equity_series / equity_series.shift(1)).dropna()
     dd_series    = _compute_drawdown_series(equity_series)
     max_dd       = float(dd_series.min())
-    cagr         = _compute_cagr(start_val, end_val, years)
-    total_return = (end_val / start_val - 1) * 100
+    # CAGR money-weighted (IRR) e retorno sobre o capital TOTAL investido (não só o inicial).
+    cagr         = _money_weighted_cagr(start_val, _mc, end_val, years)
+    total_return = (end_val / total_invested - 1) * 100 if total_invested > 0 else 0.0
     ann_vol      = float(log_returns.std() * np.sqrt(252)) if len(log_returns) > 0 else 0.0
     excess       = log_returns - risk_free / 252
     sharpe_val   = float(excess.mean() / excess.std() * np.sqrt(252)) if excess.std() > 0 else 0.0
@@ -451,6 +500,7 @@ def compute_strategy_metrics(
         "win_rate_pct":       round(win_rate * 100, 2),
         "final_value":        round(end_val, 2),
         "initial_value":      round(start_val, 2),
+        "total_invested":     round(total_invested, 2),
     }
 
 
@@ -708,7 +758,8 @@ def run_backtest(
 
     equity_curves = {k: v["equity"] for k, v in strategies.items()}
 
-    metrics = [compute_strategy_metrics(eq, name) for name, eq in equity_curves.items()]
+    metrics = [compute_strategy_metrics(eq, name, monthly_contribution=monthly_contribution)
+               for name, eq in equity_curves.items()]
 
     crisis_analysis = []
     for period in CRISIS_PERIODS:
@@ -742,7 +793,8 @@ def run_backtest(
         ]
 
     # ── Gross × Net: CAGR bruto vs líquido do adaptativo ──────────────────────
-    gross_metrics = compute_strategy_metrics(adaptive_gross_df["equity"], "adaptive_gross")
+    gross_metrics = compute_strategy_metrics(adaptive_gross_df["equity"], "adaptive_gross",
+                                             monthly_contribution=monthly_contribution)
     cost_breakdown = {
         "applied":         apply_costs,
         "slippage_pct":    round(slippage_pct * 100, 3),
