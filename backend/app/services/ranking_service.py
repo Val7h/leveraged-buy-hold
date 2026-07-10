@@ -376,11 +376,16 @@ def _chart_api_df_uncached(ticker: str, days: int, want_div: bool = False, want_
             # GAP MEDIANO entre pagamentos e soma os N mais recentes (N = pagtos/ano), já com o
             # fator recorrente (extraordinário removido). Piso na soma trailing-365d — nunca
             # devolve MENOS que o que de fato caiu no ano (conservador, sem inflar).
-            all_pays = []  # (ts, amt_recorrente) — todos os pagamentos, mais recente primeiro
+            # Para o YIELD ATUAL usamos os pagamentos CRUS (sem o fator de ano). O fator de
+            # "ano que saltou" (regra b de _recurring_annual_amount) compara contra a mediana
+            # de 25 ANOS — que p/ dividendos que CRESCERAM muito (JPM: cortou em 2009, depois
+            # cresceu ~10×) trata o dividendo atual como "inflado" e o CORTA (JPM saía 1.0 vs
+            # 1.79). O extraordinário pontual (tipo ITUB4) é pego abaixo pelo filtro POR-PAGAMENTO
+            # entre os N recentes — sem punir crescimento legítimo.
+            all_pays = []  # (ts, amt_CRU) — todos os pagamentos, mais recente primeiro
             for y, lst in pagtos_ano.items():
-                fator = (by_year_rec[y] / by_year[y]) if by_year.get(y) else 1.0
                 for tsd, amt in lst:
-                    all_pays.append((tsd, amt * fator))
+                    all_pays.append((tsd, amt))
             all_pays.sort(key=lambda p: p[0], reverse=True)
 
             total_brut = 0.0
@@ -409,8 +414,18 @@ def _chart_api_df_uncached(ticker: str, days: int, want_div: bool = False, want_
                     med_gap = float(np.median(gaps))
                     n_year = max(1, min(12, int(round(365 * 86400 / med_gap))))
             if len(recent) >= n_year:
-                # ano completo recente → soma os N mais recentes (= 1 ano p/ o payer)
-                annual_rec = sum(a for _, a in recent[:n_year])
+                # ano completo recente → os N pagamentos mais recentes (= 1 ano p/ o payer).
+                # Filtro POR-PAGAMENTO (regra a): se UM salta > 2× a mediana dos outros N-1, é
+                # extraordinário pontual → substitui pela mediana (normaliza, não zera). Pega o
+                # especial tipo ITUB4 sem cortar dividendo que só cresceu.
+                amts = [a for _, a in recent[:n_year]]
+                if len(amts) >= 3:
+                    for i, p in enumerate(amts):
+                        outros = amts[:i] + amts[i + 1:]
+                        med = float(np.median(outros))
+                        if med > 0 and p > _EXTRA_PAGTO_MULT * med:
+                            amts[i] = med
+                annual_rec = sum(amts)
                 dy = round(annual_rec / price * 100, 2) if (price and annual_rec > 0) else 0.0
             elif not all_pays:
                 # nenhum evento de dividendo → provável não-pagador; 0.0 (provider confirma se paga)
