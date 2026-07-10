@@ -55,11 +55,14 @@ def run(request: BacktestRequest):
         mc_paths=request.mc_paths,
     )
 
-    return {
+    # NaN/Inf → 0.0: backtests de história longa em ativos que quase quebraram (ex: JPM na
+    # GFC 2008, com quase-liquidação) geram métricas NaN/Inf que estouram o JSON render
+    # (ValueError: Out of range float values → 500). Mesma blindagem já usada no sharpe-compare.
+    return _sanitize_floats({
         **results,
         "request":      request,
         "completed_at": datetime.utcnow(),
-    }
+    })
 
 
 @router.post("/sharpe-compare", response_model=SharpeCompareResult)
