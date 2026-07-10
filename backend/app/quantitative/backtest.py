@@ -492,10 +492,38 @@ def build_basket_df(
     if not used:
         # fallback: usa o que houver
         used = [t for t in price_data.keys()][:1]
-    # alinha todos na interseção de datas
-    closes = pd.concat(
-        {t: price_data[t]["Close"].squeeze() for t in used}, axis=1
-    ).dropna()
+
+    # BLINDAGEM: normaliza o índice (tira timezone + zera a hora) ANTES do concat.
+    # Sem isso, misturar séries tz-aware (ex: cache de um ETF) com tz-naive desalinhava
+    # tudo → o dropna zerava a cesta (equity-curve VAZIA p/ carteira com ETF recente +
+    # ações antigas, ex JEPQ+AAPL). numeric coerce evita string quebrando o pct_change.
+    def _col(t, field):
+        src = price_data[t]
+        s = (src["Low"].squeeze() if field == "Low" and "Low" in src.columns
+             else src["Close"].squeeze() * (0.995 if field == "Low" else 1.0))
+        idx = pd.to_datetime(s.index)
+        try:
+            idx = idx.tz_localize(None)
+        except (TypeError, AttributeError):
+            try:
+                idx = idx.tz_convert(None)
+            except (TypeError, AttributeError):
+                pass
+        out = pd.Series(pd.to_numeric(s.values, errors="coerce"), index=idx.normalize())
+        return out[~out.index.duplicated(keep="last")]
+
+    close_series = {t: _col(t, "Close") for t in used}
+    closes = pd.concat(close_series, axis=1).dropna()
+
+    # Se a interseção ficou degenerada (ex: JEPQ começa 2022 e desalinha demais), remove
+    # o ticker de histórico MAIS CURTO e tenta de novo — a cesta usa os componentes com
+    # janela comum utilizável em vez de zerar a curva por causa de 1 ativo novo.
+    while len(closes) < 60 and len(close_series) > 1:
+        shortest = min(close_series, key=lambda k: len(close_series[k]))
+        del close_series[shortest]
+        used = [t for t in used if t != shortest]
+        closes = pd.concat(close_series, axis=1).dropna()
+
     if closes.empty or len(closes) < 2:
         # série degenerada: devolve o primeiro componente cru
         df = price_data[used[0]].copy()
@@ -507,9 +535,7 @@ def build_basket_df(
 
     # Low intradiário da cesta: aplica a razão média Low/Close do dia ao close da cesta
     lows = pd.concat(
-        {t: (price_data[t]["Low"].squeeze() if "Low" in price_data[t].columns
-             else price_data[t]["Close"].squeeze() * 0.995) for t in used},
-        axis=1,
+        {t: _col(t, "Low") for t in used}, axis=1,
     ).reindex(closes.index).ffill()
     low_ratio = (lows / closes).mean(axis=1).clip(upper=1.0).fillna(0.995)
     basket_low = basket_close * low_ratio
