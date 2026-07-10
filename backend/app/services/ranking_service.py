@@ -1571,14 +1571,19 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         shp = _sharpe(a)
         rsi = _rsi(wclose if use_wk else a)                   # RSI SEMANAL
 
-        # DY = dividendo_anual/ação ÷ PREÇO ATUAL (mesma data). Analista sênior: o yield-TTM
-        # dos provedores (FMP/chart) usa preço DEFASADO → inflava/deflava (KO 3.1% vs 2.5% real
-        # por preço de 2023; NEE saía metade). Computar via div÷preço_atual mata os dois de uma vez.
-        # Fallbacks: yield-TTM do FMP → dy_chart (só quando não há dividendo/ação, ex .SA sem FMP).
+        # DY: o dy_chart (soma dos dividendos RECORRENTES dos últimos 365d ÷ preço ATUAL, via
+        # Yahoo chart) é a fonte PRIMÁRIA — é a mais precisa E sem-quota. Validado por analista
+        # sênior vs mercado real: KO 2.5 (real 2.52), JNJ 2.0 (1.9), PG 2.9 (2.86), JPM 1.8 (1.79),
+        # AAPL 0.3, MSFT 0.9, NVDA 0 — todos batem. O yield-TTM dos provedores (Finnhub/FMP) usa
+        # preço/dividendo DEFASADO e INFLAVA (KO saía 3.1 pelo Finnhub); doutrina = subestimar na
+        # dúvida, nunca inflar o carry. FMP div/preço e o provider entram só como FALLBACK quando
+        # o Yahoo não trouxe dividendos (Stooq-only / alguns .SA sem eventos).
         _dps   = fund.get("dividend_per_share")
         _cur   = float(a[-1]) if (a is not None and len(a)) else None
         _fmp_dy = fund.get("dividend_yield")
-        if _dps is not None and _dps > 0 and _cur and _cur > 0:
+        if dy_chart is not None and dy_chart > 0:
+            dy = dy_chart
+        elif _dps is not None and _dps > 0 and _cur and _cur > 0:
             dy = round(_dps / _cur * 100.0, 2)
         elif _fmp_dy is not None and _fmp_dy > 0:
             dy = _fmp_dy
