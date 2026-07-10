@@ -1247,7 +1247,12 @@ def score_financial_quality(roe=None, dy_avg10=None, dy_worst=None, dividend_yie
     dividendo (segue thin honestamente). NÃO pune D/E (estrutural no setor).
     Haircut de sustentabilidade: payout > 100% = dividendo insustentável (erosão de capital)
     → ROE-efetivo reduzido proporcionalmente (cap de -50%). Ex: BRSR6 payout 210% → ROE×0.5.
-    Pesos: ROE 40% · Dividendo 20% · Resiliência 20% · Valuation 20%."""
+    Pesos: ROE 50% · Dividendo 20% · Resiliência 10% · Valuation 20%.
+    NOTA (decisão Valth): a Resiliência foi SUAVIZADA de 20%→10% p/ bancos. O drawdown
+    profundo em crise é característica SETORIAL do banco (todos caem ~70% em 2008), não
+    fraqueza da empresa — penalizá-lo com peso alto rebaixava bancos de elite (JPM) injustamente.
+    O peso migrou p/ o ROE (âncora real de qualidade bancária). A Camada 3 (alavancagem) ainda
+    limita a exposição em crise, então a prudência survival-first fica lá, não na nota de qualidade."""
     # Haircut de sustentabilidade: payout > 1.0 = empresa paga mais do que ganha → ROE artificial.
     # Reduz ROE-efetivo: cada % acima de 100% de payout = 1% de desconto (cap 50%).
     roe_effective = roe
@@ -1262,8 +1267,8 @@ def score_financial_quality(roe=None, dy_avg10=None, dy_worst=None, dividend_yie
     s_valuation = _q_valuation_abs(pe_ratio)
     comps = []
     bd = {}
-    for s, w, k in ((s_roe, 0.40, "roe_nivel"), (s_div, 0.20, "dividendos"),
-                    (s_dd, 0.20, "resiliencia_queda"), (s_valuation, 0.20, "valuation_abs")):
+    for s, w, k in ((s_roe, 0.50, "roe_nivel"), (s_div, 0.20, "dividendos"),
+                    (s_dd, 0.10, "resiliencia_queda"), (s_valuation, 0.20, "valuation_abs")):
         if s is not None:
             comps.append((s, w))
             bd[k] = round(s)
