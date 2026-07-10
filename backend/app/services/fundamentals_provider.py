@@ -501,18 +501,25 @@ def _from_fmp(ticker: str) -> dict:
         logger.warning("[FUNDAMENTALS] FMP_API_KEY ausente — %s sem fundamentos", ticker)
         return out
 
-    # 1) ratios-ttm → fundamentos. BEST-EFFORT: se falhar, NÃO impede o beta (passo 2).
-    url = (f"https://financialmodelingprep.com/api/v3/ratios-ttm/"
-           f"{_urlparse.quote(ticker)}?apikey={_urlparse.quote(key)}")
-    data = _http_json(url)
-    row = {}
-    if isinstance(data, list) and data and isinstance(data[0], dict):
-        row = data[0]
-    elif isinstance(data, dict):
-        if "Error Message" in data or "error" in data:
-            logger.warning("[FUNDAMENTALS] FMP ratios erro p/ %s: %s", ticker, str(data)[:200])
-        else:
-            row = data
+    # 1) FMP API NOVA (/stable): os /api/v3/ viraram LEGACY (mortos p/ chaves pós-ago/2025).
+    #    ratios-ttm (payout/D-E/DY/PE) + key-metrics-ttm (ROE/ROIC/FCF-yield — o ROE, crítico
+    #    p/ o crivo de banco, SÓ está em key-metrics). 2 chamadas/ticker, mas o cache de 7d
+    #    (get_fundamentals) mantém MUITO abaixo dos 250/dia do plano grátis.
+    def _fmp_stable(path: str) -> dict:
+        u = (f"https://financialmodelingprep.com/stable/{path}"
+             f"&apikey={_urlparse.quote(key)}")
+        d = _http_json(u)
+        if isinstance(d, list) and d and isinstance(d[0], dict):
+            return d[0]
+        if isinstance(d, dict) and not ("Error Message" in d or "error" in d):
+            return d
+        if isinstance(d, dict) and ("Error Message" in d or "error" in d):
+            logger.warning("[FUNDAMENTALS] FMP erro p/ %s (%s): %s", ticker, path, str(d)[:160])
+        return {}
+    _tq = _urlparse.quote(ticker)
+    _ratios = _fmp_stable(f"ratios-ttm?symbol={_tq}")
+    _metrics = _fmp_stable(f"key-metrics-ttm?symbol={_tq}")
+    row = {**_metrics, **_ratios}  # ratios sobrepõe em conflito de nome
     try:
         if row:
             def pick(*names):
@@ -525,11 +532,11 @@ def _from_fmp(ticker: str) -> dict:
 
             roe = pick("returnOnEquityTTM")
             out["roe"] = roe if roe is not None else None   # FRAÇÃO (FMP já manda fração; score usa roe>=0.20)
-            # roic: FMP ratios-ttm entrega como FRAÇÃO (ex 0.15), igual payout → SEM ÷100; score usa roic >= 0.15
-            out["roic"] = pick("roicTTM", "returnOnCapitalEmployedTTM")
-            out["payout_ratio"] = pick("payoutRatioTTM")
+            # roic: FRAÇÃO (ex 0.15). /stable = returnOnInvestedCapitalTTM; nomes v3 mantidos p/ robustez.
+            out["roic"] = pick("returnOnInvestedCapitalTTM", "roicTTM", "returnOnCapitalEmployedTTM")
+            out["payout_ratio"] = pick("dividendPayoutRatioTTM", "payoutRatioTTM")
             out["debt_to_equity"] = pick(
-                "debtEquityRatioTTM", "debtToEquityTTM", "debtToEquityRatioTTM")
+                "debtToEquityRatioTTM", "debtEquityRatioTTM", "debtToEquityTTM")
             dy_pct = pick("dividendYieldPercentageTTM")
             if dy_pct is not None:
                 out["dividend_yield"] = dy_pct
@@ -541,9 +548,9 @@ def _from_fmp(ticker: str) -> dict:
             # FMP grátis raramente traz freeCashFlowYieldTTM; expõe FCF absoluto para
             # ranking_service derivar o yield via fcf_abs_ttm ÷ market_cap (como faz p/ BR).
             if fcf is None:
-                out["fcf_abs_ttm"] = pick("freeCashFlowTTM")
-            # pe_ratio: priceEarningsRatioTTM (FMP)
-            _pe = pick("priceEarningsRatioTTM")
+                out["fcf_abs_ttm"] = pick("freeCashFlowTTM", "freeCashFlowToEquityTTM")
+            # pe_ratio: /stable = priceToEarningsRatioTTM; v3 = priceEarningsRatioTTM
+            _pe = pick("priceToEarningsRatioTTM", "priceEarningsRatioTTM")
             if _pe is not None and _pe > 0:
                 out["pe_ratio"] = _pe
     except Exception as e:
