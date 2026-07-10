@@ -59,7 +59,8 @@ const VERDICT_STYLE = {
   COMPRAR: "text-primary bg-primary/10 border-primary/40",
   JUSTO: "text-warning bg-warning/10 border-warning/30",
   ESPECULATIVO: "text-danger bg-danger/10 border-danger/40",
-  ESTICADO: "text-text-muted bg-surface-2 border-border",
+  // ESTICADO = atenção/amarelo (consistente com o Screening: qualidade OK, timing ruim).
+  ESTICADO: "text-warning bg-warning/10 border-warning/30",
   RESERVA: "text-[#C084FC] bg-[#C084FC]/10 border-[#C084FC]/40",
 };
 const VERDICT_DOT = {
@@ -67,7 +68,7 @@ const VERDICT_DOT = {
   COMPRAR: "bg-primary shadow-[0_0_8px_#00E5FF]",
   JUSTO: "bg-warning",
   ESPECULATIVO: "bg-danger",
-  ESTICADO: "bg-text-muted",
+  ESTICADO: "bg-warning",
   RESERVA: "bg-[#C084FC]",
 };
 const BUYABLE = new Set(["COMPRAR FORTE", "COMPRAR"]);
@@ -499,6 +500,19 @@ function momentumRaw(a) {
 /* Helpers p/ badges novos                                             */
 /* ------------------------------------------------------------------ */
 
+// "atualizado há X min" a partir de um ISO timestamp (generated_at do payload).
+function fmtAgo(iso) {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (mins < 1) return "agora mesmo";
+  if (mins < 60) return `há ${mins} min`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `há ${h}h`;
+  return `há ${Math.floor(h / 24)}d`;
+}
+
 function medalEmoji(rank) {
   if (rank === 1) return "🥇";
   if (rank === 2) return "🥈";
@@ -530,10 +544,28 @@ function LayerBadge({ label, value }) {
   );
 }
 
-// Badge de tier de sobrevivência baseado em composite_score ou score.
+// Badge de tier de sobrevivência: qualidade × momento MAS travado pelo drawdown.
+// REGRA DURA: um ativo com máx. queda pior que −60% NUNCA pode ser "Elite"/"Sólido"
+// num selo de SOBREVIVÊNCIA (BTC −79%, DOGE −92%) — é rebaixado a "Frágil".
 function SurvivalTierBadge({ asset }) {
   const score = asset.composite_score ?? asset.score ?? asset.quality ?? 0;
-  const v = Number(score) || 0;
+  let v = Number(score) || 0;
+  // Pega a pior queda conhecida (histórica completa quando houver).
+  const dd = [asset.max_dd_full, asset.max_dd]
+    .map((x) => (x == null ? null : Number(x)))
+    .filter((x) => x != null && Number.isFinite(x))
+    .reduce((worst, x) => (worst == null ? x : Math.min(worst, x)), null);
+  const catastrophic = dd != null && dd < -60;
+  if (catastrophic) {
+    return (
+      <span
+        title={`Máx. queda ${Math.round(dd)}% — pior que −60%: rebaixado a Frágil no selo de sobrevivência`}
+        className="inline-flex items-center text-[9px] font-semibold text-danger bg-danger/10 border border-danger/30 rounded px-1.5 py-0.5 shrink-0"
+      >
+        Frágil
+      </span>
+    );
+  }
   if (v >= 75) {
     return (
       <span className="inline-flex items-center text-[9px] font-semibold text-[#C084FC] bg-[#C084FC]/10 border border-[#C084FC]/30 rounded px-1.5 py-0.5 shrink-0">
@@ -674,6 +706,27 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
           <span className={`inline-block self-start px-2 py-1 rounded-md text-[11px] font-semibold border whitespace-nowrap ${verdictCls}`}>
             {asset.verdict}
           </span>
+          {/* Risco no MESMO campo visual da recomendação: máx. queda + alavancagem >1x. */}
+          {(asset.max_dd != null || (asset.leverage != null && asset.leverage > 1)) && (
+            <div className="flex items-center gap-1 flex-wrap">
+              {asset.max_dd != null && (
+                <span
+                  title="Pior queda histórica do ativo (max drawdown)"
+                  className="inline-flex items-center self-start text-[9px] font-semibold text-danger bg-danger/10 border border-danger/30 rounded px-1.5 py-0.5 whitespace-nowrap"
+                >
+                  máx. queda {Math.round(asset.max_dd)}%
+                </span>
+              )}
+              {asset.leverage != null && asset.leverage > 1 && (
+                <span
+                  title="Alavancagem sugerida — amplia ganhos E perdas"
+                  className="inline-flex items-center self-start text-[9px] font-semibold text-[#C084FC] bg-[#C084FC]/10 border border-[#C084FC]/30 rounded px-1.5 py-0.5 whitespace-nowrap"
+                >
+                  ⚡ {fmtNum(asset.leverage, 1)}x
+                </span>
+              )}
+            </div>
+          )}
           {asset.dividend_yield > 0 && (
             <span className="sm:hidden inline-flex self-start items-center text-[9px] font-semibold text-success bg-success/10 border border-success/30 rounded px-1.5 py-0.5">
               DY {fmtPct(asset.dividend_yield).replace("+", "")}
@@ -1357,6 +1410,12 @@ export default function RankingPage() {
             <p className="text-sm text-text-secondary mt-1">
               Onde colocar o próximo aporte — qualidade × momento, por categoria.
             </p>
+            {/* Aviso de risco persistente: os vereditos são sinais do modelo, não ordem de compra. */}
+            <p className="text-[11px] text-text-muted mt-1 flex items-center gap-1.5 max-w-xl leading-relaxed">
+              <AlertCircle size={11} className="text-warning shrink-0" />
+              Sinais quantitativos do modelo — não são recomendação de compra/venda (CVM Of-Circ 04/2023).
+              Alavancagem amplia perdas; observe a máx. queda de cada ativo.
+            </p>
             {showLeverage && (
               <>
                 <p className="text-xs text-[#C084FC] mt-1 flex items-center gap-1.5">
@@ -1402,9 +1461,21 @@ export default function RankingPage() {
                 />
               </span>
             </button>
-            <button onClick={fetchRanking} disabled={rankLoading} className="btn-ghost flex items-center gap-2 text-sm">
-              <RefreshCw size={14} className={rankLoading ? "animate-spin" : ""} /> Recalcular
-            </button>
+            <div className="flex items-center gap-2">
+              {ranking?.generated_at && !rankLoading && (
+                <span className="text-[11px] text-text-muted whitespace-nowrap" title={`Ranking gerado em ${new Date(ranking.generated_at).toLocaleString("pt-BR")}`}>
+                  atualizado {fmtAgo(ranking.generated_at)}
+                </span>
+              )}
+              <button
+                onClick={fetchRanking}
+                disabled={rankLoading}
+                title="Relê o ranking mais recente (cache ~20min). Não recomputa do zero."
+                className="btn-ghost flex items-center gap-2 text-sm"
+              >
+                <RefreshCw size={14} className={rankLoading ? "animate-spin" : ""} /> Atualizar
+              </button>
+            </div>
           </div>
         </div>
 

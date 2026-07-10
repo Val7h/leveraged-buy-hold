@@ -60,6 +60,10 @@ function mapAsset(a: any) {
   // GUARDA DE SOBRECOMPRADO (Qualidade ≠ Timing): um nome ESTICADO (RSI semanal ≥ 70)
   // NÃO pode ostentar "OPORTUNIDADE (FORTE)" — empresa ótima não é boa HORA de entrar.
   // Rebaixa o rótulo verde p/ amarelo "ESTICADO" e explica; NÃO mexe nos scores do motor.
+  // NOTA (fonte-de-verdade): a partir da correção do backend, o próprio verdict do
+  // ranking já emite "ESTICADO" de forma consistente (mesma regra RSI≥70). Esta guarda
+  // fica como rede de segurança/retrocompat para o BFF do Screening; não remover sem
+  // confirmar que o backend cobre TODOS os caminhos (screen + ranking).
   const rsiW = typeof a.rsi === "number" ? a.rsi : null;
   if (rsiW != null && rsiW >= 70 && sigColor === "green") {
     sigLabel = "ESTICADO";

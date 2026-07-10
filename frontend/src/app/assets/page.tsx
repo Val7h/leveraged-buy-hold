@@ -298,7 +298,8 @@ function AssetsPageInner() {
   const filtered = useMemo(() => {
     let list = (result?.assets ?? []).slice();
 
-    if (caps.hasDY && minDY > 0) list = list.filter((a) => dyOf(a) >= minDY / 100 || dyOf(a) >= minDY);
+    // DY já vem em PONTOS PERCENTUAIS (ex.: 10.5 = 10,5%) → compara direto em %.
+    if (caps.hasDY && minDY > 0) list = list.filter((a) => dyOf(a) >= minDY);
     if (caps.hasVerdict && buyOnly) {
       list = list.filter((a) => a.verdict === "COMPRAR" || a.verdict === "COMPRAR FORTE");
     }
@@ -356,7 +357,7 @@ function AssetsPageInner() {
     const rows = filtered.map((a) => [
       a.ticker, a.company_name ?? "", a.verdict ?? "", rankOf(a).toFixed(1),
       qualityOf(a).toFixed(1), momentumOf(a).toFixed(1), levOf(a).toFixed(2),
-      betaOf(a) ?? "", (dyOf(a) <= 1 ? dyOf(a) * 100 : dyOf(a)).toFixed(2),
+      betaOf(a) ?? "", dyOf(a).toFixed(2),
       a.risk_rating ?? "", sectorOf(a), num(a.current_price) ?? "",
     ]);
     const csv = [cols.join(","), ...rows.map((r) => r.map(esc).join(","))].join("\n");

@@ -37,7 +37,9 @@ from app.quantitative import scoring_v2 as S
 from app.quantitative import profiles
 from app.quantitative import accumulation as A
 from app.quantitative import indicators_v2 as I
-from app.services.market_data import fetch_price_history, fetch_fundamentals
+# NOTA: market_data.fetch_price_history/fetch_fundamentals NÃO são importados aqui — este módulo
+# usa o caminho próprio via Yahoo chart API (_chart_api_df) + fundamentals_provider. Import morto
+# removido (#6): as menções a fetch_price_history/fetch_fundamentals no doc/comentários são históricas.
 try:
     from app.services.fundamentals_provider import get_fundamentals
 except Exception:  # módulo ausente/erro → fundamentos ficam neutros, não derruba o ranking
@@ -942,6 +944,10 @@ MULT = {"CAPIT.EXTREMA": 5, "CAPITULACAO": 4, "NEUTRO": 3, "TOPO": 2}
 
 # #15b — financeiras/bancos: no crivo de qualidade, ROIC e FCF não fazem sentido e D/E alto é o
 # NEGÓCIO (não risco). Whitelist curada (honesta/barata/auditável — não há setor parseado das fontes).
+# ⚠️ DEPRECADO (#3): NÃO é mais o conjunto canônico. O crivo financeiro e _is_financial agora usam
+# O MESMO conjunto — _FINANCIALS (ver abaixo). _FINANCEIRAS ficou desalinhado de _FINANCIALS (bancos
+# WFC/C/MS/USB/PNC/... caíam no crivo INDUSTRIAL; V/MA — redes de pagamento — recebiam crivo
+# financeiro indevido). Mantido só como referência histórica; não referenciar em código novo.
 _FINANCEIRAS = {
     # BR — bancos
     "ITUB4.SA", "ITUB3.SA", "BBAS3.SA", "BBDC4.SA", "BBDC3.SA", "SANB11.SA",
@@ -988,6 +994,11 @@ _HOLDING_SECTOR_HINTS = ("holding", "participaç", "participac", "diversified ho
 # seguradora é alavanca de retorno). Resultado era ruído (ITUB4 Q47, BPAC11 Q19, BRSR6 Q80).
 # Estas usam a QUALIDADE FINANCEIRA (ROE-âncora + dividendo + resiliência). NÃO inclui holdings
 # (CXSE3 já é holding) nem a B3 (bolsa, ROIC industrial faz sentido).
+# ✅ CANÔNICO (#3): ESTE é o conjunto único usado tanto por _is_financial QUANTO pelo tipo_crivo
+# financeiro (antes o tipo_crivo testava _FINANCEIRAS, desalinhado → bancos US ganhavam crivo
+# industrial). Regra da união: bancos/corretoras/seguradoras = FINANCEIRO; V/MA (redes de pagamento)
+# e B3 (bolsa) permanecem INDUSTRIAIS nos dois caminhos (fora deste set). Bancos europeus adicionados
+# p/ preservar o crivo financeiro que _FINANCEIRAS lhes dava.
 _FINANCIALS = {
     "ITUB4.SA", "ITUB3.SA",     # Itaú
     "BBDC4.SA", "BBDC3.SA",     # Bradesco
@@ -1005,6 +1016,8 @@ _FINANCIALS = {
     # crivo ROE-âncora. (V/MA ficam de fora: são redes de pagamento, não bancos — ROIC industrial vale.)
     "JPM", "BAC", "WFC", "C", "GS", "MS", "USB", "PNC", "SCHW", "TFC", "COF", "AXP",
     "BK", "STT", "BLK", "AIG", "MET", "PRU", "TRV", "ALL", "CB", "PGR", "AFL",
+    # EUROPA — bancos (migrados de _FINANCEIRAS p/ preservar o crivo financeiro na unificação #3).
+    "HSBC", "SAN", "BBVA", "UBS", "ING",
 }
 
 # UTILITIES REGULADAS / FLUXO CONTRATADO (transmissão, geração contratada, saneamento) — painel
@@ -1177,6 +1190,29 @@ def _round_or_none(v, ndigits=1):
     return round(v, ndigits) if v is not None else None
 
 
+def _apply_momentum_guardrails(verdict: str, momentum: float, cat: str, bucket: str,
+                               dy, dy_avg10, pe, tsr, pvp) -> str:
+    """Guard-rails momento-DEPENDENTES do veredito (#1). DEVEM rodar nos DOIS passos do momentum
+    (1º passo em _analyze e 2º passo cross-sectional em _verdict_from_momentum) — senão um ativo
+    esticado/caro/TSR-negativo marcado no 1º passo volta a COMPRAR no ranking final. Lógica/limiares
+    IDÊNTICOS aos originais de _analyze; só extraídos p/ chamada compartilhada.
+      (a) late-cycle: momentum≥65 + DY comprimido (<80% da média 10a) + PE>14 → ESTICADO
+      (b) TSR esperado negativo → JUSTO
+      (c) gate FII P/VP (prêmio > limiar) → ESTICADO
+    """
+    _dy_comprimido = (dy is not None and dy_avg10 is not None
+                      and dy_avg10 > 0 and dy < dy_avg10 * 0.80)
+    if (momentum >= 65 and _dy_comprimido and verdict in ("COMPRAR FORTE", "COMPRAR")):
+        if pe is not None and pe > 14.0:
+            verdict = "ESTICADO"
+    if (tsr is not None and tsr < 0 and bucket != "RESERVA"
+            and verdict in ("COMPRAR FORTE", "COMPRAR")):
+        verdict = "JUSTO"
+    if cat == "FII" and S.fii_pvp_gate(pvp) and verdict in ("COMPRAR FORTE", "COMPRAR"):
+        verdict = "ESTICADO"
+    return verdict
+
+
 def _verdict_from_momentum(momentum: float, st: dict, cat: str) -> str:
     """Re-deriva o veredito a partir de um NOVO momento (2º passo do momentum relativo da Camada 2),
     reaplicando os mesmos ajustadores momento-INDEPENDENTES já decididos no 1º passo (anti-faca,
@@ -1208,6 +1244,12 @@ def _verdict_from_momentum(momentum: float, st: dict, cat: str) -> str:
             verdict = "COMPRAR"
         elif verdict == "ESPECULATIVO" and not st.get("knife"):
             verdict = "JUSTO"
+    # #1: re-aplica os guard-rails momento-dependentes com o NOVO momento (espelha _analyze) —
+    # antes o 2º passo pulava estes e ressuscitava COMPRAR sobre ativo esticado/caro/TSR-negativo.
+    verdict = _apply_momentum_guardrails(
+        verdict, momentum, cat, st.get("bucket", ""),
+        st.get("dy"), st.get("dy_avg10"), st.get("pe_ratio"),
+        st.get("tsr"), st.get("pvp"))
     if st.get("gold_override"):
         verdict = "COMPRAR FORTE"
     return verdict
@@ -1397,12 +1439,18 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
         hist_years = round(len(a_long) / 252.0, 1)
         day_change_pct = ((a[-1] / a[-2] - 1) * 100) if len(a) >= 2 and a[-2] else None
 
+        # #1-cripto: qualidade "só-de-idade" (Lindy sem liquidez/marketcap reais) OU confiança BAIXA
+        # não sustenta COMPRAR alavancado — é um número frágil. quality_data_thin vem do scoring_v2.
+        _crypto_thin = bool(score.get("quality_data_thin")) or (confidence == "BAIXA")
         if bucket == "RESERVA":
             verdict = "RESERVA"
         else:
             verdict = _crypto_verdict(momentum, quality)
             if confidence == "BAIXA" and verdict == "COMPRAR FORTE":
                 verdict = "COMPRAR"   # sem on-chain estrutural → não alavanca no talo
+            # dado fino/baixa confiança → rebaixa qualquer COMPRAR p/ JUSTO (neutro, sem alavancagem).
+            if _crypto_thin and verdict in ("COMPRAR FORTE", "COMPRAR"):
+                verdict = "JUSTO"
 
         reg_display = btc_reg  # regime da CATEGORIA crypto = regime do BTC (líder)
         mult = MULT.get(reg_display, 3)
@@ -1421,6 +1469,9 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
         # (cap=5) não morde aqui (cripto já trava em ≤3x) → ZERO regressão p/ a doutrina do dono.
         _prof_cap = int(profiles.profile_leverage_params(profile)["leverage_cap"])
         leverage = min(leverage, float(_prof_cap))
+        # #1-cripto: dado fino (Lindy só) / confiança BAIXA → à vista (1x), independente dos tetos acima.
+        if _crypto_thin:
+            leverage = 1.0
 
         rank = quality * 0.45 + momentum * 0.55
         # rank duplo v2 (ver _analyze): crypto não calcula σ TOTAL anualizada aqui → sigma=None →
@@ -1491,6 +1542,7 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
                 "bucket": bucket,
                 "verdict": verdict,
                 "is_crypto": True,
+                "crypto_thin": _crypto_thin,   # #1-cripto: força 1x na re-derivação por perfil também
             },
             "staggered_stops": {
                 "stop_1_pct": stops.get("stop_1_pct"),
@@ -1785,10 +1837,15 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             # roe_alt = ROE de MERCADO (brapi/fundamentus TTM) capturado ANTES do override CVM.
             # Evita que o ROE-CVM ruidoso (ex Bradesco 5,4% vs real ~14%) destrua a nota do banco.
             _roe_financeiro = fund.get("roe_alt") or fund.get("roe")
+            # Bug #2 auditoria: hurdle de valuation na MOEDA do ativo. .SA = BR (Selic);
+            # senão US (RF_USD). Sem isso, banco US era comparado contra a Selic 13,5% e
+            # levava o pior valuation possível (peso 20%).
+            _val_market = "BR" if str(tk).upper().endswith(".SA") else "US"
             _fq, _fqb = S.score_financial_quality(
                 roe=_roe_financeiro, dy_avg10=dy_avg10, dy_worst=dy_worst, dividend_yield=dy,
                 max_dd_pct=dd, dd_recovery_mult=dd_recovery_mult,
-                payout_ratio=fund.get("payout_ratio"), pe_ratio=fund.get("pe_ratio"))
+                payout_ratio=fund.get("payout_ratio"), pe_ratio=fund.get("pe_ratio"),
+                market=_val_market)
             if _fq is not None:
                 quality, qb = _fq, _fqb
         # FII: ROIC/ROE/EPS inúteis (estrutura de fundo) → scoring próprio DY+P/VP+safety+DD.
@@ -1897,8 +1954,11 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             # HOLDING tem precedência sobre financeira (ITSA4/CXSE3 estão em ambos os sets): o crivo
             # de holding julga dividendo+D/E da controladora, não ROE operacional (que o equity-method
             # distorce). Senão: financeira (ROE) / cíclica (D/E) / normal (ROIC+FCF).
+            # #3: usa _is_financial (conjunto CANÔNICO _FINANCIALS) — MESMO predicado do gate
+            # is_financial. Antes testava _FINANCEIRAS (desalinhado): bancos US/EU caíam no crivo
+            # industrial (ROIC/D-E inválidos p/ banco) e V/MA recebiam crivo financeiro indevido.
             tipo_crivo = ("holding" if is_holding
-                          else ("financeira" if tk.upper() in _FINANCEIRAS
+                          else ("financeira" if _is_financial(tk)
                                 else ("ciclica" if is_tatico else "normal")))
             crivo_nota, _crivo_n = S.score_quality_crivo(
                 tipo_crivo, roe=fund.get("roe"), roic=fund.get("roic"),
@@ -1928,31 +1988,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 elif verdict == "ESPECULATIVO" and not _knife:
                     verdict = "JUSTO"
 
-        # Late-cycle momentum flag: momentum alto + DY comprimido + PE esticado
-        _dy_comprimido = (
-            dy is not None and dy_avg10 is not None
-            and dy_avg10 > 0
-            and dy < dy_avg10 * 0.80
-        )
-        if (
-            momentum >= 65
-            and _dy_comprimido
-            and verdict in ("COMPRAR FORTE", "COMPRAR")
-        ):
-            _pe = fund.get("pe_ratio")
-            if _pe is not None and _pe > 14.0:
-                verdict = "ESTICADO"
-
-        # TSR ESPERADO NEGATIVO → rebaixa para JUSTO.
-        # Ativo que projeta retorno total negativo (dividendo+crescimento) não é indicação de COMPRAR.
-        if (tsr is not None and tsr < 0
-                and bucket != "RESERVA"
-                and verdict in ("COMPRAR FORTE", "COMPRAR")):
-            verdict = "JUSTO"
-
-        # GATE FII P/VP: prêmio > 15% sobre o PL → ESTICADO (pagando caro pelos ativos reais).
-        if cat == "FII" and S.fii_pvp_gate(fund.get("pvp")) and verdict in ("COMPRAR FORTE", "COMPRAR"):
-            verdict = "ESTICADO"
+        # Guard-rails momento-dependentes (#1): late-cycle (mom≥65+DY comprimido+PE>14→ESTICADO),
+        # TSR esperado negativo→JUSTO, gate FII P/VP→ESTICADO. Extraídos p/ _apply_momentum_guardrails
+        # e RE-APLICADOS no 2º passo (_verdict_from_momentum) — mesma lógica/limiares.
+        verdict = _apply_momentum_guardrails(
+            verdict, momentum, cat, bucket,
+            dy, dy_avg10, fund.get("pe_ratio"), tsr, fund.get("pvp"))
 
         # REGRA DO OURO: ouro em capitulação do mercado de ações → hedge → COMPRAR FORTE (override).
         _gold_override = (tk.upper() in ("GLD", "GC=F")
@@ -1980,10 +2021,12 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # Crypto NÃO segue o 4x/5x do regime — teto 3x (defensivo não convive c/ 5x em BTC).
         if cat == "CRYPTO":
             leverage = min(leverage, 3.0)
-        # ESPECULATIVO (faca) → teto 2x. #15b: COMPRAR de qualidade BAIXA (<50) → teto 3x mesmo em
-        # capitulação (participa da pechincha, sem o talo de alavancagem sem qualidade comprovada).
-        if verdict == "ESPECULATIVO":
-            leverage = min(leverage, 2.0)
+        # #4: ESPECULATIVO (faca) e ESTICADO (caro) → SÓ À VISTA (1x). Doutrina = alavancar ALTA
+        # qualidade; um veredito de baixa convicção/sobrepreço NÃO recebe alavancagem (antes ESPECULATIVO
+        # saía capado em 2x, contradizendo a doutrina). #15b: COMPRAR de qualidade BAIXA (<50) → teto 3x
+        # mesmo em capitulação (participa da pechincha, sem o talo de alavancagem sem qualidade comprovada).
+        if verdict in ("ESPECULATIVO", "ESTICADO"):
+            leverage = 1.0
         elif verdict == "COMPRAR" and quality is not None and quality < 50:
             leverage = min(leverage, 3.0)
         # GUARDRAIL Bug D — qualidade de DADO FINO não libera alavancagem alta por "qualidade não
@@ -2110,6 +2153,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 "is_regulated": is_regulated,
                 "market_for_gate": _market_for_gate,
                 "fcf_yield": fund.get("fcf_yield"),
+                # #1 — insumos dos guard-rails momento-dependentes p/ RE-APLICAR no 2º passo.
+                "dy": dy, "dy_avg10": dy_avg10, "tsr": tsr, "pvp": fund.get("pvp"),
             },
             "slow_stoch_weekly": _round_or_none(sstoch, 0),
             "stoch_k": _round_or_none(stoch_k, 1),
@@ -2366,6 +2411,8 @@ def _rederive_leverage_for_profile(asset: dict, profile: str) -> Optional[float]
             lev = min(lev, 2.0)
         lev = min(lev, float(pin.get("lev_cap_asset", lev)))
         lev = min(lev, float(int(_plp["leverage_cap"])))
+        if pin.get("crypto_thin"):   # #1-cripto: dado fino/baixa confiança → à vista (1x)
+            lev = 1.0
         return round(lev, 2)
 
     # ── AÇÕES/ETF/COMMODITY: replica a cadeia de leverage de _analyze (1428-1485) com o regime_mult
@@ -2381,8 +2428,8 @@ def _rederive_leverage_for_profile(asset: dict, profile: str) -> Optional[float]
     dma = pin.get("distance_ma200")
 
     leverage = float(mult) if (pin.get("is_buy_candidate") and bucket != "RESERVA") else 1.0
-    if verdict == "ESPECULATIVO":
-        leverage = min(leverage, 2.0)
+    if verdict in ("ESPECULATIVO", "ESTICADO"):   # #4: baixa convicção/sobrepreço → só à vista (1x)
+        leverage = 1.0
     elif verdict == "COMPRAR" and quality is not None and quality < 50:
         leverage = min(leverage, 3.0)
     # TRAVAS SURVIVAL-FIRST (painel CRO) — espelham as de _analyze também na re-derivação por perfil

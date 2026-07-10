@@ -27,6 +27,7 @@ const entryConfig: Record<string, { bg: string; border: string; text: string }> 
   "OPORTUNIDADE FORTE":         { bg: "bg-success/12", border: "border-success/35", text: "text-success" },
   "OPORTUNIDADE":               { bg: "bg-success/8",  border: "border-success/25", text: "text-success" },
   "OPORTUNIDADE (mercado topo)":{ bg: "bg-warning/10", border: "border-warning/30", text: "text-warning" },
+  "ESTICADO":                   { bg: "bg-warning/10", border: "border-warning/30", text: "text-warning" },
   "NEUTRO":                     { bg: "bg-warning/8",  border: "border-warning/20", text: "text-warning" },
   "DESFAVORÁVEL":               { bg: "bg-danger/8",   border: "border-danger/20",  text: "text-danger" },
   "SEM DADOS":                  { bg: "bg-surface-2",  border: "border-border",     text: "text-text-muted" },
@@ -376,10 +377,10 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
       )}
 
       {/* ── Leverage + Risk badges ───────────────────────── */}
-      <Tooltip content="Alavancagem sugerida pelo modelo Kelly Criterion com base no histórico" side="top" delay={300}>
+      <Tooltip content="Alavancagem do motor (Camada 3: aptidão × regime de mercado). Não é Kelly nem baseada em histórico de trades." side="top" delay={300}>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs text-text-muted mb-0.5">Alavancagem sugerida pelo modelo</p>
+            <p className="text-xs text-text-muted mb-0.5">Alavancagem do motor (Camada 3)</p>
             <span className="text-base font-bold text-warning font-mono">
               {asset.recommended_leverage.toFixed(2)}x
             </span>

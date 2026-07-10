@@ -1225,13 +1225,23 @@ _HOLDING_Q_CEIL = 75.0         # teto da banda (holding excelente em dividendo+s
 # de ROE (âncora) + dividendo sustentável + resiliência de queda. NÃO usa safety=D/E (alavancagem é o
 # NEGÓCIO do banco, não risco) nem FCF (sem sentido p/ banco). LEVERAGE-INDEPENDENTE, não fabrica.
 # Ao contrário da holding (teto 75), um banco/seguradora de elite PODE ser compounder de topo → teto 92.
-def _q_valuation_abs(pe_ratio, selic_rate=None):
-    """Earning Yield spread sobre Selic+2pp. Sem PE: prior neutro."""
+def _q_valuation_abs(pe_ratio, selic_rate=None, hurdle=None):
+    """Earning Yield spread sobre um HURDLE (custo de capital + 2pp). Sem PE: prior neutro.
+
+    #2 (correção de viés cambial): o hurdle DEVE estar na MOEDA do ativo. Ativo em REAL usa
+    Selic+2pp; ativo em DÓLAR (US/EUROPE) usa RF_USD+2pp — senão um banco/seguradora US (JPM/BAC)
+    é comparado contra a Selic (13,5%) e recebe sempre o pior valuation possível (peso 20%).
+    Prioridade: `hurdle` explícito (já inclui o +2pp, decidido pelo chamador por mercado) >
+    `selic_rate`+2pp > _SELIC_RATE+2pp (default BR, compat)."""
     if pe_ratio is None or pe_ratio <= 0:
         return 50.0
-    _sr = selic_rate if selic_rate is not None else _SELIC_RATE
+    if hurdle is not None:
+        _cutoff = hurdle
+    else:
+        _sr = selic_rate if selic_rate is not None else _SELIC_RATE
+        _cutoff = _sr + 0.02
     earning_yield = 1.0 / pe_ratio
-    spread = earning_yield - (_sr + 0.02)
+    spread = earning_yield - _cutoff
     if spread >= 0.06:  return 100.0
     if spread >= 0.03:  return 80.0
     if spread >= 0.00:  return 60.0
@@ -1241,7 +1251,7 @@ def _q_valuation_abs(pe_ratio, selic_rate=None):
 
 def score_financial_quality(roe=None, dy_avg10=None, dy_worst=None, dividend_yield=None,
                             max_dd_pct=None, dd_recovery_mult=1.0, payout_ratio=None,
-                            pe_ratio=None):
+                            pe_ratio=None, market=None):
     """QUALIDADE FINANCEIRA (0-100) p/ bancos/seguradoras. ROE-âncora + dividendo + resiliência + valuation.
     Breakdown: 'roe_nivel' (núcleo) · 'dividendos' · 'resiliencia_queda' · 'valuation_abs'. (None,{}) se sem ROE nem
     dividendo (segue thin honestamente). NÃO pune D/E (estrutural no setor).
@@ -1264,7 +1274,14 @@ def score_financial_quality(roe=None, dy_avg10=None, dy_worst=None, dividend_yie
              if (dy_avg10 is not None or dividend_yield is not None) else None)
     s_dd = (_clamp(score_maxdd_quality(max_dd_pct) * dd_recovery_mult)
             if max_dd_pct is not None else None)
-    s_valuation = _q_valuation_abs(pe_ratio)
+    # #2: hurdle na MOEDA do ativo. US/EUROPE (dólar) → RF_USD+2pp; BR/None → Selic+2pp.
+    # Sem isso, banco/seguradora US era comparado contra a Selic (13,5%) e recebia o pior
+    # valuation possível (peso 20%). Mesmo critério de mercado usado no gate de aporte_verdict.
+    if market in ("US", "EUROPE"):
+        _val_hurdle = float(os.environ.get("RF_USD", "0.045")) + 0.02
+    else:
+        _val_hurdle = _SELIC_RATE + 0.02
+    s_valuation = _q_valuation_abs(pe_ratio, hurdle=_val_hurdle)
     comps = []
     bd = {}
     for s, w, k in ((s_roe, 0.50, "roe_nivel"), (s_div, 0.20, "dividendos"),
@@ -1960,6 +1977,18 @@ def compute_crypto_survival(volume_24h=None, market_cap_rank=None, btc_dominance
     present = [(s, w, k) for s, w, k in comps if s is not None]
     omits = [k for s, w, k in comps if s is None]
     breakdown = {k: round(s) for s, w, k in present}
+
+    # #1 — DADO FINO (quality_data_thin): sem liquidez NEM marketcap, a "sobrevivência" colapsa
+    # p/ APENAS o Lindy (idade), que é LONGEVIDADE, não qualidade viva. Uma moeda velha (ex DOGE)
+    # não pode marcar sobrevivência alta só por idade sem sinalizar a fragilidade do dado. O flag
+    # `quality_data_thin` (mesmo nome do caminho de ações) manda o ranking_service TRAVAR em 1x e
+    # suprimir o COMPRAR verde. O pilar de idade fica rotulado 'lindy' (longevidade), não 'qualidade'.
+    thin = (s_liq is None and s_mc is None)
+    breakdown["quality_data_thin"] = thin
+    if thin and s_lindy is not None:
+        # Deixa explícito no breakdown que a nota vem de LONGEVIDADE, não de qualidade viva.
+        breakdown["longevidade_lindy"] = breakdown.pop("lindy", round(s_lindy))
+
     if not present:
         return None, breakdown, omits
     wsum = sum(w for _, w, _ in present)
@@ -2177,12 +2206,18 @@ def compute_crypto_score(volume_24h=None, market_cap_rank=None, btc_dominance=No
 
     confidence = crypto_confidence(surv_omits, reg_omits, tim_omits)
 
+    # #1 — expõe o flag de dado fino tb. no topo (mesmo nome do caminho de ações) p/ o
+    # ranking_service travar alavancagem em 1x e suprimir o COMPRAR verde sem ter de vasculhar
+    # o breakdown. True quando a sobrevivência colapsou p/ só-Lindy (sem liquidez nem marketcap).
+    quality_thin = bool(surv_bd.get("quality_data_thin", False))
+
     return {
         "quality": round(quality, 1),
         "momentum": momentum,
         "regime_score": regime_s,
         "timing_score": timing_s,
         "survival_score": survival,
+        "quality_data_thin": quality_thin,
         "quality_breakdown": surv_bd,
         "momentum_breakdown": momentum_breakdown,
         "confidence": confidence,
