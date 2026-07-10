@@ -727,14 +727,21 @@ def get_fundamentals(ticker: str) -> dict:
                                                         "dividend_yield", "fcf_yield", "beta")):
                     result = fmp
             else:
-                # Finnhub parcial: tenta preencher fcf_yield/fcf_abs_ttm via FMP se ausentes
-                # (Finnhub grátis não traz FCF; FMP expõe freeCashFlowTTM como fcf_abs_ttm)
-                if result.get("fcf_yield") is None:
+                # Finnhub parcial (tem beta, mas grátis não traz ROE/ROIC/FCF confiáveis):
+                # completa os PILARES DE QUALIDADE via FMP (fonte primária de fundamentos).
+                # BUG corrigido: antes só completava fcf/debt → banco com beta-do-Finnhub mas
+                # sem ROE ficava Q29 (crivo financeiro starved). Agora completa roe/roic/payout.
+                if (result.get("roe") is None or result.get("roic") is None
+                        or result.get("fcf_yield") is None):
                     try:
                         fmp = _from_fmp(key)
-                        for k in ("fcf_yield", "fcf_abs_ttm", "debt_to_equity"):
+                        for k in ("roe", "roic", "payout_ratio", "debt_to_equity",
+                                  "dividend_yield", "fcf_yield", "fcf_abs_ttm",
+                                  "rev_growth_ttm", "eps_growth_ttm"):
                             if result.get(k) is None and fmp.get(k) is not None:
                                 result[k] = fmp[k]
+                        if fmp.get("roe") is not None:
+                            result["source"] = (result.get("source") or "finnhub") + "+fmp"
                     except Exception:
                         pass
 
