@@ -543,6 +543,12 @@ def _from_fmp(ticker: str) -> dict:
             else:
                 dy = pick("dividendYieldTTM", "dividendYielTTM")
                 out["dividend_yield"] = dy * 100.0 if dy is not None else None
+            # Dividendo/ação TTM — o ranking computa o YIELD via dividend_per_share ÷ preço
+            # ATUAL (mais preciso que o dividendYieldTTM do provedor, que usa preço defasado
+            # → inflava/deflava o yield, ex KO 3.1% vs 2.5% real, NEE sem valor).
+            _dps = pick("dividendPerShareTTM", "dividendPerShareTtm", "lastDivTTM")
+            if _dps is not None and _dps > 0:
+                out["dividend_per_share"] = _dps
             fcf = pick("freeCashFlowYieldTTM")
             out["fcf_yield"] = fcf if fcf is not None else None   # FRAÇÃO (FMP já manda fração; score usa fcf_yield>=0.08)
             # FMP grátis raramente traz freeCashFlowYieldTTM; expõe FCF absoluto para

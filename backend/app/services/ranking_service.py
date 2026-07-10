@@ -1571,12 +1571,19 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         shp = _sharpe(a)
         rsi = _rsi(wclose if use_wk else a)                   # RSI SEMANAL
 
-        # DY: FMP TTM (fund['dividend_yield']) é a fonte CONFIÁVEL — bate com a realidade
-        # (verificado por analista sênior: JPM 1.79%, NEE 2.82%). O dy_chart (recorrente do
-        # chart-API) estava saindo ~METADE do real (bug no cálculo/eventos de dividendo do Yahoo)
-        # → agora só usado como FALLBACK quando o fund não tem DY (ex: alguns .SA sem FMP).
+        # DY = dividendo_anual/ação ÷ PREÇO ATUAL (mesma data). Analista sênior: o yield-TTM
+        # dos provedores (FMP/chart) usa preço DEFASADO → inflava/deflava (KO 3.1% vs 2.5% real
+        # por preço de 2023; NEE saía metade). Computar via div÷preço_atual mata os dois de uma vez.
+        # Fallbacks: yield-TTM do FMP → dy_chart (só quando não há dividendo/ação, ex .SA sem FMP).
+        _dps   = fund.get("dividend_per_share")
+        _cur   = float(a[-1]) if (a is not None and len(a)) else None
         _fmp_dy = fund.get("dividend_yield")
-        dy = _fmp_dy if (_fmp_dy is not None and _fmp_dy > 0) else dy_chart
+        if _dps is not None and _dps > 0 and _cur and _cur > 0:
+            dy = round(_dps / _cur * 100.0, 2)
+        elif _fmp_dy is not None and _fmp_dy > 0:
+            dy = _fmp_dy
+        else:
+            dy = dy_chart
         try:
             _dyh = df_full.attrs.get("dy_headline")
         except Exception:
