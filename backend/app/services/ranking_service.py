@@ -2445,6 +2445,11 @@ def _rederive_leverage_for_profile(asset: dict, profile: str) -> Optional[float]
     dma = pin.get("distance_ma200")
 
     leverage = float(mult) if (pin.get("is_buy_candidate") and bucket != "RESERVA") else 1.0
+    # Covered-call ETF (JEPI/JEPQ/QYLD…): a estratégia VENDE o upside → alavancar é subótimo.
+    # Espelha o cap de _analyze (que faltava aqui → JEPI/JEPQ saíam 2x no perfil moderado/
+    # conservador, pego no parecer final). Teto 1x: recebe a renda, não o rally alavancado.
+    if _is_covered_call_etf(asset.get("ticker", "")):
+        leverage = min(leverage, 1.0)
     if verdict in ("ESPECULATIVO", "ESTICADO"):   # #4: baixa convicção/sobrepreço → só à vista (1x)
         leverage = 1.0
     elif verdict == "COMPRAR" and quality is not None and quality < 50:
