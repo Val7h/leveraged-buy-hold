@@ -2066,11 +2066,16 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         elif verdict == "COMPRAR" and quality is not None and quality < 50:
             leverage = min(leverage, 3.0)
         # GUARDRAIL Bug D — qualidade de DADO FINO não libera alavancagem alta por "qualidade não
-        # comprovada". A nota pode estar estourada (q100 de 1 pilar) → não dá p/ alavancar no talo
-        # sobre ela. Teto 2x (mesmo patamar do ESPECULATIVO/beta-alto). NÃO exclui o ativo (segue no
-        # ranking, participando da pechincha pelo MOMENTO), só nega o talo de alavancagem sem base.
+        # comprovada" → teto 2x. EXCEÇÃO (doutrina Valth): ULTRA-DEFENSIVO (beta MUITO baixo ≤0,4 +
+        # dividendo + não-esticado) tem a segurança de alavancar MEDIDA no preço (β~0 quase não corre
+        # o risco de mercado que a alavancagem teme) → o fundamento fino não deve capá-lo em 2x; teto
+        # 3x (as travas de σ/gap/liquidez/aptidão da Camada 3 ainda governam). Beneficia FII/utility
+        # β~0 (RZTR11/HGRU11/KNCR11) que o regime beta-scaled já queria liberar acima de 2x.
         if _quality_thin:
-            leverage = min(leverage, 2.0)
+            _ultra_def = (beta is not None and beta <= 0.4
+                          and dy is not None and dy >= 1.5
+                          and verdict not in ("ESPECULATIVO", "ESTICADO", "RESERVA"))
+            leverage = min(leverage, 3.0 if _ultra_def else 2.0)
         # TRAVA DE ALAVANCAGEM POR BETA ALTO (#3) — REGRA Nº1 = SOBREVIVÊNCIA. beta ≥ 1.45 já é
         # ~1,5x de sensibilidade ao mercado; 3x×1,5 = ~4,5x de exposição EFETIVA num drawdown =
         # risco de LIQUIDAÇÃO (B3SA3 1,48, ADBE 1,46). O 2x topo/3x neutro/4-5x capitulação do
