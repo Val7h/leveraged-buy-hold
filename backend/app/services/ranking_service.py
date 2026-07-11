@@ -2127,6 +2127,9 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             sigma_floor_min_pct=_plp["sigma_floor_min_pct"],
             # Caminho-2: desconto+stop libera a banda beta 1,45-1,8 no teto_beta interno (coerente c/ a trava acima).
             discount_stop_ok=_discount_stop_ok,
+            # STOP-CREDIT: stop executável (não-gappy) → o medo de VOL não capa abaixo do que o stop -10%
+            # comporta (~4x). gap<12% = stop reliably firing (gap ≥20% já é o gate duro acima).
+            stop_executavel=(gap_pct is None or abs(gap_pct) < 12.0),
         )
         leverage = min(leverage, teto_lev)   # MIN inviolável (sobrevivência nunca sobe o teto)
 

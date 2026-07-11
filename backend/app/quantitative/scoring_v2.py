@@ -2586,7 +2586,8 @@ def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta
                              hist_curto=False, volume=None,
                              gap_risk_extremo: bool = False,
                              leverage_cap=None, sigma_floor_min_pct=None,  # PERFIL (produto)
-                             discount_stop_ok: bool = False):  # caminho-2: desconto+stop libera beta
+                             discount_stop_ok: bool = False,  # caminho-2: desconto+stop libera beta
+                             stop_executavel: bool = False):  # stop-credit: stop não-gappy relaxa o teto σ
     # NOTA (Fix 1): `mu_excess_annual` é VESTIGIAL e IGNORADO — ¼·Kelly NÃO entra no MIN por-fluxo
     # (vive só no agregado C.3 e no score). Mantido na assinatura só p/ compat; não reintroduzir.
     """
@@ -2609,16 +2610,30 @@ def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta
     GATES eliminatórios → forçam 1x à vista: liquidez muito baixa (só se houver volume) ou
     gap-risk extremo. Sem volume, NÃO veta por liquidez. Retorna (leverage_floor, detalhe_dict).
     """
+    # #1 STOP-CREDIT (o stop habilita alavancagem): a 1ª banda do stop escalonado (-10%) faz a
+    # TRAVA_PERDA_POSICAO (40%) comportar ~4x (0.40/0.10). Onde o stop é EXECUTÁVEL (não-gappy),
+    # o medo de VOL não deve capar abaixo disso — a responsabilidade (stop) vira direito de
+    # aceleração. Piso SÓ no teto σ (os outros — gap/beta/liquidez/regime — ainda governam).
+    _sig = teto_sigma(sigma_pct, floor_min_pct=sigma_floor_min_pct)
+    if stop_executavel and _sig is not None:
+        _sig = max(_sig, TRAVA_PERDA_POSICAO / 0.10)   # -10% → 4x survivable por perda-de-posição
+    # #2 REGIME BETA-SCALED: o mult de regime é calibrado ao drawdown de MERCADO; um ativo β~0
+    # quase não participa → DESCOLA do dial (folga até 60% do caminho ao cap do perfil). β≥1 colado.
+    _reg = float(mult_regime) if mult_regime is not None else None
+    if _reg is not None and beta is not None and leverage_cap is not None:
+        _folga = (1.0 - min(abs(beta), 1.0)) * (float(leverage_cap) - _reg) * 0.60
+        if _folga > 0:
+            _reg = min(float(leverage_cap), _reg + _folga)
     tetos = {
         # PERFIL: sigma_floor_min_pct antecipa o cap p/ perfis cautelosos (None = agressivo atual).
-        "sigma": teto_sigma(sigma_pct, floor_min_pct=sigma_floor_min_pct),
+        "sigma": _sig,
         # Fix 2: piso de cauda de gap — gap_obs×1,3 + piso por hist_curto / alta σ (janela pouco
         # confiável). Não deixa o teto liberar lev alta confiando só em "nunca gapeou nesta janela".
         "gap": teto_gap(gap_pct, hist_curto=hist_curto, sigma_pct=sigma_pct),
         "beta": teto_beta(beta, discount_stop_ok=discount_stop_ok),
         # LIQUIDEZ graduada (era guilhotina binária <$5M→1x que zerava FII BR seguro):
         "liquidez": teto_liquidez(volume),
-        "regime": (float(mult_regime) if mult_regime is not None else None),
+        "regime": _reg,
         # PERFIL: teto DURO de alavancagem do preset (conservador 2 · moderado 3 · agressivo 5).
         # None = sem teto de perfil (comportamento atual). Entra no MIN como qualquer outro teto.
         "perfil": (float(leverage_cap) if leverage_cap is not None else None),
