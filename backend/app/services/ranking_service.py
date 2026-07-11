@@ -2047,6 +2047,17 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                          and bucket != "RESERVA")
         is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3) or _aptidao_gate)
         leverage = float(mult) if (is_buy_candidate and bucket != "RESERVA") else 1.0
+        # #5 REGIME BETA-SCALED no mult INICIAL (decisão Valth — sobe a agressividade BASE do baixo-beta):
+        # o mult de regime é calibrado ao drawdown de MERCADO; um ativo β~0 quase NÃO participa desse
+        # drawdown → merece acelerar ACIMA do dial (folga 60% do caminho ao cap do perfil). β≥1 fica
+        # colado ao mult. TODOS os caps de survival abaixo (ESPECULATIVO/ESTICADO→1x, beta≥1,45, dado
+        # fino, σ/gap/maxDD/liquidez da Camada 3) ainda governam via MIN — só o PISO de partida sobe.
+        if (is_buy_candidate and bucket != "RESERVA"
+                and beta is not None and abs(beta) < 1.0):
+            _cap = float(_plp["leverage_cap"])
+            _folga = (1.0 - abs(beta)) * (_cap - leverage) * 0.60
+            if _folga > 0:
+                leverage = min(_cap, leverage + _folga)
         # NOTA (decisão Valth): covered-call (JEPI/JEPQ…) NÃO é capado a 1x. Antes o cap tratava
         # o veículo como aposta de GANHO DE CAPITAL (upside capado → não alavancar). Mas a tese é
         # RENDA: com carry ZERO (Quantfury), alavancar um ativo de yield ~9% é carry POSITIVO/
