@@ -498,13 +498,29 @@ def _load_ranking_from_disk() -> Optional[dict]:
     return None
 
 
+def _json_default(o):
+    """Coage tipos numpy → nativos p/ o json.dump. Algum campo vazava numpy bool_/int64/
+    float64 (ex: comparação numpy num flag) → 'Object of type bool_ is not JSON serializable'
+    → o serve-stale FALHAVA ao persistir o cache de disco (cold-start perdia o último bom).
+    Blindado: tipo desconhecido vira str (nunca derruba o save)."""
+    if isinstance(o, np.bool_):
+        return bool(o)
+    if isinstance(o, np.integer):
+        return int(o)
+    if isinstance(o, np.floating):
+        return float(o)
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    return str(o)
+
+
 def _save_ranking_to_disk(result: dict) -> None:
     """Persiste o ranking em disco para sobreviver a cold-starts."""
     try:
         os.makedirs(_DATA_DIR, exist_ok=True)
         tmp = _RANKING_CACHE_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(result, f)
+            json.dump(result, f, default=_json_default)
         os.replace(tmp, _RANKING_CACHE_FILE)
     except Exception as e:
         logger.warning(f"[RANKING][DISK] erro ao salvar cache: {e}")
@@ -531,7 +547,7 @@ def _save_screen_cache(cache: Dict[str, dict]) -> None:
         os.makedirs(_DATA_DIR, exist_ok=True)
         tmp = _SCREEN_CACHE_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(cache, f)
+            json.dump(cache, f, default=_json_default)
         os.replace(tmp, _SCREEN_CACHE_FILE)
     except Exception as e:
         logger.warning(f"[SCREEN][DISK] erro ao salvar cache: {e}")
