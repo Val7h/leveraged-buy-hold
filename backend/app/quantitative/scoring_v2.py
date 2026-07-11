@@ -2511,10 +2511,12 @@ def teto_gap(gap_pct: Optional[float], hist_curto: bool = False,
     return best
 
 
-def teto_beta(beta: Optional[float]) -> Optional[float]:
-    """Beta → teto (já existe a trava ≥1,45→2x no ranking; aqui é a tabela completa):
-    |beta|<0,8 → SEM cap (None, não entra no MIN) · 0,8-1,15→4x · 1,15-1,45→3x · 1,45-1,8→2x ·
-    >1,8→1x. Beta ausente → None (não entra)."""
+def teto_beta(beta: Optional[float], discount_stop_ok: bool = False) -> Optional[float]:
+    """Beta → teto: |beta|<0,8 → SEM cap (None) · 0,8-1,15→4x · 1,15-1,45→3x · 1,45-1,8→2x · >1,8→1x.
+    Beta ausente → None. discount_stop_ok (doutrina Valth — caminho-2 margem de segurança): quality
+    DESCONTADO de beta alto é seguro pelo DESCONTO (assimetria) + STOP escalonado (corta a perda
+    antes da liquidação) → a banda 1,45-1,8 sobe 1 degrau (2x→3x). >1,8 continua 1x (volátil demais
+    mesmo com stop). Só o caller que confirma desconto+stop-executável passa True."""
     if beta is None:
         return None
     b = abs(beta)
@@ -2525,7 +2527,7 @@ def teto_beta(beta: Optional[float]) -> Optional[float]:
     if b <= 1.45:
         return 3.0
     if b <= 1.8:
-        return 2.0
+        return 3.0 if discount_stop_ok else 2.0   # desconto+stop libera 1 degrau
     return 1.0
 
 
@@ -2559,21 +2561,32 @@ def teto_kelly(mu_excess_annual: Optional[float], sigma_pct: Optional[float]) ->
     return float(max(1.0, quarter))  # o floor final cuida do arredondamento pra baixo
 
 
-def gate_liquidez(volume: Optional[float], min_volume: float = 5_000_000.0) -> bool:
-    """GATE eliminatório de liquidez: ADV-$ (volume financeiro diário médio, US$) MUITO baixo
-    (< US$ 5M) → True (zera a alavancagem → 1x à vista). Large-caps passam folgado; só micro-caps
-    ilíquidas (onde a saída alavancada escorrega/não executa) são vetadas. Sem dado de volume
-    (None) → NÃO veta (não fabrica liquidez ruim). Conservador só com evidência."""
+def teto_liquidez(volume: Optional[float]) -> Optional[float]:
+    """TETO GRADUADO por liquidez (não guilhotina). ADV-$ (volume financeiro diário médio, US$)
+    baixo = a saída alavancada escorrega → LIMITA a alavancagem em vez de ZERAR. Antes era um corte
+    binário <US$5M→1x — limiar de US-large-cap que guilhotinava FII BR seguro (β~0, dd raso) a 1x.
+    Numa estratégia de FLUXO a posição/mês é pequena vs o ADV, então o teto é generoso; só iliquidez
+    REAL aperta. Retorna o teto de alavancagem (entra no MIN) ou None (sem teto). None de volume →
+    None (não fabrica liquidez ruim)."""
     if volume is None:
-        return False
-    return volume < min_volume
+        return None
+    if volume >= 3_000_000:
+        return None            # líquido o bastante → sem teto de liquidez
+    if volume >= 1_000_000:
+        return 3.0
+    if volume >= 400_000:
+        return 2.0
+    if volume >= 150_000:
+        return 1.5             # ilíquido, mas operável p/ fluxo pequeno
+    return 1.0                 # micro real (<$0,15M/dia) → à vista
 
 
 def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta=None,
                              mult_regime=None, mu_excess_annual=None,  # DEPRECATED: ignorado.
                              hist_curto=False, volume=None,
                              gap_risk_extremo: bool = False,
-                             leverage_cap=None, sigma_floor_min_pct=None):  # PERFIL (produto)
+                             leverage_cap=None, sigma_floor_min_pct=None,  # PERFIL (produto)
+                             discount_stop_ok: bool = False):  # caminho-2: desconto+stop libera beta
     # NOTA (Fix 1): `mu_excess_annual` é VESTIGIAL e IGNORADO — ¼·Kelly NÃO entra no MIN por-fluxo
     # (vive só no agregado C.3 e no score). Mantido na assinatura só p/ compat; não reintroduzir.
     """
@@ -2602,7 +2615,9 @@ def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta
         # Fix 2: piso de cauda de gap — gap_obs×1,3 + piso por hist_curto / alta σ (janela pouco
         # confiável). Não deixa o teto liberar lev alta confiando só em "nunca gapeou nesta janela".
         "gap": teto_gap(gap_pct, hist_curto=hist_curto, sigma_pct=sigma_pct),
-        "beta": teto_beta(beta),
+        "beta": teto_beta(beta, discount_stop_ok=discount_stop_ok),
+        # LIQUIDEZ graduada (era guilhotina binária <$5M→1x que zerava FII BR seguro):
+        "liquidez": teto_liquidez(volume),
         "regime": (float(mult_regime) if mult_regime is not None else None),
         # PERFIL: teto DURO de alavancagem do preset (conservador 2 · moderado 3 · agressivo 5).
         # None = sem teto de perfil (comportamento atual). Entra no MIN como qualquer outro teto.
@@ -2610,12 +2625,13 @@ def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta
     }
     presentes = {k: v for k, v in tetos.items() if v is not None}
 
-    # GATES eliminatórios (zeram → 1x). Liquidez só veta COM volume (não fabrica).
-    gate_liq = gate_liquidez(volume)
-    if gate_liq or gap_risk_extremo:
+    # GATE eliminatório DURO (zera → 1x): só o gap-risk extremo — o salto overnight PULA o stop
+    # escalonado (é a única cauda que o stop não resolve). Liquidez NÃO é mais gate binário: virou
+    # teto GRADUADO (acima, "liquidez"), pq guilhotinar FII BR seguro por um limiar US-large-cap era
+    # timidez (deixava o pool mais seguro do ranking em 1x). Iliquidez real ainda aperta via o MIN.
+    if gap_risk_extremo:
         return 1.0, {"tetos": presentes, "binding": "GATE",
-                     "gate_liquidez": gate_liq, "gate_gap_extremo": bool(gap_risk_extremo),
-                     "leverage_raw": 1.0}
+                     "gate_gap_extremo": True, "leverage_raw": 1.0}
 
     if presentes:
         binding = min(presentes, key=lambda k: presentes[k])
@@ -2626,5 +2642,5 @@ def teto_alavancagem_aptidao(max_dd_pct=None, sigma_pct=None, gap_pct=None, beta
 
     lev = _floor_lev(lev_raw)
     return lev, {"tetos": presentes, "binding": binding,
-                 "gate_liquidez": gate_liq, "gate_gap_extremo": bool(gap_risk_extremo),
+                 "gate_gap_extremo": bool(gap_risk_extremo),
                  "leverage_raw": round(lev_raw, 3)}

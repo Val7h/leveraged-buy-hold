@@ -2077,8 +2077,18 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         # regime NÃO se aplica a beta tão alto. CAPE a alavancagem em 2.0x — teto INVIOLÁVEL,
         # igual ao teto por ativo de crypto. NÃO é exclusão (o ativo continua no ranking), só capa
         # a alavancagem sugerida. Aplicado por ÚLTIMO p/ prevalecer sobre os tetos acima.
+        # CAMINHO-2 (margem de segurança, doutrina Valth): empresa de QUALIDADE (q≥70) de beta alto
+        # que está DESCONTADA (dma<0) é SEGURA de alavancar pelo DESCONTO (assimetria a favor) + o
+        # STOP escalonado (-10/-20/-30) que corta a perda ANTES da liquidação. Aí a banda beta
+        # 1,45-1,8 libera 3x (1 degrau). Condições: descontado + stop EXECUTÁVEL (não-gappy) + beta
+        # não-extremo (<1,8) + não-esticado/faca. Em topo (dma≥0)/gappy/baixa-qualidade → 2x normal.
+        _discount_stop_ok = (dma is not None and dma < 0
+                             and (gap_pct is None or abs(gap_pct) < 12.0)
+                             and beta is not None and beta < 1.8
+                             and quality is not None and quality >= 70
+                             and verdict not in ("ESPECULATIVO", "ESTICADO"))
         if beta is not None and beta >= 1.45:
-            leverage = min(leverage, 2.0)
+            leverage = min(leverage, 3.0 if _discount_stop_ok else 2.0)
 
         # GATE DE TENDÊNCIA (Camada 2) → CAPA A ALAVANCAGEM, não a compra. Downtrend primário
         # FORTE (preço << MM200 longa E MM200 SEMANAL caindo) = "pegar faca alavancado é
@@ -2115,6 +2125,8 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             # TETO DURO + PISO DE σ DO PERFIL (agressivo: cap=5, sigma_floor=None → comportamento atual).
             leverage_cap=_plp["leverage_cap"],
             sigma_floor_min_pct=_plp["sigma_floor_min_pct"],
+            # Caminho-2: desconto+stop libera a banda beta 1,45-1,8 no teto_beta interno (coerente c/ a trava acima).
+            discount_stop_ok=_discount_stop_ok,
         )
         leverage = min(leverage, teto_lev)   # MIN inviolável (sobrevivência nunca sobe o teto)
 
