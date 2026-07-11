@@ -2031,10 +2031,13 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                          and bucket != "RESERVA")
         is_buy_candidate = (momentum >= 50 or (dma is not None and dma < -3) or _aptidao_gate)
         leverage = float(mult) if (is_buy_candidate and bucket != "RESERVA") else 1.0
-        # Covered-call ETF (JEPI/JEPQ/QYLD…): estratégia vende o upside intencionalmente.
-        # Alavancar contradiz o veículo — teto 1x (recebe a renda, não o rally alavancado).
-        if _is_covered_call_etf(tk):
-            leverage = min(leverage, 1.0)
+        # NOTA (decisão Valth): covered-call (JEPI/JEPQ…) NÃO é capado a 1x. Antes o cap tratava
+        # o veículo como aposta de GANHO DE CAPITAL (upside capado → não alavancar). Mas a tese é
+        # RENDA: com carry ZERO (Quantfury), alavancar um ativo de yield ~9% é carry POSITIVO/
+        # accretivo — pega o dividendo mensal (o FLUXO) e recompra alavancado (doutrina "alavanca
+        # fluxos"). O upside capado é irrelevante p/ acumulação de renda. As travas survival-first
+        # (beta, maxDD, aptidão/Camada 3) já governam pelo risco REAL (JEPI beta~0,6/DD raso →
+        # liberam com folga). `_is_covered_call_etf`/`_COVERED_CALL_ETFS` ficam só p/ documentação.
         # Crypto NÃO segue o 4x/5x do regime — teto 3x (defensivo não convive c/ 5x em BTC).
         if cat == "CRYPTO":
             leverage = min(leverage, 3.0)
@@ -2445,11 +2448,8 @@ def _rederive_leverage_for_profile(asset: dict, profile: str) -> Optional[float]
     dma = pin.get("distance_ma200")
 
     leverage = float(mult) if (pin.get("is_buy_candidate") and bucket != "RESERVA") else 1.0
-    # Covered-call ETF (JEPI/JEPQ/QYLD…): a estratégia VENDE o upside → alavancar é subótimo.
-    # Espelha o cap de _analyze (que faltava aqui → JEPI/JEPQ saíam 2x no perfil moderado/
-    # conservador, pego no parecer final). Teto 1x: recebe a renda, não o rally alavancado.
-    if _is_covered_call_etf(asset.get("ticker", "")):
-        leverage = min(leverage, 1.0)
+    # (covered-call NÃO é capado — ver nota em _analyze: carry zero + tese de RENDA torna o 2x
+    #  accretivo; as travas de risco abaixo governam. Espelha _analyze, que também não capa.)
     if verdict in ("ESPECULATIVO", "ESTICADO"):   # #4: baixa convicção/sobrepreço → só à vista (1x)
         leverage = 1.0
     elif verdict == "COMPRAR" and quality is not None and quality < 50:
