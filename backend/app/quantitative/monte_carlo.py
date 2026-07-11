@@ -182,10 +182,15 @@ def _regime_leverage(dd_from_peak: float, max_leverage: float) -> Tuple[float, s
     Regime = drawdown do pico do PRÓPRIO caminho (proxy auto-referente, já que um
     caminho sintético não tem um índice externo de mercado). Topo protege (menor
     multiplicador); capitulação ataca (teto do perfil)."""
+    # RECALIBRAÇÃO (aval do Valth): capturar mais upside no bull que sobe de lado (mercado
+    # passa a MAIOR parte do tempo em "topo"). Pisos subidos topo 0.50→0.60 e correção
+    # 0.70→0.80 — a FORMA survival-first fica intacta (protege menos no topo, ataca no talo
+    # na capitulação; ordem monotônica preservada) e o capital INICIAL segue 1x (downside
+    # limitado). Só os FLUXOS sentem o multiplicador maior.
     if dd_from_peak >= _REGIME_TOPO:
-        return max(1.0, max_leverage * 0.50), "topo"
+        return max(1.0, max_leverage * 0.60), "topo"
     if dd_from_peak >= _REGIME_CORRECAO:
-        return max(1.0, max_leverage * 0.70), "correcao"
+        return max(1.0, max_leverage * 0.80), "correcao"
     if dd_from_peak >= _REGIME_URSO:
         return max(1.0, max_leverage * 0.85), "urso"
     return max_leverage, "capitulacao"

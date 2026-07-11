@@ -173,6 +173,7 @@ def _run_adaptive_strategy(
     vol_hist: float = 15.0,
     index_close: Optional[pd.Series] = None,
     costs: Optional["CostModel"] = None,
+    shy_yield_annual: float = 0.025,
 ) -> Tuple[pd.DataFrame, List[Dict]]:
     """
     Backtest da ESTRATÉGIA MASTER (Alavancagem Dinâmica Composta) sobre PREÇOS
@@ -252,6 +253,13 @@ def _run_adaptive_strategy(
             ret = price / prev_price - 1.0
             assets *= (1.0 + ret)
         prev_price = price
+
+        # ── Reserva SHY RENDE Treasury (1-3a). Modelá-la a 0% era um dreno IRREAL:
+        #    SHY é ETF de Treasuries, não colchão de dinheiro parado. Compõe ~2,5%/a
+        #    (conservador — abaixo da média de T-bills fora da ZIRP). Recalibração de
+        #    upside SEM tocar no risco (é o ativo mais seguro). Só nos dias com reserva.
+        if i > 0 and shy > 0 and shy_yield_annual > 0:
+            shy *= (1.0 + shy_yield_annual / 252.0)
 
         # ── Quantfury: liquidação quando a perda ≈ equity alocado ────────────
         # Checada na MÍNIMA do dia (assets na mínima - dívida ≈ 0). Carry zero.
