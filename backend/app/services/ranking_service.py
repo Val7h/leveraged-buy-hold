@@ -1976,15 +1976,18 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             if confidence == "BAIXA" and verdict == "COMPRAR FORTE":
                 verdict = "COMPRAR"
 
-            # GUARDRAIL Bug D — veredito FORTE/ESPECULATIVO NÃO pode nascer de qualidade frágil:
-            #   • COMPRAR FORTE → COMPRAR (a pechincha vale, mas sem o talo de "qualidade comprovada").
-            #   • ESPECULATIVO de qualidade EXTREMA-baixa (≤45) com dado fino é um ALARME FALSO (ITSA4
-            #     q3 por só-ROE-fallback) → vira JUSTO ("dados insuficientes", cauteloso) em vez de
-            #     marcar faca sobre uma nota fabricada-baixa. Faca de VERDADE (knife/crivo) já rebaixou
-            #     acima; aqui só impedimos que a CEGUEIRA do provedor vire um veredito direcional forte.
+            # GUARDRAIL Bug D — veredito direcional NÃO pode nascer de qualidade frágil (dado fino):
+            #   • AUDITORIA (parecer final): quando os fundamentos faltam, a Qualidade cai no default
+            #     neutro ~50 e um COMPRAR simples ainda saía — dezenas de large caps US (LMT/TGT/COP/
+            #     VZ/HON/CVX...) apareciam "COMPRAR conf BAIXA" só por DADO FALTANTE (FMP=402), não por
+            #     convicção. Dado ausente não é convicção → COMPRAR/COMPRAR FORTE viram JUSTO ("dados
+            #     insuficientes"). O momento/preço até pode estar barato, mas sem qualidade comprovada
+            #     não se EMITE ordem de compra direcional (nem, muito menos, se alavanca).
+            #   • ESPECULATIVO de qualidade fabricada-baixa com dado fino é ALARME FALSO (ITSA4 q3 por
+            #     só-ROE-fallback) → JUSTO. Faca de VERDADE (knife/crivo) já rebaixou acima.
             if _quality_thin:
-                if verdict == "COMPRAR FORTE":
-                    verdict = "COMPRAR"
+                if verdict in ("COMPRAR FORTE", "COMPRAR"):
+                    verdict = "JUSTO"
                 elif verdict == "ESPECULATIVO" and not _knife:
                     verdict = "JUSTO"
 
