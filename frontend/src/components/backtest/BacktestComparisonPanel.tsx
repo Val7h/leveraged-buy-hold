@@ -3,7 +3,7 @@
 import React from "react";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import type { BacktestResult, BacktestMetrics } from "@/types";
-import { TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
+import { TrendingUp, AlertTriangle, CheckCircle, ShieldCheck, Zap } from "lucide-react";
 
 interface BacktestComparisonPanelProps {
   result: BacktestResult;
@@ -35,6 +35,24 @@ export default function BacktestComparisonPanel({
   const sp500 = metrics.find((m) => m.strategy === "sp500");
 
   if (!adaptive) return null;
+
+  // --- Custo do seguro survival-first: adaptive vs B&H 1x (baseline) ---
+  // Números reais das metrics — quanto de patrimônio terminal a proteção custou.
+  const insurance = (() => {
+    if (!buyHold1x) return null;
+    const advFinal = adaptive.final_value;
+    const baseFinal = buyHold1x.final_value;
+    const diffAbs = advFinal - baseFinal; // negativo = adaptive rendeu menos
+    const diffPct = baseFinal !== 0 ? (diffAbs / baseFinal) * 100 : 0;
+    const ddGap = adaptive.max_drawdown_pct - buyHold1x.max_drawdown_pct; // ambos negativos; positivo = adaptive protegeu
+    const sharpeGap = adaptive.sharpe_ratio - buyHold1x.sharpe_ratio;
+    return { advFinal, baseFinal, diffAbs, diffPct, ddGap, sharpeGap };
+  })();
+
+  // Períodos de crise em "V" (recuperação rápida) — onde a proteção pode gerar whipsaw.
+  const vShapedCrises = (result.crisis_analysis ?? [])
+    .map((c: any) => c?.name as string | undefined)
+    .filter((n): n is string => !!n && /2020|2015|2018|covid|flash|volmageddon/i.test(n));
 
   // Calculate who wins in each category
   const getWinner = (
@@ -95,6 +113,123 @@ export default function BacktestComparisonPanel({
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Custo do seguro survival-first — patrimônio terminal adaptive vs B&H 1x */}
+      {insurance && (
+        <div className="card border border-warning/20 bg-warning/5">
+          <div className="flex items-start gap-3">
+            <ShieldCheck size={20} className="flex-shrink-0 mt-0.5 text-warning" />
+            <div className="flex-1">
+              <p className="text-xs font-bold text-warning uppercase tracking-wide">
+                Custo do seguro survival-first
+              </p>
+              <p className="text-[11px] text-text-muted mt-0.5">
+                O que a proteção adaptativa custou em patrimônio terminal vs. B&amp;H 1x (baseline)
+              </p>
+
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                <div className="bg-primary/10 rounded-lg p-2.5 text-center">
+                  <p className="text-[10px] text-text-muted mb-1">Adaptativo (final)</p>
+                  <p className="text-sm font-mono font-bold text-primary">
+                    {formatCurrency(insurance.advFinal, "USD", true)}
+                  </p>
+                </div>
+                <div className="bg-surface-2 rounded-lg p-2.5 text-center">
+                  <p className="text-[10px] text-text-muted mb-1">B&amp;H 1x (final)</p>
+                  <p className="text-sm font-mono font-bold text-text-secondary">
+                    {formatCurrency(insurance.baseFinal, "USD", true)}
+                  </p>
+                </div>
+                <div
+                  className={cn(
+                    "rounded-lg p-2.5 text-center",
+                    insurance.diffAbs >= 0 ? "bg-success/10" : "bg-danger/10"
+                  )}
+                >
+                  <p className="text-[10px] text-text-muted mb-1">Diferença (prêmio)</p>
+                  <p
+                    className={cn(
+                      "text-sm font-mono font-bold",
+                      insurance.diffAbs >= 0 ? "text-success" : "text-danger"
+                    )}
+                  >
+                    {insurance.diffAbs >= 0 ? "+" : "−"}
+                    {formatCurrency(Math.abs(insurance.diffAbs), "USD", true)}
+                  </p>
+                  <p
+                    className={cn(
+                      "text-[10px] font-mono font-semibold mt-0.5",
+                      insurance.diffAbs >= 0 ? "text-success" : "text-danger"
+                    )}
+                  >
+                    {insurance.diffPct >= 0 ? "+" : ""}
+                    {insurance.diffPct.toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-text-secondary mt-3 leading-relaxed">
+                {insurance.diffAbs < 0 ? (
+                  <>
+                    A estratégia adaptativa <strong>trocou {Math.abs(insurance.diffPct).toFixed(1)}% de
+                    patrimônio final</strong> por um drawdown{" "}
+                    <strong>{Math.abs(insurance.ddGap).toFixed(0)} pontos menor</strong> (
+                    {adaptive.max_drawdown_pct.toFixed(0)}% vs {buyHold1x!.max_drawdown_pct.toFixed(0)}%)
+                    {insurance.sharpeGap > 0 && (
+                      <> e Sharpe maior ({adaptive.sharpe_ratio.toFixed(2)} vs {buyHold1x!.sharpe_ratio.toFixed(2)})</>
+                    )}
+                    . Esse é o <strong>preço do seguro</strong> contra crises — você paga em CAGR e recebe
+                    sobrevivência.
+                  </>
+                ) : (
+                  <>
+                    Neste cenário a adaptativa <strong>não cobrou prêmio</strong>: entregou{" "}
+                    <strong>+{insurance.diffPct.toFixed(1)}% de patrimônio final</strong> vs B&amp;H 1x
+                    {insurance.ddGap > 0 && (
+                      <> ainda com drawdown {Math.abs(insurance.ddGap).toFixed(0)} pts menor</>
+                    )}
+                    . O seguro saiu de graça — não é o caso geral, depende da cesta e do período.
+                  </>
+                )}
+              </p>
+
+              {/* Comparação lado a lado adaptive vs 1x: CAGR / MaxDD / Sharpe / Final */}
+              <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-warning/15 text-center">
+                {[
+                  { k: "CAGR", a: `${adaptive.cagr_pct.toFixed(1)}%`, b: `${buyHold1x!.cagr_pct.toFixed(1)}%` },
+                  { k: "MaxDD", a: `${adaptive.max_drawdown_pct.toFixed(1)}%`, b: `${buyHold1x!.max_drawdown_pct.toFixed(1)}%` },
+                  { k: "Sharpe", a: adaptive.sharpe_ratio.toFixed(2), b: buyHold1x!.sharpe_ratio.toFixed(2) },
+                  { k: "Patrim.", a: formatCurrency(adaptive.final_value, "USD", true), b: formatCurrency(buyHold1x!.final_value, "USD", true) },
+                ].map((row) => (
+                  <div key={row.k}>
+                    <p className="text-[10px] uppercase text-text-muted mb-1">{row.k}</p>
+                    <p className="text-xs font-mono font-bold text-primary">{row.a}</p>
+                    <p className="text-[10px] font-mono text-text-muted">{row.b}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-text-muted/70 mt-1.5 text-center">
+                linha de cima = Adaptativo · linha de baixo = B&amp;H 1x
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso de comportamento em choques — bear prolongado vs crash em V (whipsaw) */}
+      <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-2 px-3 py-2.5">
+        <Zap size={16} className="flex-shrink-0 mt-0.5 text-warning" />
+        <p className="text-[11px] text-text-secondary leading-relaxed">
+          <strong className="text-text-primary">Como a proteção se comporta:</strong> a rede da adaptativa é
+          forte em <strong>bear-markets prolongados</strong> (ex. 2008), onde desalavancar cedo evita a ruína.
+          Em <strong>crashes rápidos em &ldquo;V&rdquo;</strong> ela pode sofrer{" "}
+          <strong>whipsaw</strong> — desalavanca na queda e perde parte do repique
+          {vShapedCrises.length > 0 && (
+            <> (observe os períodos {vShapedCrises.join(", ")} na análise de crises abaixo)</>
+          )}
+          . É o outro lado do seguro, não um defeito.
+        </p>
       </div>
 
       {/* Comparison Grid */}

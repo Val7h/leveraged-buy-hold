@@ -1485,7 +1485,12 @@ def _analyze_crypto(tk, name, bucket, cat, df, a, a_long, current_price=None,
         if _crypto_thin:
             leverage = 1.0
 
-        rank = quality * 0.45 + momentum * 0.55
+        # CRYPTO: qualidade DOMINA o rank (0.65 vs 0.35 do momento). Diferente das ações (0.45/0.55):
+        # o "momento" de cripto é ruído pump-driven e manipulável → deixá-lo decidir o desempate
+        # fazia um MEMECOIN (DOGE q68) passar à frente de majors (SOL/BNB q71) no rank, o que é
+        # esteticamente ruim e sinaliza mal. Aqui a solidez (liquidez+marketcap+lindy) manda; o
+        # momento só ajusta na margem. (auditoria — parecer final; todas as cripto seguem JUSTO.)
+        rank = quality * 0.65 + momentum * 0.35
         # rank duplo v2 (ver _analyze): crypto não calcula σ TOTAL anualizada aqui → sigma=None →
         # sig=0 (sem desconto de drag; conservador, mantém o bônus pequeno). Mesmo teto 1,35×/anti-junk.
         rank_alavancado = _rank_alavancado_v2(rank, leverage, None)
