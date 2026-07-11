@@ -46,7 +46,15 @@ export default function BacktestComparisonPanel({
     const diffPct = baseFinal !== 0 ? (diffAbs / baseFinal) * 100 : 0;
     const ddGap = adaptive.max_drawdown_pct - buyHold1x.max_drawdown_pct; // ambos negativos; positivo = adaptive protegeu
     const sharpeGap = adaptive.sharpe_ratio - buyHold1x.sharpe_ratio;
-    return { advFinal, baseFinal, diffAbs, diffPct, ddGap, sharpeGap };
+    // Calmar (CAGR/|MaxDD|) = a métrica de sobrevivência que o app elege como principal.
+    // Se o 1x DESALAVANCADO vence a adaptive no Calmar, o "seguro" NÃO se pagou nesta cesta —
+    // sinal de cesta de vencedores (survivorship): a proteção só compensa quando há membros
+    // que NÃO sobrevivem. Ser honesto sobre isso (parecer CIO).
+    const calmarAdaptive = adaptive.calmar_ratio;
+    const calmarBase = buyHold1x.calmar_ratio;
+    const calmarLoses = calmarBase > calmarAdaptive;
+    return { advFinal, baseFinal, diffAbs, diffPct, ddGap, sharpeGap,
+             calmarAdaptive, calmarBase, calmarLoses };
   })();
 
   // Períodos de crise em "V" (recuperação rápida) — onde a proteção pode gerar whipsaw.
@@ -193,6 +201,25 @@ export default function BacktestComparisonPanel({
                   </>
                 )}
               </p>
+
+              {/* Badge honesto: se o 1x DESALAVANCADO vence a adaptive no CALMAR (a métrica de
+                  sobrevivência do app), o seguro NÃO se pagou nesta cesta — sinal de cesta de
+                  vencedores (survivorship): a proteção só compensa quando há membros que NÃO
+                  sobrevivem. (parecer CIO 8,5) */}
+              {insurance.calmarLoses && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger/5 p-2.5">
+                  <AlertTriangle size={15} className="flex-shrink-0 mt-0.5 text-danger" />
+                  <p className="text-[11px] text-text-secondary leading-relaxed">
+                    <strong className="text-danger">O seguro não se pagou nesta cesta.</strong> Aqui o
+                    B&amp;H 1x <strong>desalavancado</strong> vence a adaptativa até no{" "}
+                    <strong>Calmar</strong> (retorno por unidade de drawdown:{" "}
+                    {insurance.calmarBase.toFixed(2)} vs {insurance.calmarAdaptive.toFixed(2)}) — a
+                    própria métrica de sobrevivência. É o sinal de uma <strong>cesta de vencedores</strong>:
+                    a proteção adaptativa só compensa quando há ativos que <em>não</em> sobrevivem à
+                    crise. Numa cesta que só contém sobreviventes, ficar 1x teria sido superior.
+                  </p>
+                </div>
+              )}
 
               {/* Comparação lado a lado adaptive vs 1x: CAGR / MaxDD / Sharpe / Final */}
               <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-warning/15 text-center">
