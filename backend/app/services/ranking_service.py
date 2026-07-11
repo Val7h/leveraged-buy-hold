@@ -1213,6 +1213,22 @@ def _apply_momentum_guardrails(verdict: str, momentum: float, cat: str, bucket: 
     return verdict
 
 
+def _apply_thin_guard(verdict: str, quality_thin: bool, knife: bool) -> str:
+    """Dado fino (fundamentos faltando → Qualidade no default frágil ~50) NÃO sustenta veredito
+    direcional de compra. DEVE rodar nos DOIS passos (senão o 2º passo ressuscita COMPRAR).
+    Parecer final da auditoria: dezenas de large caps US apareciam "COMPRAR conf BAIXA" só por
+    DADO FALTANTE (FMP=402), não por convicção → engana o investidor.
+      • COMPRAR/COMPRAR FORTE → JUSTO ("dados insuficientes"; sem qualidade comprovada não se
+        emite ordem de compra direcional, nem se alavanca).
+      • ESPECULATIVO fabricado-baixo sem faca real → JUSTO (alarme falso do provedor)."""
+    if quality_thin:
+        if verdict in ("COMPRAR FORTE", "COMPRAR"):
+            return "JUSTO"
+        if verdict == "ESPECULATIVO" and not knife:
+            return "JUSTO"
+    return verdict
+
+
 def _verdict_from_momentum(momentum: float, st: dict, cat: str) -> str:
     """Re-deriva o veredito a partir de um NOVO momento (2º passo do momentum relativo da Camada 2),
     reaplicando os mesmos ajustadores momento-INDEPENDENTES já decididos no 1º passo (anti-faca,
@@ -1238,12 +1254,8 @@ def _verdict_from_momentum(momentum: float, st: dict, cat: str) -> str:
             verdict = "JUSTO"
     if st.get("conf_baixa") and verdict == "COMPRAR FORTE":
         verdict = "COMPRAR"
-    # GUARDRAIL Bug D (espelha _analyze): qualidade de dado fino não vira FORTE nem ESPECULATIVO falso.
-    if st.get("quality_thin"):
-        if verdict == "COMPRAR FORTE":
-            verdict = "COMPRAR"
-        elif verdict == "ESPECULATIVO" and not st.get("knife"):
-            verdict = "JUSTO"
+    # GUARDRAIL Bug D (espelha _analyze via helper compartilhado): dado fino não emite COMPRAR.
+    verdict = _apply_thin_guard(verdict, st.get("quality_thin"), st.get("knife"))
     # #1: re-aplica os guard-rails momento-dependentes com o NOVO momento (espelha _analyze) —
     # antes o 2º passo pulava estes e ressuscitava COMPRAR sobre ativo esticado/caro/TSR-negativo.
     verdict = _apply_momentum_guardrails(
@@ -1985,11 +1997,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             #     não se EMITE ordem de compra direcional (nem, muito menos, se alavanca).
             #   • ESPECULATIVO de qualidade fabricada-baixa com dado fino é ALARME FALSO (ITSA4 q3 por
             #     só-ROE-fallback) → JUSTO. Faca de VERDADE (knife/crivo) já rebaixou acima.
-            if _quality_thin:
-                if verdict in ("COMPRAR FORTE", "COMPRAR"):
-                    verdict = "JUSTO"
-                elif verdict == "ESPECULATIVO" and not _knife:
-                    verdict = "JUSTO"
+            verdict = _apply_thin_guard(verdict, _quality_thin, _knife)
 
         # Guard-rails momento-dependentes (#1): late-cycle (mom≥65+DY comprimido+PE>14→ESTICADO),
         # TSR esperado negativo→JUSTO, gate FII P/VP→ESTICADO. Extraídos p/ _apply_momentum_guardrails
