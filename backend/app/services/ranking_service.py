@@ -2246,6 +2246,7 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
                 "is_buy_candidate": is_buy_candidate,
                 "is_crypto": False,
                 "quality_thin": _quality_thin,
+                "dy": dy,               # p/ o perfil DEFENSIVO da re-derivação (beta baixo + dividendo)
             },
             "regime": reg,
             "staggered_stops": {
@@ -2472,8 +2473,17 @@ def _rederive_leverage_for_profile(asset: dict, profile: str) -> Optional[float]
         leverage = min(leverage, 3.0)
     # TRAVAS SURVIVAL-FIRST (painel CRO) — espelham as de _analyze também na re-derivação por perfil
     # (este é o caminho que produz a leverage EXIBIDA p/ moderado/conservador). Antes só capava em 2x.
-    if pin.get("quality_thin"):          # dado fino/CONF BAIXA NÃO alavanca — só à vista até comprovar
-        leverage = 1.0
+    if pin.get("quality_thin"):
+        # DOUTRINA (Valth): dado fino bloqueia alavancagem de nome NÃO-comprovado — MAS um perfil
+        # DEFENSIVO comprovado (beta baixo + dividendo bom/moderado + não-esticado) tem a segurança
+        # de alavancar MEDIDA no preço (beta/DD/aptidão), não no fundamento faltante → recebe
+        # alavancagem LEVE (≤2x; as travas de beta/aptidão/tendência abaixo ainda governam). Só o
+        # nome fino SEM esse perfil vai a 1x. Ex: VZ (beta 0,21/DY 6,6%) ou SO/DUK deixam de ser 1x.
+        _b = pin.get("beta"); _d = pin.get("dy"); _v = pin.get("verdict")
+        _defensivo = (_b is not None and _b <= 0.7
+                      and _d is not None and _d >= 1.5
+                      and _v not in ("ESPECULATIVO", "ESTICADO", "RESERVA"))
+        leverage = min(leverage, 2.0) if _defensivo else 1.0
     _wdd = _worst_sane_dd(pin.get("max_dd"), pin.get("max_dd_full"))   # ignora artefatos -100%
     if _wdd is not None and _wdd <= _MAXDD_KILL_LEVERAGE:   # pior tombo SANO extremo → sem alavancagem
         leverage = 1.0
