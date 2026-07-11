@@ -2124,8 +2124,18 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
         #     liberava 74). Survival-first: qualidade não-comprovada → SÓ à vista (1x) até provar.
         # (b) KILL-SWITCH POR MAXDD: tombo histórico extremo (pior que -70%) = cauda de ruína →
         #     alavancar é convite a margin-call (LREN3 -86%). Sem alavancagem, independente do rank.
+        # Carve-out DEFENSIVO (doutrina Valth, espelha _rederive_leverage_for_profile): dado fino força
+        # 1x SÓ p/ nome NÃO-comprovado. Perfil DEFENSIVO (beta baixo + dividendo bom/moderado + não-
+        # esticado) tem a segurança de alavancar MEDIDA no PREÇO (beta/DD/aptidão), não no fundamento
+        # faltante → mantém a alavancagem leve (o teto 2x acima + Camada 3 já governam). Com o ranking
+        # UNIVERSAL (canônico p/ todos), este é o caminho que TODO usuário vê — não pode prender FIIs/
+        # defensivos (VZ/DUK/SO/RZTR11) a 1x por dado fino.
         if _quality_thin:
-            leverage = 1.0
+            _defensivo = (beta is not None and beta <= 0.7
+                          and dy is not None and dy >= 1.5
+                          and verdict not in ("ESPECULATIVO", "ESTICADO", "RESERVA"))
+            if not _defensivo:
+                leverage = 1.0
         _wdd = _worst_sane_dd(dd, dd_full)   # ignora artefatos -100% (split não-ajustado)
         if _wdd is not None and _wdd <= _MAXDD_KILL_LEVERAGE:
             leverage = 1.0

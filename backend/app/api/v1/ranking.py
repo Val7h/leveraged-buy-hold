@@ -72,12 +72,13 @@ def get_ranking(
     force: bool = Query(False, description="Ignora o cache e recalcula"),
     profile: Optional[str] = Query(None, description="Perfil do assinante (conservador/moderado/agressivo)"),
 ):
-    """Ranking por-perfil SEM re-fetch: o cache continua CANÔNICO (agressivo); o perfil do assinante é
-    aplicado RE-DERIVANDO a alavancagem de cada ativo dos tetos já computados (apply_profile_to_ranking).
-    profile None/agressivo → idêntico ao cache (zero regressão)."""
+    """Ranking UNIVERSAL (decisão Valth): SEM seleção de perfil — todo usuário vê a FRONTEIRA MÁXIMA
+    de aceleração segura (ranking canônico/agressivo). O perfil real de cada um emerge do que ELE
+    ESCOLHE COMPRAR, não de um dropdown que capa o motor (que só atrapalhava e prendia o próprio dono
+    em moderado). O param `profile` é ignorado (mantido só p/ compat de URL)."""
     try:
-        prof = profiles.normalize_profile(profile)   # None → moderado (default seguro do assinante)
-        return R.apply_profile_to_ranking(R.compute_ranking(force=force), prof)
+        # apply_profile_to_ranking("agressivo") = canônico com _profile_inputs removido (sem throttle).
+        return R.apply_profile_to_ranking(R.compute_ranking(force=force), "agressivo")
     except Exception as e:
         logger.exception("Erro ao computar ranking")
         return {"error": str(e), "categories": {}}
@@ -97,8 +98,8 @@ def screen(body: ScreenBody):
     market_state vem do REAL (regime do S&P), NUNCA hardcoded."""
     try:
         tickers = [t.strip() for t in (body.tickers or []) if t and t.strip()][:60]
-        prof = profiles.normalize_profile(body.profile)   # borda do assinante: None → moderado
-        return R.screen_assets(tickers, profile=prof)
+        # UNIVERSAL: mesmo motor canônico (agressivo) do ranking — sem seleção de perfil.
+        return R.screen_assets(tickers, profile="agressivo")
     except Exception as e:
         logger.exception("Erro ao rodar screen do ranking")
         return {"error": str(e), "assets": [], "failed_tickers": [],

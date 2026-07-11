@@ -1,272 +1,58 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
-import toast from "react-hot-toast";
-import { Info, Loader2, Save, Check } from "lucide-react";
-import Tooltip from "@/components/ui/Tooltip";
-import { useAuthStore } from "@/store/authStore";
+// SELEÇÃO DE PERFIL REMOVIDA (decisão Valth): o app é UNIVERSAL. Não há mais dropdown de
+// conservador/moderado/agressivo capando o motor — todo usuário vê a FRONTEIRA MÁXIMA de
+// aceleração segura (o motor mostra quanto dá p/ alavancar CADA ativo e sobreviver). O perfil
+// REAL de cada um emerge das ESCOLHAS: quais ativos compra e quanto aloca. Esta página virou
+// um explicador (a rota fica p/ o nav não quebrar).
 
-// Perfis canônicos (contrato com o motor): conservador/moderado/agressivo.
-// Cada card explica em linguagem simples o que muda na alavancagem/travas.
-type RiskProfile = "conservador" | "moderado" | "agressivo";
-
-const RISK_PRESETS: {
-  value: RiskProfile;
-  label: string;
-  blurb: string;
-  isDefault?: boolean;
-}[] = [
-  {
-    value: "conservador",
-    label: "Conservador",
-    blurb:
-      "Alavancagem até 2x · trava ações muito voláteis · semente com stop de preço · reserva maior",
-  },
-  {
-    value: "moderado",
-    label: "Moderado",
-    blurb: "Alavancagem até 3x · trava leve de volatilidade · equilíbrio",
-    isDefault: true,
-  },
-  {
-    value: "agressivo",
-    label: "Agressivo",
-    blurb:
-      "Alavancagem até 5x · regime de mercado manda · sem trava de volatilidade · semente só sai por tese — perfil previdenciário 10-15a",
-  },
-];
-
-// O Prisma persiste o perfil em PT canônico. Mapeia variantes/legados EN
-// (conservative/balanced/aggressive) -> PT canônico; default = moderado.
-function normalizeRiskProfile(raw: string | null | undefined): RiskProfile {
-  const v = (raw ?? "").trim().toLowerCase();
-  switch (v) {
-    case "conservador":
-    case "conservative":
-      return "conservador";
-    case "agressivo":
-    case "aggressive":
-      return "agressivo";
-    case "moderado":
-    case "moderate":
-    case "balanced":
-    default:
-      return "moderado";
-  }
-}
-
-interface ProfileForm {
-  fullName: string;
-  riskProfile: RiskProfile;
-  email: string;
-}
+import { Info, TrendingUp, ShieldCheck } from "lucide-react";
 
 export default function PerfilPage() {
-  const { user, fetchMe } = useAuthStore();
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<ProfileForm>({
-    fullName: "",
-    riskProfile: "moderado",
-    email: "",
-  });
-
-  // Hidrata o form. Se authStore vazio, busca direto da API (mais resiliente que
-  // depender do authStore — evita spinner infinito quando store esta sujo).
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      // Caminho rapido: store ja tem dados
-      if (user) {
-        setForm({
-          fullName: user.fullName ?? "",
-          riskProfile: normalizeRiskProfile(user.riskProfile),
-          email: user.email,
-        });
-        setLoading(false);
-        return;
-      }
-      // Fallback: busca direto da API (nao depende do authStore)
-      try {
-        const res = await fetch("/api/v1/account/profile", { credentials: "same-origin" });
-        if (cancelled) return;
-        if (!res.ok) {
-          // 401 -> redireciona pra login (cookie expirado/ausente)
-          if (res.status === 401) {
-            window.location.href = "/login";
-            return;
-          }
-          throw new Error("HTTP " + res.status);
-        }
-        const data = await res.json();
-        if (cancelled) return;
-        setForm({
-          fullName: data.fullName ?? "",
-          riskProfile: normalizeRiskProfile(data.riskProfile),
-          email: data.email ?? "",
-        });
-        // Atualiza store em paralelo (sem bloquear)
-        fetchMe().catch(() => {});
-      } catch (e) {
-        console.error("[perfil] load error", e);
-        toast.error("Não foi possível carregar seu perfil. Tente recarregar.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => { cancelled = true; };
-  }, [user, fetchMe]);
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const res = await fetch("/api/v1/account/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({
-          fullName: form.fullName.trim(),
-          riskProfile: form.riskProfile,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? `HTTP ${res.status}`);
-      }
-      // Re-sync com o backend pra refletir mudanca no Sidebar/Header.
-      await fetchMe();
-      toast.success("Perfil atualizado com sucesso");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido";
-      toast.error(`Falha ao salvar: ${msg}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="animate-spin text-primary" size={24} />
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-surface rounded-xl border border-border p-6">
-      <h2 className="text-lg font-bold text-text-primary mb-1">
-        Informacoes do Perfil
-      </h2>
-      <p className="text-sm text-text-secondary mb-6">
-        Atualize seu nome e perfil de risco. O email so pode ser alterado via suporte.
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-text-primary">Perfil de risco</h1>
+        <p className="text-sm text-text-muted mt-1">
+          O app não usa mais seleção de perfil — o motor é universal.
+        </p>
+      </div>
+
+      <div className="card border border-primary/20 bg-primary/5">
+        <div className="flex items-start gap-3">
+          <TrendingUp size={20} className="flex-shrink-0 mt-0.5 text-primary" />
+          <div className="text-sm text-text-secondary leading-relaxed space-y-2">
+            <p>
+              <strong className="text-text-primary">Você vê a fronteira máxima de aceleração segura.</strong>{" "}
+              Para cada ativo, o motor calcula quanta alavancagem dá pra usar <em>e sobreviver</em>
+              {" "}ao pior tombo — governado por beta, drawdown, aptidão e stops, não por um dropdown.
+            </p>
+            <p>
+              O dropdown de perfil (conservador/moderado/agressivo) só atrapalhava: capava o motor e
+              escondia oportunidade. Foi removido.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="card border border-border">
+        <div className="flex items-start gap-3">
+          <ShieldCheck size={20} className="flex-shrink-0 mt-0.5 text-success" />
+          <div className="text-sm text-text-secondary leading-relaxed space-y-2">
+            <p>
+              <strong className="text-text-primary">Seu perfil real vem das suas escolhas.</strong>{" "}
+              Filosofia do app: <em>alavancagem com segurança relativa pra acelerar patrimônio</em>.
+              Sobreviver é a restrição (não quebrar); acelerar é o objetivo. Quem decide o quanto de
+              risco tomar é você — pelos ativos que escolhe comprar e pelo tamanho de cada posição.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p className="flex items-center gap-2 text-xs text-text-muted">
+        <Info size={13} />
+        Cada recomendação já traz o teto de alavancagem seguro do ativo e o risco (máx. queda) junto.
       </p>
-
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <label
-            htmlFor="fullName"
-            className="block text-sm font-medium text-text-primary mb-1.5"
-          >
-            Nome completo
-          </label>
-          <input
-            id="fullName"
-            type="text"
-            value={form.fullName}
-            onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-            placeholder="Seu nome"
-            maxLength={120}
-            className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-text-primary mb-2">
-            Perfil de risco
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {RISK_PRESETS.map((preset) => {
-              const selected = form.riskProfile === preset.value;
-              return (
-                <button
-                  key={preset.value}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setForm({ ...form, riskProfile: preset.value })}
-                  className={`text-left rounded-lg border p-3.5 transition focus:outline-none focus:ring-1 focus:ring-primary/40 ${
-                    selected
-                      ? "border-primary bg-primary/10 ring-1 ring-primary/40"
-                      : "border-border bg-surface-2 hover:border-primary/40"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-semibold text-text-primary">
-                      {preset.label}
-                    </span>
-                    {selected ? (
-                      <Check size={15} className="text-primary shrink-0" />
-                    ) : preset.isDefault ? (
-                      <span className="text-[10px] uppercase tracking-wide text-text-muted">
-                        padrão
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="text-xs text-text-secondary leading-snug">
-                    {preset.blurb}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-xs text-text-muted mt-2">
-            Muda a alavancagem que o app sugere no Ranking e nos aportes.
-          </p>
-        </div>
-
-        <div>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-text-primary"
-            >
-              Email
-            </label>
-            <Tooltip
-              content="Email so muda via suporte por seguranca"
-              side="right"
-            >
-              <Info size={13} className="text-text-muted cursor-help" />
-            </Tooltip>
-          </div>
-          <input
-            id="email"
-            type="email"
-            value={form.email}
-            readOnly
-            disabled
-            className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm text-text-muted cursor-not-allowed"
-          />
-        </div>
-
-        <div className="flex justify-end pt-2">
-          <button
-            type="submit"
-            disabled={saving}
-            className="inline-flex items-center gap-2 bg-primary text-background font-semibold text-sm px-5 py-2.5 rounded-lg hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed transition"
-          >
-            {saving ? (
-              <Loader2 className="animate-spin" size={16} />
-            ) : (
-              <Save size={16} />
-            )}
-            {saving ? "Salvando..." : "Salvar"}
-          </button>
-        </div>
-      </form>
     </div>
   );
 }
