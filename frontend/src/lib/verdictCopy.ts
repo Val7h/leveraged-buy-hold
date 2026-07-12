@@ -75,11 +75,25 @@ export function riskLine(a: AssetLike | any): string | null {
  * porquê, resolvendo os paradoxos. Usa canonicalLeverage; lev = canônica || 1.
  * Tolerância: lev > 1.05 conta como ">1".
  */
+// POR QUE a alavancagem foi capada — a distinção mais acionável p/ a doutrina (parecer do par):
+// teto por SEGURANÇA (o risco do ativo te liquidaria → aceite) vs por DADO/regime (poderia dar
+// mais quando o dado/regime confirmar → empurre). Retorna a razão curta ou null (sem cap relevante).
+export function capReason(a: AssetLike | any): string | null {
+  const bind = (a?.leverage_teto_binding ?? '').toString().toLowerCase();
+  const thin = a?.quality_data_thin === true;
+  if (['gate', 'beta', 'gap', 'sigma'].includes(bind)) return 'travada por segurança';
+  if (bind === 'liquidez') return 'travada pela liquidez';
+  if (thin || bind === 'regime') return 'por dado fino — dá pra mais quando confirmar';
+  return null;
+}
+
 export function plainVerdict(a: AssetLike | any): { text: string; tone: Tone } {
   const verdict = a?.verdict ?? null;
   const lev = canonicalLeverage(a) ?? 1;
   const canLever = lev > 1.05;
   const levStr = (Number.isInteger(lev) ? lev.toString() : lev.toFixed(1));
+  const why = capReason(a);
+  const whySuffix = why ? ` (${why})` : '';
 
   switch (verdict) {
     case 'ESPECULATIVO':
@@ -103,7 +117,7 @@ export function plainVerdict(a: AssetLike | any): { text: string; tone: Tone } {
           }
         : {
             tone: 'strong',
-            text: 'Ótima agora, mas volátil ou ilíquida demais pra alavancar — aporte à vista (1x).',
+            text: `Ótima agora, mas à vista (1x)${whySuffix} — aporte sem alavancar.`,
           };
 
     case 'COMPRAR':
@@ -114,7 +128,7 @@ export function plainVerdict(a: AssetLike | any): { text: string; tone: Tone } {
           }
         : {
             tone: 'buy',
-            text: 'Boa pra aportar, mas à vista (1x) — não vale alavancar.',
+            text: `Boa pra aportar, mas à vista (1x)${whySuffix}.`,
           };
 
     case 'JUSTO':
@@ -126,7 +140,7 @@ export function plainVerdict(a: AssetLike | any): { text: string; tone: Tone } {
           }
         : {
             tone: 'hold',
-            text: 'Preço sem desconto — se quiser, aporte à vista (1x) e espere ficar barata.',
+            text: `Preço sem desconto — à vista (1x)${whySuffix}; se quiser, espere ficar barata.`,
           };
 
     default:

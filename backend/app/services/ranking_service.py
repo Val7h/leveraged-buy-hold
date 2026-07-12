@@ -2086,7 +2086,19 @@ def _analyze(tk: str, bucket: str, name: str, cat: str,
             _ultra_def = (beta is not None and beta <= 0.4
                           and dy is not None and dy >= 1.5
                           and verdict not in ("ESPECULATIVO", "ESTICADO", "RESERVA"))
-            leverage = min(leverage, 3.0 if _ultra_def else 2.0)
+            # maxDD-AWARE (faxina de timidez — o par pegou que beta baixo ≠ drawdown raso):
+            # o ultra-defensivo só sobe a 4x se o tombo PRÓPRIO for REALMENTE raso (pior-sano melhor
+            # que -20%, ex RZTR11 -14%). β~0 de tombo FUNDO (MXRF11 -41%, KNCR11 -31%) fica em 3x —
+            # a segurança é medida no beta E no drawdown, não no beta sozinho (não é timidez, é o
+            # tombo idiossincrático protegendo). Não-ultra-def segue 2x.
+            _wdd_thin = _worst_sane_dd(dd, dd_full)
+            if _ultra_def and _wdd_thin is not None and _wdd_thin > -20.0:
+                _thin_cap = 4.0
+            elif _ultra_def:
+                _thin_cap = 3.0
+            else:
+                _thin_cap = 2.0
+            leverage = min(leverage, _thin_cap)
         # TRAVA DE ALAVANCAGEM POR BETA ALTO (#3) — REGRA Nº1 = SOBREVIVÊNCIA. beta ≥ 1.45 já é
         # ~1,5x de sensibilidade ao mercado; 3x×1,5 = ~4,5x de exposição EFETIVA num drawdown =
         # risco de LIQUIDAÇÃO (B3SA3 1,48, ADBE 1,46). O 2x topo/3x neutro/4-5x capitulação do
