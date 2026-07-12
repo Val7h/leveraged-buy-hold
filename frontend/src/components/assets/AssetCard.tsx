@@ -6,6 +6,7 @@ import TickerLogo from "@/components/ui/TickerLogo";
 import Tooltip from "@/components/ui/Tooltip";
 import HeuristicBadge from "@/components/ui/HeuristicBadge";
 import AssetChartModal from "@/components/assets/AssetChartModal";
+import { plainVerdict, canonicalLeverage, leverageLabel, riskLine } from "@/lib/verdictCopy";
 import type { AssetScore } from "@/types";
 
 interface AssetCardProps {
@@ -14,6 +15,15 @@ interface AssetCardProps {
   selected?: boolean;
   onToggleSelect?: (ticker: string) => void;
 }
+
+// Cor da frase-veredito (plainVerdict) por tone.
+const verdictToneClasses: Record<string, string> = {
+  strong: "text-success bg-success/10 border-success/25",
+  buy:    "text-success bg-success/8 border-success/20",
+  hold:   "text-warning bg-warning/8 border-warning/20",
+  avoid:  "text-danger bg-danger/8 border-danger/20",
+  reserve:"text-text-muted bg-surface-2 border-border/40",
+};
 
 const riskColors: Record<string, string> = {
   BAIXO:   "text-success bg-success/10 border-success/20",
@@ -111,6 +121,12 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
   const tech  = asset.technicals;
   const entry = asset.entry_signal ? (entryConfig[asset.entry_signal] ?? entryConfig["SEM DADOS"]) : null;
   const kelly = asset.kelly;
+  const [showTech, setShowTech] = useState(false);
+
+  // Frase-veredito em PT (o "o que eu faço?") + alavancagem canônica única.
+  const verdict = plainVerdict(asset as any);
+  const canonLev = canonicalLeverage(asset as any);
+  const levRisk = riskLine(asset as any);
 
   // ── Zona de compra detection ─────────────────────────────────────────────
   const rsiWeekly = tech?.rsi_14_weekly ?? tech?.rsi_14;
@@ -166,11 +182,8 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
         📈 Gráfico
       </button>
 
-      {/* ── Layer badges Q / M / A ───────────────────────────────────────── */}
+      {/* ── Badges de topo (sobrevivência + zona) ────────────────────────── */}
       <div className="flex items-center flex-wrap gap-1 mb-3">
-        <LayerBadge label="Q" score={asset.quality_score} />
-        <LayerBadge label="M" score={asset.opportunity_score} />
-        <LayerBadge label="A" score={asset.leverage_score} />
         <SurvivalPill score={asset.composite_score} />
         {isZonaCompra && (
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-success/15 border border-success/30 text-success">
@@ -213,6 +226,16 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
           {/* Variação do dia removida: o detalhe do ativo não traz day_change real — não exibir número fabricado. */}
         </div>
       </div>
+
+      {/* ── Frase-veredito (o que eu faço?) ─────────────── */}
+      {verdict?.text && (
+        <div className={cn(
+          "rounded-xl px-4 py-3 mb-4 border text-sm font-semibold leading-snug",
+          verdictToneClasses[verdict.tone] ?? verdictToneClasses.reserve
+        )}>
+          {verdict.text}
+        </div>
+      )}
 
       {/* ── Scores ──────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3 py-4 mb-4 px-2 bg-surface-2/30 rounded-lg border border-border/20">
@@ -269,6 +292,42 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
           </p>
         </div>
       )}
+
+      {/* ── Visão simples: alavancagem única + máx. queda ─── */}
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <Tooltip content="Alavancagem sugerida pelo motor (Camada 3: aptidão × regime de mercado). Um número só — não é Kelly." side="top" delay={300}>
+            <p className="text-xs text-text-muted mb-0.5">{leverageLabel()}</p>
+          </Tooltip>
+          <span className="text-lg font-bold text-warning font-mono">
+            {canonLev != null ? `${canonLev.toFixed(2)}x` : "—"}
+          </span>
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-text-muted mb-0.5">Máx. queda</p>
+          <span className="text-sm font-semibold text-text-secondary">
+            {levRisk ?? "—"}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Toggle: detalhes técnicos (jargão recolhido) ──── */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setShowTech((v) => !v); }}
+        className="w-full flex items-center justify-center gap-1 text-[11px] text-text-muted hover:text-primary transition-colors py-1.5 mb-2"
+      >
+        {showTech ? "▲ Ocultar detalhes técnicos" : "▼ Ver detalhes técnicos"}
+      </button>
+
+      {showTech && (
+      <div className="border-t border-border/30 pt-3">
+      {/* ── Aptidão por camada Q / M / A ──────────────────── */}
+      <div className="flex items-center flex-wrap gap-1 mb-3">
+        <LayerBadge label="Q" score={asset.quality_score} />
+        <LayerBadge label="M" score={asset.opportunity_score} />
+        <LayerBadge label="A" score={asset.leverage_score} />
+      </div>
 
       {/* ── Technical Highlights ────────────────────────── */}
       {tech && (
@@ -401,6 +460,8 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
           </div>
         </div>
       </Tooltip>
+      </div>
+      )}
     </div>
     </>
   );

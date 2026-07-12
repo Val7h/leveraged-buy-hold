@@ -37,6 +37,8 @@ import dynamic from "next/dynamic";
 const AssetChartModal = dynamic(() => import("@/components/assets/AssetChartModal"), {
   ssr: false,
 });
+// Cópia única em PT de investidor comum (frase-veredito + alavancagem canônica).
+import { plainVerdict, canonicalLeverage, leverageLabel, riskLine } from "@/lib/verdictCopy";
 
 /* ------------------------------------------------------------------ */
 /* Constantes                                                          */
@@ -72,6 +74,15 @@ const VERDICT_DOT = {
   RESERVA: "bg-[#C084FC]",
 };
 const BUYABLE = new Set(["COMPRAR FORTE", "COMPRAR"]);
+
+// Cor sutil da frase-veredito por tom (retornado por plainVerdict).
+const TONE_STYLE = {
+  strong: "text-success",
+  buy: "text-success",
+  hold: "text-warning",
+  avoid: "text-danger",
+  reserve: "text-text-muted",
+};
 
 const MARKET_STATUS_STYLE = {
   good: "text-success",
@@ -614,6 +625,12 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
   // Aptidao: Camada 3
   const aptidaoVal = asset.aptidao ?? null;
 
+  // Cópia leiga: frase-veredito + alavancagem canônica (UMA só, sempre visível).
+  const verdictPhrase = plainVerdict(asset);
+  const phraseCls = TONE_STYLE[verdictPhrase.tone] || "text-text-secondary";
+  const canonLev = canonicalLeverage(asset);
+  const riskStr = riskLine(asset);
+
   return (
     <div className={`border-b border-border/70 last:border-b-0 ${expanded ? "bg-surface-2/30" : ""}`}>
       <button
@@ -658,18 +675,12 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
               </span>
             )}
           </div>
-          {/* Q/M/A layer badges + Survival tier */}
-          <div className="flex items-center gap-1 mt-0.5 pl-9 flex-wrap">
-            <LayerBadge label="Q" value={asset.quality_score ?? asset.quality} />
-            <LayerBadge label="M" value={momentumVal} />
-            {aptidaoVal !== null && <LayerBadge label="A" value={aptidaoVal} />}
-            <SurvivalTierBadge asset={asset} />
+          {/* Frase-veredito em PT de investidor comum — junta sinal + alavancagem + risco. */}
+          <div className={`mt-1 pl-9 text-[11px] leading-snug font-medium ${phraseCls}`}>
+            {verdictPhrase.text}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 pl-9">
             <span className="text-xs text-text-muted truncate">{asset.name}</span>
-            <span className="text-[9px] uppercase tracking-wide text-text-muted bg-surface-3 rounded px-1.5 py-0.5 shrink-0">
-              {asset.bucket}
-            </span>
             {asset.is_tatico && (
               <span
                 title="Cíclica descolada (commodity/idiossincrática): renda e beta menos confiáveis — position trade"
@@ -706,25 +717,25 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
           <span className={`inline-block self-start px-2 py-1 rounded-md text-[11px] font-semibold border whitespace-nowrap ${verdictCls}`}>
             {asset.verdict}
           </span>
-          {/* Risco no MESMO campo visual da recomendação: máx. queda + alavancagem >1x. */}
-          {(asset.max_dd != null || (asset.leverage != null && asset.leverage > 1)) && (
-            <div className="flex items-center gap-1 flex-wrap">
-              {asset.max_dd != null && (
-                <span
-                  title="Pior queda histórica do ativo (max drawdown)"
-                  className="inline-flex items-center self-start text-[9px] font-semibold text-danger bg-danger/10 border border-danger/30 rounded px-1.5 py-0.5 whitespace-nowrap"
-                >
-                  máx. queda {Math.round(asset.max_dd)}%
-                </span>
-              )}
-              {asset.leverage != null && asset.leverage > 1 && (
-                <span
-                  title="Alavancagem sugerida — amplia ganhos E perdas"
-                  className="inline-flex items-center self-start text-[9px] font-semibold text-[#C084FC] bg-[#C084FC]/10 border border-[#C084FC]/30 rounded px-1.5 py-0.5 whitespace-nowrap"
-                >
-                  ⚡ {fmtNum(asset.leverage, 1)}x
-                </span>
-              )}
+          {/* Risco essencial: máx. queda (a alavancagem única vive na coluna à direita). */}
+          {asset.max_dd != null && (
+            <span
+              title="Pior queda histórica do ativo (max drawdown)"
+              className="inline-flex items-center self-start text-[9px] font-semibold text-danger bg-danger/10 border border-danger/30 rounded px-1.5 py-0.5 whitespace-nowrap"
+            >
+              máx. queda {Math.round(asset.max_dd)}%
+            </span>
+          )}
+          {/* UMA alavancagem só, com nome único — sempre visível (não escondida pelo toggle). */}
+          {canonLev != null && (
+            <div className="flex flex-col gap-0.5">
+              <span
+                title="Alavancagem sugerida para ESTE ativo (amplia ganhos E perdas). Não é a rede agregada da carteira."
+                className="inline-flex items-center self-start gap-1 text-[10px] font-semibold text-[#C084FC] bg-[#C084FC]/10 border border-[#C084FC]/30 rounded px-1.5 py-0.5 whitespace-nowrap"
+              >
+                <Zap size={10} /> {leverageLabel()}: {fmtNum(canonLev, 1)}x
+              </span>
+              {riskStr && <span className="text-[9px] text-text-muted leading-none">{riskStr}</span>}
             </div>
           )}
           {asset.dividend_yield > 0 && (
@@ -766,24 +777,13 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
         </div>
 
         <div className="col-span-3 sm:col-span-3 lg:col-span-1 flex items-center justify-end gap-2 sm:gap-3">
-          {asset.leverage != null && (
-            <div className="text-right">
-              <div className="text-[9px] uppercase tracking-wide text-text-muted leading-none">
-                {showLeverage ? "alav." : "recom."}
-              </div>
-              <div className={`text-base font-mono font-bold leading-tight flex items-center justify-end gap-0.5 ${
-                showLeverage ? "text-[#C084FC]" : "text-primary"
-              }`}>
-                <Zap size={12} className={showLeverage ? "text-[#C084FC]" : "text-primary"} />
-                {fmtNum(asset.leverage, 1)}x
-              </div>
-            </div>
-          )}
           <div className="text-right">
             <div className="text-[9px] uppercase tracking-wide text-text-muted leading-none">
               {showLeverage ? "rank alav." : "rank"}
             </div>
-            <div className="text-base font-mono font-bold text-primary leading-tight">{fmtNum(displayRank, 1)}</div>
+            <div className="text-base font-mono font-bold text-primary leading-tight">
+              {fmtNum(displayRank, 1)}<span className="text-[10px] font-normal text-text-muted">/100</span>
+            </div>
           </div>
           {/* Botão explícito de gráfico — abre o AssetChartModal (afford. visível). */}
           <span
@@ -814,6 +814,18 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
 
       {expanded && (
         <div className="px-3 sm:px-4 pb-4 pt-1 space-y-4">
+          {/* Detalhes técnicos — o jargão vive aqui (fora da visão essencial colapsada). */}
+          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+            <span className="text-[10px] uppercase tracking-wider text-text-muted mr-1">detalhes técnicos</span>
+            <span className="text-[9px] uppercase tracking-wide text-text-muted bg-surface-3 rounded px-1.5 py-0.5 shrink-0">
+              {asset.bucket}
+            </span>
+            <LayerBadge label="Q" value={asset.quality_score ?? asset.quality} />
+            <LayerBadge label="M" value={momentumVal} />
+            {aptidaoVal !== null && <LayerBadge label="A" value={aptidaoVal} />}
+            <SurvivalTierBadge asset={asset} />
+          </div>
+
           {/* Preço / variação no mobile (escondidos no header < sm) */}
           <div className="flex items-center gap-4 sm:hidden">
             <div className="text-base font-mono font-semibold text-text-primary">
