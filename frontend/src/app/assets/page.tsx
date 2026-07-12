@@ -84,12 +84,13 @@ const PRESET_LISTS: Record<string, { tickers: string; label: string; flag?: stri
 const VERDICT_RANK: Record<string, number> = {
   "COMPRAR FORTE": 0, COMPRAR: 1, JUSTO: 2, ESTICADO: 3, ESPECULATIVO: 4, RESERVA: 5,
 };
+// VOCABULÁRIO ÚNICO: mesmas palavras do Ranking (verdict canônico do backend).
 const VERDICT_LABEL: Record<string, string> = {
-  "COMPRAR FORTE": "Oportunidade Forte",
-  COMPRAR: "Oportunidade",
-  JUSTO: "Neutro (Justo)",
-  ESTICADO: "Neutro (Esticado)",
-  ESPECULATIVO: "Desfavorável",
+  "COMPRAR FORTE": "Comprar Forte",
+  COMPRAR: "Comprar",
+  JUSTO: "Justo",
+  ESTICADO: "Esticado",
+  ESPECULATIVO: "Especulativo",
   RESERVA: "Reserva",
 };
 

@@ -631,8 +631,19 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
   const canonLev = canonicalLeverage(asset);
   const riskStr = riskLine(asset);
 
+  // Des-ênfase visual: linhas "mornas" (veredito indeciso ou confiança baixa) recuam
+  // para o olho ir direto nas COMPRAR/COMPRAR FORTE. Nada é escondido — só peso visual.
+  // Expandido sempre volta a 100% (o usuário optou por olhar de perto).
+  const isBuyable = BUYABLE.has(asset.verdict);
+  const isMuted = !isBuyable && (
+    asset.verdict === "JUSTO" ||
+    asset.verdict === "RESERVA" ||
+    asset.confidence === "BAIXA"
+  );
+  const dimCls = isMuted && !expanded ? "opacity-60 hover:opacity-100 transition-opacity" : "";
+
   return (
-    <div className={`border-b border-border/70 last:border-b-0 ${expanded ? "bg-surface-2/30" : ""}`}>
+    <div className={`border-b border-border/70 last:border-b-0 ${expanded ? "bg-surface-2/30" : ""} ${dimCls}`}>
       <button
         onClick={() => onToggle(asset.ticker)}
         className="w-full text-left grid grid-cols-12 items-center gap-2 px-3 sm:px-4 py-3 hover:bg-surface-2/40 transition-colors"
@@ -1279,6 +1290,7 @@ export default function RankingPage() {
   const [showLeverage, setShowLeverage] = useState(false);
   // Filtro de mercado aplicado sobre a lista da categoria ativa.
   const [marketFilter, setMarketFilter] = useState("Todos");
+  const [onlyOpportunities, setOnlyOpportunities] = useState(false); // "Só oportunidades": só COMPRAR/COMPRAR FORTE
 
   const fetchRanking = useCallback(async () => {
     setRankLoading(true);
@@ -1404,9 +1416,12 @@ export default function RankingPage() {
     if (marketFilter !== "Todos") {
       filtered = list.filter((a) => assetMarket(a) === marketFilter);
     }
+    if (onlyOpportunities) {
+      filtered = filtered.filter((a) => BUYABLE.has(a.verdict));
+    }
     if (!showLeverage) return filtered;
     return [...filtered].sort((a, b) => rankKey(b) - rankKey(a));
-  }, [cat, showLeverage, rankKey, marketFilter, assetMarket]);
+  }, [cat, showLeverage, rankKey, marketFilter, assetMarket, onlyOpportunities]);
 
   return (
     <div className="flex flex-col h-full bg-background text-text-primary">
@@ -1548,6 +1563,19 @@ export default function RankingPage() {
                 </button>
               );
             })}
+            {/* Separador + atalho "Só oportunidades": esconde os mornos, deixa só COMPRAR/COMPRAR FORTE */}
+            <span className="w-px self-stretch bg-border mx-1 shrink-0" aria-hidden />
+            <button
+              onClick={() => setOnlyOpportunities((v) => !v)}
+              title="Mostrar só os ativos acionáveis (COMPRAR / COMPRAR FORTE) e esconder os mornos"
+              className={`px-3 py-1 rounded-full text-xs whitespace-nowrap border transition-all flex items-center gap-1 ${
+                onlyOpportunities
+                  ? "bg-primary/20 text-primary border-primary/50 font-semibold shadow-[0_0_10px_rgba(0,255,136,0.15)]"
+                  : "bg-surface-2 text-text-secondary border-border hover:text-text-primary hover:border-border-light"
+              }`}
+            >
+              <Zap size={12} /> Só oportunidades
+            </button>
           </div>
         )}
 
@@ -1598,10 +1626,20 @@ export default function RankingPage() {
         ) : !cat ? (
           <div className="card text-center py-16 text-text-secondary">Categoria sem dados no momento.</div>
         ) : assets.length === 0 ? (
-          <div className="card text-center py-16 text-text-secondary">
-            Nenhum ativo no universo de{" "}
-            <span className="text-text-primary font-medium">{CAT_LABEL[activeCat]}</span>. Use “adicionar ativo”.
-          </div>
+          onlyOpportunities ? (
+            <div className="card text-center py-16 text-text-secondary">
+              Nenhuma oportunidade (COMPRAR / COMPRAR FORTE) em{" "}
+              <span className="text-text-primary font-medium">{CAT_LABEL[activeCat]}</span> agora — o mercado está morno.{" "}
+              <button onClick={() => setOnlyOpportunities(false)} className="text-primary underline hover:no-underline">
+                ver todos
+              </button>
+            </div>
+          ) : (
+            <div className="card text-center py-16 text-text-secondary">
+              Nenhum ativo no universo de{" "}
+              <span className="text-text-primary font-medium">{CAT_LABEL[activeCat]}</span>. Use “adicionar ativo”.
+            </div>
+          )
         ) : (
           <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-card">
             {assets.map((a, i) => (

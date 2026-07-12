@@ -17,18 +17,20 @@ export const dynamic = "force-dynamic";
  * gerados → sinal sempre cinza e leverage sempre 1x ao "Comprei"). market_state vem do REAL.
  */
 
-// Veredito do motor → label descritivo da UI (CVM 04/2023) e cor do sinal.
+// Veredito do motor → label da UI e cor do sinal. VOCABULÁRIO ÚNICO: o Screener
+// usa EXATAMENTE as mesmas palavras do Ranking (o verdict canônico do backend),
+// para não parecer outro sistema. (CVM 04/2023: sinal técnico, não recomendação.)
 //   verde  = COMPRAR FORTE / COMPRAR
 //   amarelo= JUSTO / ESTICADO
 //   vermelho = ESPECULATIVO
 //   cinza  = RESERVA (ou sem veredito)
 const VERDICT_MAP: Record<string, { label: string; color: string }> = {
-  "COMPRAR FORTE": { label: "OPORTUNIDADE FORTE", color: "green" },
-  COMPRAR:         { label: "OPORTUNIDADE",       color: "green" },
-  JUSTO:           { label: "NEUTRO",             color: "yellow" },
-  ESTICADO:        { label: "NEUTRO",             color: "yellow" },
-  ESPECULATIVO:    { label: "DESFAVORÁVEL",       color: "red" },
-  RESERVA:         { label: "RESERVA",            color: "gray" },
+  "COMPRAR FORTE": { label: "COMPRAR FORTE", color: "green" },
+  COMPRAR:         { label: "COMPRAR",       color: "green" },
+  JUSTO:           { label: "JUSTO",         color: "yellow" },
+  ESTICADO:        { label: "ESTICADO",      color: "yellow" },
+  ESPECULATIVO:    { label: "ESPECULATIVO",  color: "red" },
+  RESERVA:         { label: "RESERVA",       color: "gray" },
 };
 
 function riskFromLeverage(beta?: number | null, sigma?: number | null): string {

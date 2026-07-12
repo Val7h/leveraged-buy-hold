@@ -194,6 +194,9 @@ export default function Home() {
               <div className="flex-1 mx-4 bg-background rounded px-3 py-1 text-[11px] text-text-muted">
                 lbhsystem.com/dashboard
               </div>
+              <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded bg-warning/20 text-warning border border-warning/40 whitespace-nowrap">
+                Exemplo ilustrativo
+              </span>
             </div>
             {/* Fake dashboard content */}
             <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-border">
@@ -216,6 +219,9 @@ export default function Home() {
               </div>
             </div>
           </div>
+          <p className="text-center text-[11px] text-text-muted mt-3">
+            Ilustração da interface. Os números são fictícios e não representam resultados reais ou promessa de retorno.
+          </p>
         </div>
       </section>
 

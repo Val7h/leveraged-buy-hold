@@ -34,18 +34,20 @@ const riskColors: Record<string, string> = {
 
 // Sinais técnicos descritivos do modelo (CVM 04/2023: NÃO são recomendações de compra/venda).
 const entryConfig: Record<string, { bg: string; border: string; text: string }> = {
+  // VOCABULÁRIO ÚNICO: mesmas palavras do Ranking (verdict canônico do backend).
+  "COMPRAR FORTE":              { bg: "bg-success/12", border: "border-success/35", text: "text-success" },
+  "COMPRAR":                    { bg: "bg-success/8",  border: "border-success/25", text: "text-success" },
+  "JUSTO":                      { bg: "bg-warning/8",  border: "border-warning/20", text: "text-warning" },
+  "ESTICADO":                   { bg: "bg-warning/10", border: "border-warning/30", text: "text-warning" },
+  "ESPECULATIVO":               { bg: "bg-danger/8",   border: "border-danger/20",  text: "text-danger" },
+  "RESERVA":                    { bg: "bg-surface-2",  border: "border-border",     text: "text-text-muted" },
+  "SEM DADOS":                  { bg: "bg-surface-2",  border: "border-border",     text: "text-text-muted" },
+  // Aliases legados (transição — vocabulário antigo OPORTUNIDADE/NEUTRO/DESFAVORÁVEL)
   "OPORTUNIDADE FORTE":         { bg: "bg-success/12", border: "border-success/35", text: "text-success" },
   "OPORTUNIDADE":               { bg: "bg-success/8",  border: "border-success/25", text: "text-success" },
   "OPORTUNIDADE (mercado topo)":{ bg: "bg-warning/10", border: "border-warning/30", text: "text-warning" },
-  "ESTICADO":                   { bg: "bg-warning/10", border: "border-warning/30", text: "text-warning" },
   "NEUTRO":                     { bg: "bg-warning/8",  border: "border-warning/20", text: "text-warning" },
   "DESFAVORÁVEL":               { bg: "bg-danger/8",   border: "border-danger/20",  text: "text-danger" },
-  "SEM DADOS":                  { bg: "bg-surface-2",  border: "border-border",     text: "text-text-muted" },
-  // Aliases legados (transição)
-  "ENTRAR FORTE":               { bg: "bg-success/12", border: "border-success/35", text: "text-success" },
-  "ENTRAR":                     { bg: "bg-success/8",  border: "border-success/25", text: "text-success" },
-  "AGUARDAR":                   { bg: "bg-warning/8",  border: "border-warning/20", text: "text-warning" },
-  "EVITAR":                     { bg: "bg-danger/8",   border: "border-danger/20",  text: "text-danger" },
 };
 
 // ── Layer badge helper ───────────────────────────────────────────────────────
@@ -262,7 +264,7 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
           <div className="flex items-center justify-between gap-3 mb-1.5">
             <div className="flex items-center gap-2">
               <span className={cn("text-sm font-bold tracking-wider", entry.text)}>
-                {(asset.entry_signal === "OPORTUNIDADE" || asset.entry_signal === "ENTRAR") ? "🟢" : (asset.entry_signal === "OPORTUNIDADE FORTE" || asset.entry_signal === "ENTRAR FORTE") ? "🟢🟢" : "⏸"}
+                {(asset.entry_signal === "COMPRAR" || asset.entry_signal === "OPORTUNIDADE" || asset.entry_signal === "ENTRAR") ? "🟢" : (asset.entry_signal === "COMPRAR FORTE" || asset.entry_signal === "OPORTUNIDADE FORTE" || asset.entry_signal === "ENTRAR FORTE") ? "🟢🟢" : "⏸"}
               </span>
               <span className={cn("text-sm font-bold tracking-wider", entry.text)}>
                 {asset.entry_signal}
