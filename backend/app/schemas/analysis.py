@@ -17,6 +17,12 @@ class BacktestRequest(BaseModel):
     tax_pct: float = 0.15              # 15% sobre o ganho realizado nos ⅓ vendidos
     run_monte_carlo: bool = True
     mc_paths: int = 2000
+    # ── Dial de risco (decisão Valth): o usuário escolhe DEPOIS de ver o custo ──
+    # False (RECOMENDADO) = alavanca só FLUXOS (dívida fixa des-alavanca sozinha,
+    # zero risco de liquidação, melhor risco-ajustado). True (AGRESSIVO) = re-margina
+    # o PATRIMÔNIO rumo ao teto (capado em 1,8x p/ não liquidar o core) — mais CAGR,
+    # drawdown muito mais fundo. A recomendação do app é sempre False.
+    lever_equity: bool = False
 
 
 class BacktestPeriodMetrics(BaseModel):

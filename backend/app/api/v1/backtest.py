@@ -56,6 +56,7 @@ def run(request: BacktestRequest):
         tax_pct=request.tax_pct,
         run_monte_carlo=request.run_monte_carlo,
         mc_paths=request.mc_paths,
+        lever_equity=getattr(request, "lever_equity", False),
     )
 
     # NaN/Inf → 0.0: backtests de história longa em ativos que quase quebraram (ex: JPM na

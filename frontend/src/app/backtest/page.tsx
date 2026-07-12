@@ -30,6 +30,7 @@ export default function BacktestPage() {
   const [monthlyContrib, setMonthlyContrib] = useState(1000);
   const [riskProfile, setRiskProfile] = useState("balanced");
   const [applyCosts, setApplyCosts] = useState(true);
+  const [leverEquity, setLeverEquity] = useState(false); // dial de risco: default = recomendado (fluxos)
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -45,6 +46,7 @@ export default function BacktestPage() {
         risk_profile: riskProfile,
         apply_costs: applyCosts,
         run_monte_carlo: true,
+        lever_equity: leverEquity,
       });
       setResult(res.data);
     } catch (e: any) {
@@ -128,6 +130,42 @@ export default function BacktestPage() {
                 className="accent-primary"
               />
               Aplicar custos (slippage 0,4% + imposto 15% nos ⅓ vendidos)
+            </label>
+          </div>
+
+          {/* DIAL DE RISCO — você escolhe DEPOIS de ver o custo; o app aponta o recomendado */}
+          <div className="mt-4 rounded-xl border border-border bg-bg-secondary/40 px-4 py-3">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={leverEquity}
+                onChange={(e) => setLeverEquity(e.target.checked)}
+                className="accent-danger mt-0.5"
+              />
+              <span className="text-xs leading-relaxed">
+                <span className="text-text-primary font-semibold">Modo agressivo — alavancar o PATRIMÔNIO</span>{" "}
+                {!leverEquity ? (
+                  <span className="inline-block rounded bg-success/15 text-success font-semibold px-1.5 py-0.5">
+                    desligado — RECOMENDADO
+                  </span>
+                ) : (
+                  <span className="inline-block rounded bg-danger/15 text-danger font-semibold px-1.5 py-0.5">
+                    ligado — mais risco
+                  </span>
+                )}
+                <span className="block text-text-secondary mt-1">
+                  <span className="text-success font-medium">Recomendado (desligado):</span> alavanca só os FLUXOS — a
+                  dívida é fixa e se desalavanca sozinha. Melhor retorno-por-risco (Calmar ~0,69), tombo ~−16%,{" "}
+                  <span className="text-text-primary font-medium">zero risco de liquidação</span>.
+                </span>
+                {leverEquity && (
+                  <span className="block text-danger/90 mt-1">
+                    ⚠ <span className="font-medium">Ligado:</span> re-margina o patrimônio rumo ao teto (capado em 1,8x
+                    p/ não liquidar o core). Mais CAGR, mas tombo pode passar de −50% a −90% em crises. Compare as curvas
+                    abaixo antes de adotar — o retorno-por-risco (Calmar) PIORA; você ganha CAGR bruto pagando muito mais drawdown.
+                  </span>
+                )}
+              </span>
             </label>
           </div>
         </div>

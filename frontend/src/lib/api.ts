@@ -97,6 +97,7 @@ export const backtestApi = {
     tax_pct?: number;
     run_monte_carlo?: boolean;
     mc_paths?: number;
+    lever_equity?: boolean;
   }) => api.post("/api/v1/backtest", data),
   sharpeCompare: (data: {
     tickers: string;

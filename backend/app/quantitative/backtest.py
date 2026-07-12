@@ -36,6 +36,15 @@ from app.quantitative.monte_carlo import (
 # conservador 2x / equilibrado 3x / agressivo 4x). O regime escolhe abaixo disso.
 _MAX_LEV_BY_PROFILE = {"conservative": 2.0, "balanced": 3.0, "aggressive": 4.0}
 
+# TETO DE SOBREVIVÊNCIA da RE-MARGEM DE PATRIMÔNIO (doutrina evoluída Valth). A alavancagem
+# de PATRIMÔNIO re-margina o equity (diferente da de FLUXO, cuja dívida é fixa e des-alavanca
+# sozinha) → precisa de teto PRÓPRIO mais baixo, senão liquida o core numa crise (SPY 4x morreu
+# em 2008). Calibrado empiricamente p/ SOBREVIVER 2008/COVID/2022 no core (SPY/defensivas) COM
+# os stops escalonados fazendo o corte. Acelera de verdade (~2,2x patrimônio vs ~1,2x de fluxo)
+# mantendo a Regra Nº1. Env override p/ calibrar sem redeploy.
+import os as _os
+_EQUITY_REMARGIN_CAP = float(_os.getenv("EQUITY_REMARGIN_CAP", "1.8"))
+
 # ── Cesta DEFAULT anti-survivorship ───────────────────────────────────────────
 # O pecado nº1 do parecer sênior: default num único VENCEDOR (NEE). Trocamos por
 # uma CESTA representativa que MISTURA uma utility boa (NEE) com cíclicas/casos que
@@ -174,6 +183,7 @@ def _run_adaptive_strategy(
     index_close: Optional[pd.Series] = None,
     costs: Optional["CostModel"] = None,
     shy_yield_annual: float = 0.025,
+    lever_equity: bool = False,
 ) -> Tuple[pd.DataFrame, List[Dict]]:
     """
     Backtest da ESTRATÉGIA MASTER (Alavancagem Dinâmica Composta) sobre PREÇOS
@@ -195,8 +205,17 @@ def _run_adaptive_strategy(
     Regime = multiplicador do mercado na data. Usa o drawdown do ÍNDICE
     (`index_close`, ex. SPY) quando disponível; senão usa o drawdown do próprio
     ativo como proxy (mesma lógica auto-referente do Monte Carlo).
-    NÃO alavanca mais o patrimônio inteiro: `new_notional = equity * target_lev`
-    foi removido de propósito.
+
+    ALAVANCAGEM DO PATRIMÔNIO (opt-in `lever_equity`, decisão Valth): o app RECOMENDA
+    alavancar só FLUXOS (default, melhor risco-ajustado, zero liquidação). Se o usuário
+    LIGAR o modo agressivo depois de ver o custo no backtest, além do fluxo o motor
+    RE-MARGINA o equity rumo ao teto por-ativo (máxima aceleração). Trava
+    de disciplina p/ não virar espiral de margem: o top-up de equity SÓ acontece em
+    regime CALMO (topo/correção); numa queda (urso/capitulação) NÃO adiciona margem
+    — ali os stops escalonados + a dívida fixa DES-alavancam. O alvo é `equity×lev`
+    com `lev` já modulado por regime (topo 0,60×teto, correção 0,80×teto) e capado
+    no teto beta-scaled de SOBREVIVÊNCIA → acelera rumo ao teto sem estar no teto
+    cheio no topo do mercado. Liquidação/stops/SHY intactos.
     """
     close = price_df["Close"].squeeze()
     low   = price_df["Low"].squeeze()  if "Low"  in price_df.columns else close * 0.995
@@ -209,6 +228,11 @@ def _run_adaptive_strategy(
     if beta is not None and abs(beta) < 1.0:
         _hard = 5.0
         max_leverage = min(_hard, max_leverage + (1.0 - abs(beta)) * (_hard - max_leverage) * 0.60)
+    elif beta is not None and abs(beta) >= 1.45:
+        # ESPELHA teto_beta do ranking no OUTRO lado: beta ALTO capa a alavancagem PRA BAIXO
+        # (Regra Nº1 = sobrevivência). Sem isto o backtest testava 4x numa cesta AMD/NVDA que o
+        # ranking capa em 1-2x → liquidava numa alavancagem que o produto NUNCA recomendaria.
+        max_leverage = min(max_leverage, 1.0 if abs(beta) >= 1.8 else 2.0)
     costs = costs if costs is not None else CostModel(enabled=False)
 
     # ── Índice de regime: drawdown do pico até a data (point-in-time) ─────────
@@ -346,6 +370,25 @@ def _run_adaptive_strategy(
                 assets     += lev * deploy
                 debt       += (lev - 1.0) * deploy
                 cost_basis += lev * deploy    # o notional comprado entra ao custo
+
+            # ── RE-MARGEM do PATRIMÔNIO rumo ao teto (doutrina evoluída) ─────
+            # Top-up do equity até `equity×lev` — SÓ em regime calmo (topo/correção).
+            # Nunca adiciona margem em urso/capitulação (viraria espiral); ali só o
+            # fluxo alavanca e os stops des-alavancam. O `lev` já é regime×teto-beta-
+            # scaled → alvo responsável (não teto cheio no topo). Cap duro no teto.
+            if lever_equity and regime in ("topo", "correcao"):
+                equity_now = max(0.0, assets + shy - debt)
+                target_notional = equity_now * min(lev, max_leverage, _EQUITY_REMARGIN_CAP)
+                if assets < target_notional - 1e-6:
+                    topup = target_notional - assets     # empréstimo adicional (re-margem)
+                    assets     += topup
+                    debt       += topup                  # 100% dívida
+                    cost_basis += topup
+                    trades.append({
+                        "date": date_str, "type": "REBALANCE_ALTA",
+                        "price": round(price, 4), "leverage": round(lev, 2),
+                        "details": f"Re-margem patrimônio → {lev:.1f}x [{regime}] (+${topup:,.0f})",
+                    })
 
             if monthly_contribution > 0:
                 trades.append({
@@ -731,6 +774,7 @@ def run_backtest(
     run_monte_carlo: bool = True,
     mc_paths: int = 2000,
     mc_seed: int = 42,
+    lever_equity: bool = False,
 ) -> Dict:
     """Run all strategies and return comparable results.
 
@@ -791,12 +835,12 @@ def run_backtest(
     adaptive_df,  adaptive_trades  = _run_adaptive_strategy(
         primary_df, initial_capital, monthly_contribution, risk_profile,
         beta, dividend_yield, max_dd_hist, sharpe_hist, vol_hist,
-        index_close=index_close, costs=net_costs,
+        index_close=index_close, costs=net_costs, lever_equity=lever_equity,
     )
     adaptive_gross_df, _ = _run_adaptive_strategy(
         primary_df, initial_capital, monthly_contribution, risk_profile,
         beta, dividend_yield, max_dd_hist, sharpe_hist, vol_hist,
-        index_close=index_close, costs=gross_costs,
+        index_close=index_close, costs=gross_costs, lever_equity=lever_equity,
     )
     bh1x_df,  _  = _run_buy_hold(primary_df, initial_capital, monthly_contribution, 1.0, dividend_yield)
     bh2x_df,  bh2x_trades = _run_buy_hold(primary_df, initial_capital, monthly_contribution, 2.0, dividend_yield)
