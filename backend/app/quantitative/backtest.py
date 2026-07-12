@@ -202,6 +202,13 @@ def _run_adaptive_strategy(
     low   = price_df["Low"].squeeze()  if "Low"  in price_df.columns else close * 0.995
 
     max_leverage = _MAX_LEV_BY_PROFILE.get(risk_profile, 3.0)
+    # RECONCILIAÇÃO c/ o ranking (mesma doutrina regime-beta-scaled): um ativo/cesta de BAIXO beta
+    # quase não corre o drawdown de MERCADO ao qual o dial é calibrado → o cap da estratégia sobe
+    # (folga 60% do caminho ao teto 5x). Antes o backtest usava só o cap flat do perfil (3x moderado)
+    # e "prometia" 3,8x no ranking mas executava ~1x — o par pegou. beta>=1 fica no cap do perfil.
+    if beta is not None and abs(beta) < 1.0:
+        _hard = 5.0
+        max_leverage = min(_hard, max_leverage + (1.0 - abs(beta)) * (_hard - max_leverage) * 0.60)
     costs = costs if costs is not None else CostModel(enabled=False)
 
     # ── Índice de regime: drawdown do pico até a data (point-in-time) ─────────
@@ -746,6 +753,33 @@ def run_backtest(
     index_close = None
     if "SPY" in price_data and primary_ticker != "SPY":
         index_close = price_data["SPY"]["Close"].squeeze()
+
+    # BETA REAL da cesta vs SPY (reconciliação c/ o ranking): sem isto o adaptativo usava o default
+    # beta=0.7 e não sabia que a cesta é de BAIXO beta → não escalava a alavancagem p/ os defensivos.
+    def _tznaive_series(s):
+        idx = pd.to_datetime(s.index)
+        try:
+            idx = idx.tz_localize(None)
+        except (TypeError, AttributeError):
+            try:
+                idx = idx.tz_convert(None)
+            except (TypeError, AttributeError):
+                pass
+        return pd.Series(pd.to_numeric(s.values, errors="coerce"), index=idx.normalize())
+    try:
+        if index_close is not None:
+            _bc = _tznaive_series(primary_df["Close"].squeeze())
+            _ic = _tznaive_series(index_close)
+            _al = pd.concat([_bc, _ic], axis=1, join="inner").dropna()
+            _al.columns = ["a", "b"]
+            _ar = _al["a"].pct_change().dropna()
+            _br = _al["b"].pct_change().dropna()
+            if len(_ar) > 60:
+                _vb = float(_br.var())
+                if _vb > 0:
+                    beta = float(_ar.cov(_br) / _vb)
+    except Exception:
+        pass
 
     # ── Camada de custos: roda o adaptativo BRUTO (sem fricção) e LÍQUIDO ──────
     # Carry continua ZERO (Quantfury). Custos = slippage na liquidação/stops +

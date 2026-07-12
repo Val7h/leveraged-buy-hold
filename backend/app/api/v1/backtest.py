@@ -43,11 +43,14 @@ def run(request: BacktestRequest):
             except Exception:
                 pass
 
+    # UNIVERSAL (reconciliação c/ o ranking): o ranking foi p/ perfil único AGRESSIVO (cap 5x); o
+    # backtest precisa rodar o MESMO perfil, senão ele "prometia" a alavancagem agressiva no ranking
+    # e executava com o cap moderado (3x) na simulação — o descompasso que o investidor sênior pegou.
     results = run_backtest(
         price_data=price_data,
         initial_capital=request.initial_capital,
         monthly_contribution=request.monthly_contribution,
-        risk_profile=request.risk_profile,
+        risk_profile="aggressive",
         apply_costs=request.apply_costs,
         slippage_pct=request.slippage_pct,
         tax_pct=request.tax_pct,
