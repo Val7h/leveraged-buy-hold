@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/authStore";
@@ -15,6 +15,18 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuthStore();
   const router = useRouter();
+
+  // Erros vindos do callback do Google (?error=...) → mensagem amigável.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (!code) return;
+    const msgs: Record<string, string> = {
+      google_nao_configurado: "Login com Google ainda não está configurado.",
+      servico_indisponivel: "Serviço temporariamente indisponível. Tente de novo em instantes.",
+      google_email_nao_verificado: "Seu e-mail Google não está verificado.",
+    };
+    setError(msgs[code] ?? "Não foi possível entrar com o Google. Tente de novo.");
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,6 +166,25 @@ export default function LoginPage() {
               {tab === "login" ? "Entrar" : "Criar Conta"}
             </button>
           </form>
+
+          {/* Login com Google (mesma conta se o e-mail for o mesmo) */}
+          <div className="flex items-center gap-3 my-4">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[11px] text-text-muted">ou</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <a
+            href="/api/v1/auth/google"
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-bg-secondary/40 hover:bg-bg-secondary px-4 py-2.5 text-sm font-medium text-text-primary transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="#4285F4" d="M23.49 12.27c0-.85-.07-1.46-.22-2.1H12.2v3.83h6.48c-.13 1.06-.84 2.65-2.41 3.72l-.02.15 3.5 2.66.24.02c2.23-2.02 3.5-4.99 3.5-8.28" />
+              <path fill="#34A853" d="M12.2 23.5c3.18 0 5.85-1.03 7.8-2.8l-3.72-2.83c-.99.68-2.32 1.16-4.08 1.16-3.12 0-5.76-2.02-6.7-4.82l-.14.01-3.63 2.76-.05.13c1.94 3.78 5.91 6.39 10.52 6.39" />
+              <path fill="#FBBC05" d="M5.5 14.21a7.05 7.05 0 0 1-.39-2.28c0-.8.14-1.56.37-2.28l-.01-.15-3.67-2.8-.12.06A11.51 11.51 0 0 0 .43 11.93c0 1.85.45 3.6 1.25 5.17z" />
+              <path fill="#EB4335" d="M12.2 4.9c2.21 0 3.7.94 4.55 1.72l3.32-3.18C18.03 1.55 15.38.43 12.2.43 7.59.43 3.62 3.03 1.68 6.81l3.8 2.9c.96-2.8 3.6-4.81 6.72-4.81" />
+            </svg>
+            Entrar com Google
+          </a>
 
         </div>
 
