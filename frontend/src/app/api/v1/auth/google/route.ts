@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { publicOrigin } from "@/lib/public-origin";
 
 // Login com Google (padrão Wealth Lab, decisão Valth): OAuth code flow.
 // GET /api/v1/auth/google → redireciona pro consentimento do Google.
@@ -9,14 +10,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const origin = publicOrigin(request);
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) {
     // Sem credencial configurada: volta pro login com aviso (não expõe stack).
-    return NextResponse.redirect(new URL("/login?error=google_nao_configurado", request.url));
+    return NextResponse.redirect(`${origin}/login?error=google_nao_configurado`);
   }
 
-  // Atrás do proxy da Render o origin do request já é o domínio público (host header).
-  const redirectUri = `${request.nextUrl.origin}/api/v1/auth/google/callback`;
+  const redirectUri = `${origin}/api/v1/auth/google/callback`;
 
   // state anti-CSRF: cookie httpOnly de 5min conferido no callback.
   const state = crypto.randomBytes(16).toString("base64url");

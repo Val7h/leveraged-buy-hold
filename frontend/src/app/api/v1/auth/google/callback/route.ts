@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { signSession } from "@/lib/auth";
 import { logger } from "@/lib/logger";
+import { publicOrigin } from "@/lib/public-origin";
 
 // Callback do login com Google: valida state, troca code→token, busca o perfil,
 // acha-ou-cria o usuário pelo E-MAIL e seta o cookie lbh_session (mesmo formato
@@ -16,7 +17,7 @@ const COOKIE_NAME = "lbh_session";
 const COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60; // espelha setSessionCookie (7d, igual ao JWT)
 
 function fail(request: NextRequest, code: string) {
-  return NextResponse.redirect(new URL(`/login?error=${code}`, request.url));
+  return NextResponse.redirect(`${publicOrigin(request)}/login?error=${code}`);
 }
 
 export async function GET(request: NextRequest) {
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // ── code → access_token ──────────────────────────────────────────────────
-    const redirectUri = `${request.nextUrl.origin}/api/v1/auth/google/callback`;
+    const redirectUri = `${publicOrigin(request)}/api/v1/auth/google/callback`;
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     // ── sessão idêntica ao login por senha ───────────────────────────────────
     const token = await signSession(user.id);
-    const res = NextResponse.redirect(new URL("/dashboard", request.url));
+    const res = NextResponse.redirect(`${publicOrigin(request)}/dashboard`);
     res.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
