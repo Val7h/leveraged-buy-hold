@@ -1274,6 +1274,7 @@ export default function RankingPage() {
   const [ranking, setRanking] = useState(null);
   const [rankLoading, setRankLoading] = useState(true);
   const [rankError, setRankError] = useState("");
+  const [teaser, setTeaser] = useState(null); // isca p/ visitante anônimo (top 3 + CTA)
   const [market, setMarket] = useState([]);
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState("");
@@ -1297,6 +1298,19 @@ export default function RankingPage() {
     setRankError("");
     try {
       const res = await fetch("/api/ranking", { credentials: "include" });
+      if (res.status === 401) {
+        // Visitante ANÔNIMO: em vez de tela de erro, mostra a ISCA (top 3 do
+        // ranking real + convite pra criar conta grátis). Conversão > erro.
+        try {
+          const t = await fetch("/api/ranking/teaser");
+          if (t.ok) {
+            setTeaser(await t.json());
+            return;
+          }
+        } catch {}
+        setRankError("Crie uma conta gratuita para ver o ranking.");
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setRanking(await res.json());
     } catch (e) {
@@ -1617,6 +1631,55 @@ export default function RankingPage() {
             <Loader2 size={22} className="animate-spin text-primary" />
             <span>calculando ranking…</span>
             <span className="text-xs text-text-muted">primeira carga pode levar alguns segundos</span>
+          </div>
+        ) : teaser ? (
+          /* ISCA p/ visitante anônimo: top 3 REAL + convite (conversão) */
+          <div className="space-y-4">
+            <div className="bg-surface border border-border rounded-xl overflow-hidden shadow-card">
+              <div className="px-4 py-3 border-b border-border">
+                <p className="text-sm font-semibold text-text-primary">
+                  As 3 melhores oportunidades do motor agora
+                </p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  De {teaser.total_assets ?? "—"} ativos analisados, {teaser.total_opportunities ?? "—"} estão em zona de compra.
+                </p>
+              </div>
+              {(teaser.top || []).map((a) => {
+                const phrase = plainVerdict(a);
+                const lev = canonicalLeverage(a);
+                return (
+                  <div key={a.ticker} className="px-4 py-3 border-b border-border/60 flex items-center gap-3">
+                    <span className="font-mono font-bold text-text-primary w-20">{a.ticker}</span>
+                    <span className="text-xs text-text-secondary flex-1">{phrase.text}</span>
+                    {lev != null && lev > 1 && (
+                      <span className="text-xs font-semibold text-primary whitespace-nowrap">até {lev}x</span>
+                    )}
+                  </div>
+                );
+              })}
+              {/* linhas borradas = o resto existe, mas é de quem tem conta */}
+              <div className="relative">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="px-4 py-3 border-b border-border/40 flex items-center gap-3 select-none blur-[6px] opacity-60">
+                    <span className="font-mono font-bold w-20">•••••</span>
+                    <span className="text-xs flex-1">veredito disponível para quem tem conta</span>
+                    <span className="text-xs font-semibold">•.•x</span>
+                  </div>
+                ))}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <a
+                    href="/login?tab=register"
+                    className="btn-primary px-5 py-2.5 text-sm font-semibold rounded-lg shadow-lg"
+                  >
+                    Criar conta gratuita e ver o ranking completo
+                  </a>
+                </div>
+              </div>
+            </div>
+            <p className="text-center text-xs text-text-muted">
+              Grátis, sem cartão. Quer alertas e backtest completo?{" "}
+              <a href="/pricing" className="text-primary underline hover:no-underline">Veja o Pro — R$ 59/mês</a>.
+            </p>
           </div>
         ) : rankError ? (
           <div className="bg-danger/10 border border-danger/30 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-danger">

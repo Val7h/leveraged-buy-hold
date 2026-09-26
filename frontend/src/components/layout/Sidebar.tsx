@@ -82,14 +82,18 @@ const navItems = [
     section: "PESQUISA",
     tooltip: "Valide estratégias com 20+ anos de dados. Compare alternativas",
   },
-  {
-    href: "/simulator",
-    label: "Simulador",
-    icon: TrendingUp,
-    badge: null,
-    section: "PESQUISA",
-    tooltip: "Simule 1.000 cenários futuros. Veja distribuição de resultados",
-  },
+  // Simulador FORA do menu (26/09/2026, auditoria quant): o CAGR dele ignora os
+  // aportes e conta dividendo em cima de preço já ajustado → número inflado.
+  // A rota /simulator continua viva p/ quem tem o link; volta ao menu quando o
+  // cálculo for corrigido (backend/app/api/v1/simulator.py:119).
+  // {
+  //   href: "/simulator",
+  //   label: "Simulador",
+  //   icon: TrendingUp,
+  //   badge: null,
+  //   section: "PESQUISA",
+  //   tooltip: "Simule 1.000 cenários futuros. Veja distribuição de resultados",
+  // },
   {
     href: "/sharpe-compare",
     label: "Sharpe",

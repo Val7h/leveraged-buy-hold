@@ -24,6 +24,15 @@ NODE_PID=$!
     sleep "${ALERT_SWEEP_SECONDS:-120}"
   done ) &
 
+# 4b) CRON de billing (26/09/2026): resync de assinaturas Stripe → tabela Subscription
+#     (liberação automática de pagante; padrão Dados B3 "Stripe é a fonte da verdade").
+#     Dormente sem STRIPE_SECRET_KEY (a rota devolve {skipped}). Mesmo blindado do sweep.
+( sleep 150
+  while true; do
+    node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/v1/billing/resync',{method:'POST',headers:{'X-Internal-Token':process.env.BACKEND_INTERNAL_TOKEN||''}}).then(r=>r.text()).then(t=>console.log('[billing-resync]',t)).catch(e=>console.log('[billing-resync] skip',e.message))" 2>/dev/null || true
+    sleep "${BILLING_RESYNC_SECONDS:-600}"
+  done ) &
+
 # 5) ETL CVM Dados Abertos (fundamentos B3) — baixa os ZIPs e popula o cache em disco.
 #    Roda no boot (após uvicorn subir) e re-roda SEMANALMENTE (dado CVM muda trimestral).
 #    Subshell blindado: nunca sai, engole erros → não derruba o container.
