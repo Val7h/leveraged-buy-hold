@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { getUserTier, TIER_LIMITS, withinLimit, paywallEnabled, upgradeRequired } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -52,6 +53,18 @@ export async function POST(request: NextRequest) {
       { error: "invalid_payload", details: "condition or alert_type required" },
       { status: 400 }
     );
+  }
+
+  // PAYWALL (só com PAYWALL_ENABLED=true): Free = 0 alertas (vigília automática é Pro).
+  if (paywallEnabled()) {
+    const tier = await getUserTier(user.id);
+    const limit = TIER_LIMITS[tier].alerts;
+    if (limit >= 0) {
+      const used = await prisma.alert.count({ where: { userId: user.id } });
+      if (!withinLimit(used, limit)) {
+        return NextResponse.json(upgradeRequired("alerts", tier), { status: 402 });
+      }
+    }
   }
 
   const created = await prisma.alert.create({

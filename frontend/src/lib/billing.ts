@@ -59,6 +59,28 @@ function isValidTier(t: string): t is Tier {
 }
 
 /**
+ * CHAVE-MESTRA do paywall (construído "no escuro" em 26/09/2026, auditoria+plano
+ * de monetização). DESLIGADO por padrão: os limites do Free só passam a valer
+ * quando PAYWALL_ENABLED=true no env — e ela SÓ deve ser ligada quando houver
+ * caminho de pagamento vivo (ASAAS_LINK_PRO setado), senão o usuário bate em
+ * parede sem porta. Ligar = setar as duas envs no Render, sem redeploy de código.
+ */
+export function paywallEnabled(): boolean {
+  return process.env.PAYWALL_ENABLED === "true";
+}
+
+/** Resposta padrão de limite atingido (HTTP 402) — a UI trata como convite de upgrade. */
+export function upgradeRequired(quota: keyof TierLimits, tier: Tier) {
+  return {
+    error: "upgrade_required",
+    quota,
+    tier,
+    message:
+      "Limite do plano gratuito atingido. Assine o Pro para desbloquear.",
+  };
+}
+
+/**
  * Resolve o tier efetivo do usuario.
  * - Sem subscription -> "free"
  * - status != "active" e nao em trial -> "free" (cobranca falhou / cancelado)

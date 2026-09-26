@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { getUserTier, TIER_LIMITS, withinLimit, paywallEnabled, upgradeRequired } from "@/lib/billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -165,6 +166,24 @@ export async function POST(req: NextRequest, { params: { id } }: RouteCtx) {
   }
 
   const ticker = parsed.ticker.toUpperCase();
+
+  // PAYWALL (só com PAYWALL_ENABLED=true): Free = 1 ativo distinto. Adicionar a um
+  // ticker que o usuário JÁ tem não conta como ativo novo (consolidação continua livre).
+  if (paywallEnabled()) {
+    const tier = await getUserTier(user.id);
+    const limit = TIER_LIMITS[tier].assets;
+    if (limit >= 0) {
+      const distinct = await prisma.position.findMany({
+        where: { portfolio: { userId: user.id } },
+        distinct: ["ticker"],
+        select: { ticker: true },
+      });
+      const jaTem = distinct.some((d) => d.ticker.toUpperCase() === ticker);
+      if (!jaTem && !withinLimit(distinct.length, limit)) {
+        return NextResponse.json(upgradeRequired("assets", tier), { status: 402 });
+      }
+    }
+  }
 
   // Consolidação: se o ticker já existe na carteira, mescla em vez de duplicar.
   // - quantidade: soma

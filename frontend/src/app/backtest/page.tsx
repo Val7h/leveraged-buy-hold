@@ -30,6 +30,10 @@ export default function BacktestPage() {
   const [monthlyContrib, setMonthlyContrib] = useState(1000);
   const [riskProfile, setRiskProfile] = useState("balanced");
   const [applyCosts, setApplyCosts] = useState(true);
+  // Monte Carlo OFF por padrão: com 2.000 caminhos no servidor de 1 worker o
+  // backtest estourava o timeout do proxy → 502 pro usuário (26/09). O resultado
+  // principal (curvas+métricas+crises) chega em ~20s; MC é opt-in mais lento.
+  const [runMc, setRunMc] = useState(false);
   const [leverEquity, setLeverEquity] = useState(false); // dial de risco: default = recomendado (fluxos)
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,7 +49,8 @@ export default function BacktestPage() {
         monthly_contribution: monthlyContrib,
         risk_profile: riskProfile,
         apply_costs: applyCosts,
-        run_monte_carlo: true,
+        run_monte_carlo: runMc,
+        ...(runMc ? { mc_paths: 500 } : {}),
         lever_equity: leverEquity,
       });
       setResult(res.data);
@@ -130,6 +135,15 @@ export default function BacktestPage() {
                 className="accent-primary"
               />
               Aplicar custos (slippage 0,4% + imposto 15% nos ⅓ vendidos)
+            </label>
+            <label className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={runMc}
+                onChange={(e) => setRunMc(e.target.checked)}
+                className="accent-primary"
+              />
+              Monte Carlo de ruína (mais lento — ~2 min)
             </label>
           </div>
 

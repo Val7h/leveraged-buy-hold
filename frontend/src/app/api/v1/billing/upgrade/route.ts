@@ -1,23 +1,41 @@
 // POST /api/v1/billing/upgrade
-// Stub: Asaas ainda nao integrado. Retornamos 501 (Not Implemented) com payload
-// estavel para o frontend ja conseguir tratar o caso "checkout indisponivel".
 //
-// Quando integrarmos:
-//   1. Receber { tier: "pro"|"premium", cycle: "monthly"|"yearly" }
-//   2. Criar/recuperar Customer Asaas (asaasCustomerId)
-//   3. Criar Subscription Asaas, persistir asaasSubscriptionId + trialEndsAt
-//   4. Retornar { checkoutUrl } para redirect
+// CAMINHO MÍNIMO DE MONETIZAÇÃO (Opção A do plano 24/09): o checkout é um LINK
+// DE ASSINATURA criado no painel do Asaas e colado nas envs do Render:
+//   ASAAS_LINK_PRO      (obrigatório p/ vender o Pro)
+//   ASAAS_LINK_PREMIUM  (opcional; sem ela, Premium fica "em breve")
+// Com a env setada, devolve { checkoutUrl } e o front redireciona (o handler da
+// /pricing já trata). Sem env, mantém o 501 estável de antes ("em breve").
+// A liberação do plano após o pagamento é manual (painel Asaas → SQL/admin) até
+// a integração completa com webhook (Opção B).
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  let tier = "pro";
+  try {
+    const body = await request.json();
+    if (body?.tier === "premium") tier = "premium";
+  } catch {
+    /* body vazio → pro */
+  }
+
+  const link =
+    tier === "premium"
+      ? process.env.ASAAS_LINK_PREMIUM
+      : process.env.ASAAS_LINK_PRO;
+
+  if (link && link.startsWith("https://")) {
+    return NextResponse.json({ checkoutUrl: link });
   }
 
   return NextResponse.json(

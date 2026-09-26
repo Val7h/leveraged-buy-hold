@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { getUserTier, TIER_LIMITS, withinLimit, paywallEnabled, upgradeRequired } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -49,6 +50,15 @@ export async function POST(request: NextRequest) {
       { error: "invalid_payload", details: (err as z.ZodError).issues ?? null },
       { status: 400 }
     );
+  }
+
+  // PAYWALL (só com PAYWALL_ENABLED=true): Free = 1 carteira/estratégia.
+  if (paywallEnabled()) {
+    const tier = await getUserTier(user.id);
+    const used = await prisma.portfolio.count({ where: { userId: user.id } });
+    if (!withinLimit(used, TIER_LIMITS[tier].strategies)) {
+      return NextResponse.json(upgradeRequired("strategies", tier), { status: 402 });
+    }
   }
 
   const created = await prisma.portfolio.create({
