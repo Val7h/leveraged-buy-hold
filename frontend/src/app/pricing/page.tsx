@@ -18,7 +18,6 @@ import FAQ from '@/components/pricing/FAQ';
 
 const trustChips = [
   { icon: Check, label: 'Cancele quando quiser · arrependimento de 7 dias (CDC)' },
-  { icon: Check, label: 'Cancele quando quiser' },
   { icon: Check, label: 'Cobrança em reais via Stripe (recibo a cada cobrança)' },
 ];
 
