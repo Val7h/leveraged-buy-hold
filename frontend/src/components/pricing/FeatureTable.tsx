@@ -48,7 +48,7 @@ const sections: FeatureSection[] = [
     rows: [
       { label: 'Chave de API', free: false, pro: false, premium: true },
       { label: 'Suporte', free: 'Comunidade', pro: 'Email', premium: 'Prioritário (4h)' },
-      { label: 'Nota fiscal emitida', free: false, pro: true, premium: true },
+      { label: 'Recibo Stripe com CNPJ', free: false, pro: true, premium: true },
     ],
   },
 ];

@@ -19,7 +19,7 @@ import FAQ from '@/components/pricing/FAQ';
 const trustChips = [
   { icon: Check, label: 'Cancele quando quiser · arrependimento de 7 dias (CDC)' },
   { icon: Check, label: 'Cancele quando quiser' },
-  { icon: Check, label: 'Cobrança em reais com NF emitida' },
+  { icon: Check, label: 'Cobrança em reais via Stripe (recibo a cada cobrança)' },
 ];
 
 const valueProps = [
@@ -60,7 +60,7 @@ const proFeatures: TierFeature[] = [
   { text: 'Alertas de sinais por email' },
   { text: 'Comparação entre estratégias' },
   { text: 'Suporte por email' },
-  { text: 'Nota fiscal emitida' },
+  { text: 'Recibo Stripe com CNPJ a cada cobrança' },
 ];
 
 const premiumFeatures: TierFeature[] = [
@@ -166,7 +166,7 @@ export default function PricingPage() {
           </h1>
           <p className="text-base sm:text-lg text-text-secondary mb-8 max-w-2xl mx-auto leading-relaxed">
             Backtest, comparação de estratégias e sinais quantitativos em reais
-            — com cobrança transparente e cancelamento em um clique.
+            — com cobrança transparente e cancelamento quando quiser.
           </p>
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-text-secondary mb-10">
             {trustChips.map(({ icon: Icon, label }, i) => (
@@ -224,7 +224,7 @@ export default function PricingPage() {
           </div>
 
           <p className="text-center text-xs text-text-muted mt-8 max-w-xl mx-auto">
-            Preços em reais (BRL), com nota fiscal emitida. Os sinais
+            Preços em reais (BRL), com recibo do Stripe a cada cobrança (NFS-e em implantação). Os sinais
             quantitativos são classificações objetivas (Oportunidade · Neutro ·
             Desfavorável) e não constituem recomendação de investimento (Ofício-
             Circular CVM nº 04/2023).
@@ -301,7 +301,7 @@ export default function PricingPage() {
             </button>
           </div>
           <p className="text-xs text-text-muted mt-5">
-            Sem cartão de crédito · Cancele quando quiser · NF emitida
+            Sem cartão no plano grátis · Cancele quando quiser · Recibo a cada cobrança
           </p>
         </div>
       </section>
