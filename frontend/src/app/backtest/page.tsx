@@ -169,14 +169,17 @@ export default function BacktestPage() {
                 )}
                 <span className="block text-text-secondary mt-1">
                   <span className="text-success font-medium">Recomendado (desligado):</span> alavanca só os FLUXOS — a
-                  dívida é fixa e se desalavanca sozinha. Melhor retorno-por-risco (Calmar ~0,69), tombo ~−16%,{" "}
-                  <span className="text-text-primary font-medium">zero risco de liquidação</span>.
+                  dívida é fixa e se desalavanca sozinha. Melhor retorno-por-risco que o buy&amp;hold (na cesta
+                  defensiva de referência: Sharpe ~1,1 vs ~1,0 e tombo ~−21% vs ~−27%, 20 anos com custos),{" "}
+                  <span className="text-text-primary font-medium">zero risco de liquidação</span>. O preço: CAGR bruto
+                  menor que o 1x — é o seguro contra crises.
                 </span>
                 {leverEquity && (
                   <span className="block text-danger/90 mt-1">
                     ⚠ <span className="font-medium">Ligado:</span> re-margina o patrimônio rumo ao teto (capado em 1,8x
-                    p/ não liquidar o core). Mais CAGR, mas tombo pode passar de −50% a −90% em crises. Compare as curvas
-                    abaixo antes de adotar — o retorno-por-risco (Calmar) PIORA; você ganha CAGR bruto pagando muito mais drawdown.
+                    p/ não liquidar o core). Na cesta defensiva de referência: CAGR ~14% vs ~9% do 1x, mas tombo ~−50%
+                    e retorno-por-risco PIOR. Você ganha CAGR bruto pagando muito mais drawdown — compare as curvas
+                    antes de adotar.
                   </span>
                 )}
               </span>

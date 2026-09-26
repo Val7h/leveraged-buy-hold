@@ -182,7 +182,7 @@ export default function BacktestComparisonPanel({
                   <>
                     A estratégia adaptativa <strong>trocou {Math.abs(insurance.diffPct).toFixed(1)}% de
                     patrimônio final</strong> por um drawdown{" "}
-                    <strong>{Math.abs(insurance.ddGap).toFixed(0)} pontos menor</strong> (
+                    <strong>{Math.abs(insurance.ddGap).toFixed(0)} pontos {insurance.ddGap > 0 ? "menor" : "MAIOR"}</strong> (
                     {adaptive.max_drawdown_pct.toFixed(0)}% vs {buyHold1x!.max_drawdown_pct.toFixed(0)}%)
                     {insurance.sharpeGap > 0 && (
                       <> e Sharpe maior ({adaptive.sharpe_ratio.toFixed(2)} vs {buyHold1x!.sharpe_ratio.toFixed(2)})</>
@@ -403,9 +403,9 @@ export default function BacktestComparisonPanel({
               "font-semibold",
               adaptive.cagr_pct > (buyHold1x?.cagr_pct || 0) ? "text-success" : "text-warning"
             )}>
-              {((adaptive.cagr_pct - (buyHold1x?.cagr_pct || 0)) / (buyHold1x?.cagr_pct || 1) * 100).toFixed(0)}%
+              {Math.abs((adaptive.cagr_pct - (buyHold1x?.cagr_pct || 0)) / (buyHold1x?.cagr_pct || 1) * 100).toFixed(0)}%
             </span>
-            {" "}melhor)
+            {" "}{adaptive.cagr_pct > (buyHold1x?.cagr_pct || 0) ? "melhor" : "pior"})
           </p>
           <p>
             <strong>Sobrevivência (Calmar):</strong>{" "}
@@ -413,17 +413,17 @@ export default function BacktestComparisonPanel({
             {" "}vs{" "}
             <span className="font-semibold">{buyHold1x?.calmar_ratio.toFixed(2)}</span>
             {" em B&H 1x — "}
-            {adaptive.calmar_ratio > (buyHold2x?.calmar_ratio || 0)
+            {adaptive.calmar_ratio > (buyHold1x?.calmar_ratio || 0)
               ? "Adaptativo entrega mais CAGR por unidade de drawdown na simulação"
-              : "trade-off: mais CAGR vem com maior drawdown proporcional"}
+              : "aqui o B&H 1x rende mais por unidade de drawdown (veja o aviso do seguro)"}
           </p>
           <p>
             <strong>MaxDrawdown:</strong> Pior queda histórica foi{" "}
             <span className="font-semibold text-danger">{adaptive.max_drawdown_pct.toFixed(1)}%</span>
             {" "}
             {adaptive.max_drawdown_pct > (buyHold2x?.max_drawdown_pct || 0)
-              ? "(esperado com mais leverage — regra: suportar sem liquidar)"
-              : "(abaixo do B&H 2x — proteção adaptativa funcionou)"}
+              ? "(mais raso que o B&H 2x — a proteção adaptativa segurou o tombo)"
+              : "(mais fundo que o B&H 2x — modo agressivo paga em drawdown)"}
           </p>
         </div>
       </div>

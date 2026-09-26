@@ -323,6 +323,14 @@ def _chart_api_df_uncached(ticker: str, days: int, want_div: bool = False, want_
             l = lo[i] if (i < len(lo) and lo[i] and lo[i] > 0) else c
             # ADV-$ usa preço BRUTO × volume (notional negociado real). adjclose × volume infla/deturpa.
             rc = raw_cl[i] if (i < len(raw_cl) and raw_cl[i] and raw_cl[i] > 0) else c
+            # HONESTIDADE (auditoria quant 24/09): High/Low vêm BRUTOS do quote, mas o Close
+            # é AJUSTADO (adjclose). Misturar os dois quebrava o margin-call intraday do
+            # backtest (mínima bruta ~36% acima do close ajustado no KO/2016 → liquidação
+            # quase nunca disparava; "20x sobrevive" era artefato). Ajusta H/L pelo fator
+            # do dia (adj/bruto) p/ TODA a série ficar no mesmo espaço de preço.
+            if rc and rc > 0 and c > 0:
+                _f = c / rc
+                h, l = h * _f, l * _f
             vi = vol[i] if (i < len(vol) and vol[i] is not None and vol[i] > 0) else None
             rows.append((t, float(c), float(h), float(l), float(rc), (float(vi) if vi is not None else None)))
         if len(rows) < 60:

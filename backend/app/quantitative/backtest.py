@@ -792,6 +792,15 @@ def run_backtest(
         primary_df     = price_data[primary_ticker]
         used_tickers   = [primary_ticker]
 
+    # HONESTIDADE (auditoria quant 24/09): a série de preço vem do chart API com
+    # Close AJUSTADO (adjclose = retorno TOTAL, dividendos já reinvestidos no
+    # preço). Somar dividend_yield por cima contava o dividendo DUAS VEZES e
+    # inflava o CAGR de TODAS as curvas (medido: recomendado 11,6%→7,7% e B&H 1x
+    # 15,3%→10,8% na cesta defensiva ao zerar o extra). Zera aqui na fonte —
+    # vale p/ adaptativo, B&H 1x/2x, SPY e Monte Carlo. O parâmetro continua na
+    # assinatura só p/ compatibilidade de chamada.
+    dividend_yield = 0.0
+
     # Sinal de REGIME: drawdown do índice (SPY) na data. Sem SPY, o adaptativo
     # cai pro proxy (drawdown do próprio ativo).
     index_close = None
@@ -852,7 +861,8 @@ def run_backtest(
     }
 
     if "SPY" in price_data:
-        spy_df, _ = _run_buy_hold(price_data["SPY"], initial_capital, monthly_contribution, 1.0, 0.015)
+        # dividend_yield=0: SPY também vem AJUSTADO (retorno total já no preço).
+        spy_df, _ = _run_buy_hold(price_data["SPY"], initial_capital, monthly_contribution, 1.0, 0.0)
         strategies["sp500"] = spy_df
 
     equity_curves = {k: v["equity"] for k, v in strategies.items()}
