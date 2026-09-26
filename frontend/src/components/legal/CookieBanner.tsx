@@ -58,8 +58,11 @@ export default function CookieBanner() {
     }
   }, []);
 
-  // TODO(gerente): carregar Google Analytics / Meta Pixel SOMENTE quando
-  // o useEffect abaixo detectar analytics=true / marketing=true.
+  // LGPD (verificado 26/09/2026): NENHUM GA/Meta Pixel existe no app hoje —
+  // varredura completa: zero loaders (googletagmanager/fbevents/gtag). Quando
+  // algum for adicionado, o script DEVE ser injetado AQUI DENTRO do if
+  // (analytics=true), nunca no layout/head — senão carrega antes do
+  // consentimento e vira exposição LGPD real.
   useEffect(() => {
     if (analytics) {
       // window.gtag?.('consent', 'update', { analytics_storage: 'granted' });

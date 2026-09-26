@@ -65,11 +65,9 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
  *  - CSP per-request com nonce (strict-dynamic)
  *  - Headers de segurança (HSTS, Permissions-Policy, COOP, etc)
  *
- * TODO(gerente): após 1 semana com CSP em Report-Only sem violations,
- * flipar header de "Content-Security-Policy-Report-Only" para
- * "Content-Security-Policy". Hoje deixamos em enforcement direto
- * porque o app é greenfield e Tailwind compila tudo build-time — se
- * houver regressão visual, reverter para Report-Only.
+ * CSP: ENFORCED desde o lançamento (header "Content-Security-Policy", conferido
+ * ao vivo em 26/09/2026). NÃO "flipar" para Report-Only: o TODO antigo aqui
+ * dizia o contrário do que o código faz e induzia a afrouxar por engano.
  */
 
 const AUTH_RATE_LIMITED_PATHS = [
