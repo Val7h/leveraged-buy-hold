@@ -36,7 +36,10 @@ NODE_PID=$!
 # 5) ETL CVM Dados Abertos (fundamentos B3) — baixa os ZIPs e popula o cache em disco.
 #    Roda no boot (após uvicorn subir) e re-roda SEMANALMENTE (dado CVM muda trimestral).
 #    Subshell blindado: nunca sai, engole erros → não derruba o container.
-( sleep 120
+#    sleep 120→600 (26/09/2026): o ETL colidia com o warm-up do ranking no boot —
+#    dois cálculos pesados simultâneos estouraram os 512MB do starter (OOM restart,
+#    e-mail do Render). Escalonado: warm-up primeiro, ETL só depois de drenar.
+( sleep 600
   while true; do
     ( cd /app/backend && python -c "from app.services.cvm_fundamentals import refresh_cvm_cache; refresh_cvm_cache()" ) 2>&1 | sed 's/^/[cvm-refresh] /' || true
     sleep "${CVM_REFRESH_SECONDS:-604800}"
