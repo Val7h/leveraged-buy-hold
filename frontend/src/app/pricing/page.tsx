@@ -79,7 +79,9 @@ export default function PricingPage() {
 
   const handleUpgrade = async (tier: 'pro' | 'premium') => {
     try {
-      const res = await fetch(`/api/v1/billing/upgrade?tier=${tier}`, {
+      // cycle = o seletor Mensal/Anual da página (antes era ignorado e o botão
+      // sempre cobrava o mensal, mesmo com "Anual" escolhido).
+      const res = await fetch(`/api/v1/billing/upgrade?tier=${tier}&cycle=${period}`, {
         method: 'POST',
         credentials: 'include',
       });
