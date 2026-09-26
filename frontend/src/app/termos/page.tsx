@@ -76,15 +76,53 @@ export default function TermosPage() {
       </section>
 
       <section>
-        <h2>5. Modo Demo (AS IS, sem garantias)</h2>
+        <h2>5. Plano Gratuito (AS IS, sem garantias)</h2>
         <p>
-          No Modo Demo, a Plataforma e fornecida{" "}
+          No plano gratuito, a Plataforma e fornecida{" "}
           <strong>&quot;no estado em que se encontra&quot;</strong> (AS IS), sem
           qualquer garantia de disponibilidade, persistencia de dados,
           precisao de calculos, atualidade de cotacoes ou aderencia a fins
-          especificos. Nao existe SLA. Dados podem ser apagados a qualquer
-          momento sem aviso previo.
+          especificos. Nao existe SLA no plano gratuito.
         </p>
+      </section>
+
+      <section>
+        <h2>5-A. Planos Pagos e Pagamento</h2>
+        <p>
+          A Plataforma oferece planos pagos por assinatura, com precos, ciclos
+          (mensal ou anual) e funcionalidades descritos na pagina{" "}
+          <strong>Planos</strong> no momento da contratacao. O processamento do
+          pagamento e realizado por provedor terceirizado de pagamentos; a
+          Plataforma nao armazena dados completos de cartao.
+        </p>
+        <ul>
+          <li>
+            <strong>Renovacao automatica:</strong> a assinatura renova
+            automaticamente ao fim de cada ciclo, pelo preco vigente informado,
+            ate o cancelamento pelo Usuario.
+          </li>
+          <li>
+            <strong>Cancelamento:</strong> pode ser solicitado a qualquer
+            momento (via conta, quando disponivel, ou pelo contato {DPO_EMAIL}),
+            cessando a renovacao seguinte. O acesso pago permanece ate o fim do
+            periodo ja pago. Nao ha multa de cancelamento.
+          </li>
+          <li>
+            <strong>Direito de arrependimento (CDC Art. 49):</strong> na
+            primeira contratacao, o Usuario pode desistir em ate 7 (sete) dias
+            corridos da contratacao, com reembolso integral do valor pago.
+          </li>
+          <li>
+            <strong>Reajustes:</strong> alteracoes de preco valem apenas para
+            ciclos seguintes e serao comunicadas com antecedencia minima de 30
+            dias; o Usuario pode cancelar antes da renovacao.
+          </li>
+          <li>
+            <strong>Inadimplencia:</strong> nao confirmado o pagamento da
+            renovacao, o acesso retorna ao plano gratuito, preservados os dados
+            do Usuario por no minimo 90 dias.
+          </li>
+        </ul>
       </section>
 
       <section>

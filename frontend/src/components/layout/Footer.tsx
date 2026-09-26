@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DPO_EMAIL } from "@/lib/legal/versions";
+import { DPO_EMAIL, CONTROLLER_NAME, CONTROLLER_ADDRESS } from "@/lib/legal/versions";
 
 /**
  * Footer legal persistente — Server Component.
@@ -57,7 +57,10 @@ export default function Footer() {
           </a>
         </nav>
         <p className="mt-4 text-[11px] opacity-70">
-          (c) {year} LBH System — Versao em desenvolvimento (MVP).
+          (c) {year} LBH System — {CONTROLLER_NAME}
+        </p>
+        <p className="text-[11px] opacity-60">
+          {CONTROLLER_ADDRESS} · Contato: {DPO_EMAIL}
         </p>
       </div>
     </footer>

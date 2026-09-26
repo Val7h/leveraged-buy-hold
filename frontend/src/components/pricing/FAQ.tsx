@@ -12,27 +12,22 @@ const defaultFaq: FAQItem[] = [
   {
     question: 'Posso cancelar a assinatura quando quiser?',
     answer:
-      'Sim. O cancelamento é feito direto no painel da sua conta, sem ligações nem burocracia. Se cancelar durante o trial, não há nenhuma cobrança. Para assinantes pagos, o acesso continua até o fim do ciclo já pago.',
-  },
-  {
-    question: 'Como funciona o trial de 14 dias do Pro?',
-    answer:
-      'Você começa o trial sem precisar cadastrar cartão de crédito. Durante 14 dias usa todas as funcionalidades do plano Pro. Se gostar, escolhe a forma de pagamento ao fim do período. Se preferir, basta deixar o trial expirar e a conta volta para o Free automaticamente.',
+      'Sim, a qualquer momento, pelo portal do assinante (Stripe) ou escrevendo para o suporte — sem ligações nem burocracia. O acesso continua até o fim do ciclo já pago, e na primeira contratação vale o direito de arrependimento de 7 dias com reembolso integral (CDC).',
   },
   {
     question: 'Por que R$ 59 por mês é justo?',
     answer:
-      'O Pro entrega backtest com 20+ anos de histórico, comparação entre estratégias e alertas por email — recursos que em plataformas internacionais custam de US$ 30 a US$ 100 por mês. Os preços foram calibrados para o mercado brasileiro, com cobrança em reais e nota fiscal emitida.',
+      'O Pro entrega backtest com 20+ anos de histórico, comparação entre estratégias e alertas — recursos que em plataformas internacionais custam de US$ 30 a US$ 100 por mês. Os preços foram calibrados para o mercado brasileiro, com cobrança em reais.',
   },
   {
     question: 'Quais formas de pagamento são aceitas?',
     answer:
-      'Cartão de crédito (Visa, Mastercard, Elo, Amex), débito em conta e PIX recorrente. Pagamentos processados via Stripe, com criptografia ponta a ponta e certificação PCI DSS.',
+      'Cartão de crédito (Visa, Mastercard, Elo, Amex). Pagamentos processados via Stripe, com criptografia ponta a ponta e certificação PCI DSS — nós não armazenamos os dados do seu cartão.',
   },
   {
     question: 'Vocês emitem nota fiscal?',
     answer:
-      'Sim. A nota fiscal é emitida automaticamente após cada cobrança confirmada (mensal ou anual) e enviada para o email cadastrado. CNPJ disponível para quem precisa lançar como despesa empresarial.',
+      'Você recebe o recibo oficial do Stripe por e-mail a cada cobrança, com o CNPJ da empresa (Lemon Tech). A emissão automática de NFS-e está em implantação.',
   },
   {
     question: 'Posso fazer upgrade ou downgrade do plano?',

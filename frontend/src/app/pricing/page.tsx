@@ -17,7 +17,7 @@ import FeatureTable from '@/components/pricing/FeatureTable';
 import FAQ from '@/components/pricing/FAQ';
 
 const trustChips = [
-  { icon: Check, label: 'Trial Pro de 14 dias sem cartão' },
+  { icon: Check, label: 'Cancele quando quiser · arrependimento de 7 dias (CDC)' },
   { icon: Check, label: 'Cancele quando quiser' },
   { icon: Check, label: 'Cobrança em reais com NF emitida' },
 ];
@@ -204,8 +204,7 @@ export default function PricingPage() {
               yearlyPrice={566}
               period={period}
               features={proFeatures}
-              ctaLabel="Iniciar trial de 14 dias"
-              trialBadge="14 dias grátis · sem cartão"
+              ctaLabel="Assinar o Pro"
               onCta={() => handleUpgrade('pro')}
               highlight
               badge="MAIS POPULAR"
@@ -218,7 +217,7 @@ export default function PricingPage() {
               yearlyPrice={1526}
               period={period}
               features={premiumFeatures}
-              ctaLabel="Iniciar trial de 14 dias"
+              ctaLabel="Em breve"
               ctaSubtext="Inclui WhatsApp e API"
               onCta={() => handleUpgrade('premium')}
             />
@@ -283,8 +282,9 @@ export default function PricingPage() {
             Pronto para testar sua estratégia hoje?
           </h2>
           <p className="text-text-secondary text-base mb-8 max-w-xl mx-auto leading-relaxed">
-            Comece pelo Free para validar a plataforma — ou ative o trial de 14
-            dias do Pro e tenha acesso completo, sem precisar cadastrar cartão.
+            Comece pelo Free para validar a plataforma — ou assine o Pro quando
+            quiser o acesso completo. Cancele quando quiser; arrependimento de 7
+            dias com reembolso integral na primeira contratação.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
             <button
@@ -297,7 +297,7 @@ export default function PricingPage() {
               onClick={() => handleUpgrade('pro')}
               className="w-full sm:w-auto px-7 py-3.5 bg-primary text-background rounded-xl font-semibold text-sm hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
             >
-              Iniciar trial Pro de 14 dias
+              Assinar o Pro — R$ 59/mês
             </button>
           </div>
           <p className="text-xs text-text-muted mt-5">

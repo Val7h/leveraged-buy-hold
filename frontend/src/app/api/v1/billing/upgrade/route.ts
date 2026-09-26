@@ -29,10 +29,13 @@ export async function POST(request: NextRequest) {
     /* body vazio → pro */
   }
 
+  // Gateway = STRIPE da Lemon Tech (mesma conta do Dados B3 — decisão Valth
+  // 26/09; o Payment Link é criado no dashboard e colado na env). Aceita os
+  // nomes antigos ASAAS_* por compatibilidade.
   const link =
     tier === "premium"
-      ? process.env.ASAAS_LINK_PREMIUM
-      : process.env.ASAAS_LINK_PRO;
+      ? process.env.PAYMENT_LINK_PREMIUM ?? process.env.ASAAS_LINK_PREMIUM
+      : process.env.PAYMENT_LINK_PRO ?? process.env.ASAAS_LINK_PRO;
 
   if (link && link.startsWith("https://")) {
     return NextResponse.json({ checkoutUrl: link });
