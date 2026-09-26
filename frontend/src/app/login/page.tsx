@@ -16,9 +16,12 @@ export default function LoginPage() {
   const { login } = useAuthStore();
   const router = useRouter();
 
+  // ?tab=register abre direto na aba de cadastro (CTAs "Criar conta" da landing).
   // Erros vindos do callback do Google (?error=...) → mensagem amigável.
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get("error");
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("tab") === "register") setTab("register");
+    const code = q.get("error");
     if (!code) return;
     const msgs: Record<string, string> = {
       google_nao_configurado: "Login com Google ainda não está configurado.",
@@ -28,15 +31,43 @@ export default function LoginPage() {
     setError(msgs[code] ?? "Não foi possível entrar com o Google. Tente de novo.");
   }, []);
 
+  // Respeita de onde a pessoa veio: middleware manda ?from=, a /pricing manda ?next=.
+  // Sem isso, quem clicava em "Assinar" na /pricing logava e se perdia no /dashboard.
+  const destinoPosLogin = () => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const dest = q.get("from") ?? q.get("next");
+      return dest && dest.startsWith("/") ? dest : "/dashboard";
+    } catch {
+      return "/dashboard";
+    }
+  };
+
+  // Mensagens honestas por código de erro (a API devolve `error`, não `detail`;
+  // antes TODA falha virava "Email ou senha inválidos"/"Erro ao criar conta").
+  const msgDoErro = (err: unknown, contexto: "login" | "register") => {
+    const resp = (err as { response?: { status?: number; data?: { error?: string } } })?.response;
+    const code = resp?.data?.error;
+    if (resp?.status === 429) return "Muitas tentativas. Espere alguns minutos e tente de novo.";
+    if (resp?.status === 503 || code === "service_unavailable")
+      return "Serviço temporariamente indisponível. Tente de novo em instantes.";
+    if (code === "email_in_use") return "Este e-mail já tem conta. Entre na aba Entrar ou use o Google.";
+    if (code === "invalid_payload")
+      return contexto === "register"
+        ? "Confira os campos: senha com pelo menos 8 caracteres."
+        : "Confira e-mail e senha.";
+    return contexto === "login" ? "Email ou senha inválidos" : "Erro ao criar conta. Tente novamente.";
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
       await login(email, password);
-      router.push("/dashboard");
-    } catch {
-      setError("Email ou senha inválidos");
+      router.push(destinoPosLogin());
+    } catch (err: unknown) {
+      setError(msgDoErro(err, "login"));
     } finally {
       setLoading(false);
     }
@@ -47,12 +78,18 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      await authApi.register({ email, password, fullName: name, riskProfile });
+      // fullName SÓ quando preenchido: mandar "" derrubava o cadastro no zod
+      // (min 1 char) — quem deixava o nome em branco não conseguia criar conta.
+      await authApi.register({
+        email,
+        password,
+        ...(name.trim() ? { fullName: name.trim() } : {}),
+        riskProfile,
+      });
       await login(email, password);
-      router.push("/dashboard");
+      router.push(destinoPosLogin());
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg || "Erro ao criar conta. Tente novamente.");
+      setError(msgDoErro(err, "register"));
     } finally {
       setLoading(false);
     }
@@ -138,20 +175,16 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                minLength={6}
+                minLength={tab === "register" ? 8 : 6}
               />
+              {tab === "register" && (
+                <p className="text-[11px] text-text-muted mt-1">Mínimo de 8 caracteres.</p>
+              )}
             </div>
 
-            {tab === "register" && (
-              <div>
-                <label className="label">Perfil de Risco</label>
-                <select className="input" value={riskProfile} onChange={(e) => setRiskProfile(e.target.value)}>
-                  <option value="conservative">Conservador — Alavancagem máx. 2x</option>
-                  <option value="balanced">Balanceado — Alavancagem máx. 3x</option>
-                  <option value="aggressive">Agressivo — Alavancagem máx. 4x</option>
-                </select>
-              </div>
-            )}
+            {/* Dropdown de Perfil de Risco REMOVIDO do cadastro (decisão Valth: motor
+                UNIVERSAL — o perfil real emerge das escolhas; o dropdown capava e
+                contradizia o app). O backend segue com default "moderado". */}
 
             {error && (
               <p className="text-danger text-sm bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{error}</p>

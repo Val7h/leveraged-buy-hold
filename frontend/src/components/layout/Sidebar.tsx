@@ -235,12 +235,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-text-primary truncate">{user?.fullName || "Demo User"}</p>
-            <p className="text-xs text-text-muted/70 truncate">{user?.email || "demo@example.com"}</p>
+            <p className="text-xs font-semibold text-text-primary truncate">{user?.fullName || "Minha conta"}</p>
+            <p className="text-xs text-text-muted/70 truncate">{user?.email || ""}</p>
           </div>
         </div>
         <button
-          onClick={logout}
+          onClick={() => { logout(); window.location.href = "/login"; }}
           aria-label="Sair"
           className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-text-muted hover:text-danger hover:bg-danger/10 transition-all w-full duration-200"
         >

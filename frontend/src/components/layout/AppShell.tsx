@@ -53,13 +53,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     Promise.race([fetchPromise, timeoutPromise]).then((res) => {
       if (!alive || settled) return;
       settled = true;
-      // res === null  => timeout/erro de rede => login
-      // res.ok = true => autenticado => mantem
-      // res.ok = false => login
-      if (!res || !res.ok) {
+      // SÓ o 401 significa "não logado". Timeout/erro de rede/503 (banco piscando)
+      // NÃO podem expulsar usuário logado pro /login — antes qualquer soluço de
+      // infra parecia logout (achado da auditoria 24/09). Nesses casos mantém a
+      // shell e as páginas mostram seus próprios erros.
+      if (res && res.status === 401) {
         router.replace("/login");
         return;
       }
+      if (!res || !res.ok) return; // transitório: mantém a sessão visual
       if (!user) fetchMe();
     });
 

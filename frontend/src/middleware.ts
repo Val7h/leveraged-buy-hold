@@ -27,6 +27,11 @@ function isProtectedPage(pathname: string): boolean {
 }
 
 function isProtectedApi(pathname: string): boolean {
+  // /alerts/sweep é o CRON interno (start.sh): autentica por X-Internal-Token na
+  // própria rota, não por cookie. O startsWith("/api/v1/alerts") pegava o sweep e
+  // devolvia 401 antes da rota rodar → NENHUM alerta/notificação disparou desde o
+  // lançamento (achado da auditoria 24/09). Isenta só o sweep; o resto segue igual.
+  if (pathname === "/api/v1/alerts/sweep") return false;
   return PROTECTED_API_PREFIXES.some((p) => pathname.startsWith(p));
 }
 

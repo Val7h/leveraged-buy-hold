@@ -19,7 +19,17 @@ const NO_CACHE: Record<string, string> = {
 };
 
 export async function GET() {
-  const user = await getCurrentUser();
+  // Banco fora ≠ deslogado: sem o try, a queda do Prisma virava 500 e o AppShell
+  // expulsava usuário LOGADO pro /login (achado da auditoria 24/09). 503 = transitório.
+  let user;
+  try {
+    user = await getCurrentUser();
+  } catch {
+    return NextResponse.json(
+      { error: "service_unavailable" },
+      { status: 503, headers: NO_CACHE }
+    );
+  }
   if (!user) {
     return NextResponse.json(
       { error: "unauthorized" },

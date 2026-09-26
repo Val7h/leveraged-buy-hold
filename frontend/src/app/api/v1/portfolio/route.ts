@@ -35,7 +35,15 @@ export async function POST(request: NextRequest) {
 
   let parsed;
   try {
-    parsed = PortfolioCreateSchema.parse(await request.json());
+    // Aceita camelCase E snake_case: o cliente (lib/api.ts) manda initial_equity/
+    // monthly_contribution — o mismatch derrubava o "Criar Carteira" do dashboard
+    // com 400 mudo, travando TODO cliente novo (achado da auditoria 24/09).
+    const body = (await request.json()) as Record<string, unknown>;
+    parsed = PortfolioCreateSchema.parse({
+      ...body,
+      initialEquity: body.initialEquity ?? body.initial_equity,
+      monthlyContribution: body.monthlyContribution ?? body.monthly_contribution,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: "invalid_payload", details: (err as z.ZodError).issues ?? null },

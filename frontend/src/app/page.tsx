@@ -107,7 +107,7 @@ export default function Home() {
               Planos
             </Link>
             <Link
-              href="/login"
+              href="/login?tab=register"
               className="text-sm px-4 py-1.5 rounded-lg bg-primary text-background font-semibold hover:bg-primary/90 transition-colors"
             >
               Entrar
@@ -132,7 +132,7 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-12">
             <Link
-              href="/login"
+              href="/login?tab=register"
               className="px-8 py-3.5 bg-primary text-background rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
             >
               Criar conta gratuita <ChevronRight size={16} />
@@ -271,7 +271,7 @@ export default function Home() {
             ))}
           </div>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link href="/login" className="px-6 py-3 bg-primary text-background rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors">
+            <Link href="/login?tab=register" className="px-6 py-3 bg-primary text-background rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors">
               Começar gratuitamente
             </Link>
             <Link href="/pricing" className="px-6 py-3 border border-border text-text-primary rounded-lg font-semibold text-sm hover:bg-surface-2 transition-colors">

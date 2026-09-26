@@ -117,6 +117,9 @@ export default function DashboardPage() {
     try {
       await portfolioApi.create({ name: "Carteira Defensiva", initial_equity: 50000, monthly_contribution: 1000, currency: "USD" });
       await fetchPortfolios();
+    } catch {
+      // Antes falhava MUDO (só o spinner parava) — cliente novo travava sem saber por quê.
+      alert("Não foi possível criar a carteira agora. Tente de novo em instantes.");
     } finally { setCreatingPortfolio(false); }
   };
 
