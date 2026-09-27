@@ -10,6 +10,7 @@ import {
   canonicalLeverage,
   capReason,
   plainVerdict,
+  verdictLabel,
 } from '../verdictCopy';
 
 // ──────────────────────────────────────────────────────────────────
@@ -63,14 +64,14 @@ describe('capReason', () => {
 
   it("retorna frase contendo 'dado fino' quando quality_data_thin = true", () => {
     const r = capReason({ quality_data_thin: true });
-    expect(r).toContain('dado fino');
-    expect(r).toBe('por dado fino — dá pra mais quando confirmar');
+    expect(r).toContain('dado limitado');
+    expect(r).toBe('por dado limitado — o teto pode subir quando os dados confirmarem');
   });
 
   it("retorna frase contendo 'dado fino' para binding 'regime'", () => {
     const r = capReason({ leverage_teto_binding: 'regime' });
-    expect(r).toContain('dado fino');
-    expect(r).toBe('por dado fino — dá pra mais quando confirmar');
+    expect(r).toContain('dado limitado');
+    expect(r).toBe('por dado limitado — o teto pode subir quando os dados confirmarem');
   });
 
   it('retorna null sem binding e sem thin', () => {
@@ -89,22 +90,22 @@ describe('plainVerdict', () => {
     (verdict) => {
       const r = plainVerdict({ verdict });
       expect(r.tone).toBe('avoid');
-      expect(r.text).toContain('vista');
-      expect(r.text).toBe('Cara ou arriscada agora — se comprar, à vista (1x), sem alavancar.');
+      expect(r.text).toContain('desfavorável');
+      expect(r.text).toBe('Classificação desfavorável: preço esticado ou risco elevado pelos critérios do modelo — sem margem de segurança no momento.');
     },
   );
 
   it("RESERVA -> tone 'reserve'", () => {
     const r = plainVerdict({ verdict: 'RESERVA' });
     expect(r.tone).toBe('reserve');
-    expect(r.text).toBe('Reserva/munição — fora de aporte agora.');
+    expect(r.text).toBe('Classificação: reserva de proteção — fora da zona de oportunidade do modelo.');
   });
 
   it("COMPRAR FORTE alavancado -> tone 'strong' e texto contendo o multiplo", () => {
     const r = plainVerdict({ verdict: 'COMPRAR FORTE', leverage: 3 });
     expect(r.tone).toBe('strong');
     expect(r.text).toContain('3x');
-    expect(r.text).toBe('Barata e sólida — dá pra aportar alavancado até 3x.');
+    expect(r.text).toBe('Oportunidade forte pelos critérios do modelo: preço descontado e fundamentos sólidos. Nas simulações históricas, posições assim suportaram até 3x sem liquidação.');
   });
 
   it("COMPRAR FORTE 1x com binding beta -> texto contem 'travada por segurança'", () => {
@@ -115,7 +116,7 @@ describe('plainVerdict', () => {
     });
     expect(r.tone).toBe('strong');
     expect(r.text).toContain('travada por segurança');
-    expect(r.text).toBe('Ótima agora, mas à vista (1x) (travada por segurança) — aporte sem alavancar.');
+    expect(r.text).toBe('Oportunidade forte pelos critérios do modelo, com teto simulado de 1x (travada por segurança).');
   });
 
   it("COMPRAR 1x com quality_data_thin -> texto contem 'dado fino'", () => {
@@ -125,27 +126,48 @@ describe('plainVerdict', () => {
       quality_data_thin: true,
     });
     expect(r.tone).toBe('buy');
-    expect(r.text).toContain('dado fino');
-    expect(r.text).toBe('Boa pra aportar, mas à vista (1x) (por dado fino — dá pra mais quando confirmar).');
+    expect(r.text).toContain('dado limitado');
+    expect(r.text).toBe('Oportunidade pelos critérios do modelo, com teto simulado de 1x (por dado limitado — o teto pode subir quando os dados confirmarem).');
   });
 
   it("JUSTO alavancado -> tone 'hold'", () => {
     const r = plainVerdict({ verdict: 'JUSTO', leverage: 2 });
     expect(r.tone).toBe('hold');
     expect(r.text).toBe(
-      'Preço sem desconto, mas é defensiva e segura — dá pra alavancar até 2x mesmo sem estar barata (quase não cai forte).',
+      'Preço sem desconto; perfil defensivo com histórico de quedas raso — teto simulado de sobrevivência: 2x.',
     );
   });
 
   it("verdict desconhecido -> texto 'Sem sinal claro agora'", () => {
     const r = plainVerdict({ verdict: 'DESCONHECIDO' });
     expect(r.tone).toBe('hold');
-    expect(r.text).toBe('Sem sinal claro agora.');
+    expect(r.text).toBe('Sem classificação clara no momento.');
   });
 
   it('asset sem verdict cai no default', () => {
     const r = plainVerdict({});
     expect(r.tone).toBe('hold');
-    expect(r.text).toBe('Sem sinal claro agora.');
+    expect(r.text).toBe('Sem classificação clara no momento.');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// verdictLabel (descaracterização CVM 27/09: exibição sem verbo de recomendação)
+// ──────────────────────────────────────────────────────────────────
+describe('verdictLabel', () => {
+  it.each([
+    ['COMPRAR FORTE', 'OPORTUNIDADE FORTE'],
+    ['COMPRAR', 'OPORTUNIDADE'],
+    ['JUSTO', 'NEUTRO'],
+    ['ESTICADO', 'ESTICADO'],
+    ['ESPECULATIVO', 'ESPECULATIVO'],
+    ['RESERVA', 'RESERVA'],
+  ])('%s exibe como %s', (interno, exibido) => {
+    expect(verdictLabel(interno)).toBe(exibido);
+  });
+
+  it('desconhecido/nulo caem no fallback', () => {
+    expect(verdictLabel('QUALQUER')).toBe('QUALQUER');
+    expect(verdictLabel(null)).toBe('—');
   });
 });

@@ -53,7 +53,7 @@ export function canonicalLeverage(a: AssetLike | any): number | null {
 
 /** Rótulo padrão para a alavancagem canônica. */
 export function leverageLabel(): string {
-  return 'Alavancagem sugerida';
+  return 'Teto simulado de alavancagem';
 }
 
 /**
@@ -83,8 +83,25 @@ export function capReason(a: AssetLike | any): string | null {
   const thin = a?.quality_data_thin === true;
   if (['gate', 'beta', 'gap', 'sigma'].includes(bind)) return 'travada por segurança';
   if (bind === 'liquidez') return 'travada pela liquidez';
-  if (thin || bind === 'regime') return 'por dado fino — dá pra mais quando confirmar';
+  if (thin || bind === 'regime') return 'por dado limitado — o teto pode subir quando os dados confirmarem';
   return null;
+}
+
+/**
+ * Rótulo de EXIBIÇÃO do veredito (descaracterização CVM 27/09): o payload
+ * interno continua 'COMPRAR FORTE'/'COMPRAR' (contrato com o motor), mas a
+ * TELA mostra classificação objetiva, sem verbo de recomendação.
+ */
+export function verdictLabel(v?: string | null): string {
+  switch (v) {
+    case 'COMPRAR FORTE': return 'OPORTUNIDADE FORTE';
+    case 'COMPRAR': return 'OPORTUNIDADE';
+    case 'JUSTO': return 'NEUTRO';
+    case 'ESTICADO': return 'ESTICADO';
+    case 'ESPECULATIVO': return 'ESPECULATIVO';
+    case 'RESERVA': return 'RESERVA';
+    default: return v ?? '—';
+  }
 }
 
 export function plainVerdict(a: AssetLike | any): { text: string; tone: Tone } {
@@ -100,35 +117,35 @@ export function plainVerdict(a: AssetLike | any): { text: string; tone: Tone } {
     case 'ESTICADO':
       return {
         tone: 'avoid',
-        text: 'Cara ou arriscada agora — se comprar, à vista (1x), sem alavancar.',
+        text: 'Classificação desfavorável: preço esticado ou risco elevado pelos critérios do modelo — sem margem de segurança no momento.',
       };
 
     case 'RESERVA':
       return {
         tone: 'reserve',
-        text: 'Reserva/munição — fora de aporte agora.',
+        text: 'Classificação: reserva de proteção — fora da zona de oportunidade do modelo.',
       };
 
     case 'COMPRAR FORTE':
       return canLever
         ? {
             tone: 'strong',
-            text: `Barata e sólida — dá pra aportar alavancado até ${levStr}x.`,
+            text: `Oportunidade forte pelos critérios do modelo: preço descontado e fundamentos sólidos. Nas simulações históricas, posições assim suportaram até ${levStr}x sem liquidação.`,
           }
         : {
             tone: 'strong',
-            text: `Ótima agora, mas à vista (1x)${whySuffix} — aporte sem alavancar.`,
+            text: `Oportunidade forte pelos critérios do modelo, com teto simulado de 1x${whySuffix}.`,
           };
 
     case 'COMPRAR':
       return canLever
         ? {
             tone: 'buy',
-            text: `Boa pra aportar agora, até ${levStr}x.`,
+            text: `Oportunidade pelos critérios do modelo — teto simulado de sobrevivência: ${levStr}x.`,
           }
         : {
             tone: 'buy',
-            text: `Boa pra aportar, mas à vista (1x)${whySuffix}.`,
+            text: `Oportunidade pelos critérios do modelo, com teto simulado de 1x${whySuffix}.`,
           };
 
     case 'JUSTO':
@@ -136,17 +153,17 @@ export function plainVerdict(a: AssetLike | any): { text: string; tone: Tone } {
       return canLever
         ? {
             tone: 'hold',
-            text: `Preço sem desconto, mas é defensiva e segura — dá pra alavancar até ${levStr}x mesmo sem estar barata (quase não cai forte).`,
+            text: `Preço sem desconto; perfil defensivo com histórico de quedas raso — teto simulado de sobrevivência: ${levStr}x.`,
           }
         : {
             tone: 'hold',
-            text: `Preço sem desconto — à vista (1x)${whySuffix}; se quiser, espere ficar barata.`,
+            text: `Preço sem desconto — fora da zona de oportunidade; teto simulado de 1x${whySuffix}.`,
           };
 
     default:
       return {
         tone: 'hold',
-        text: 'Sem sinal claro agora.',
+        text: 'Sem classificação clara no momento.',
       };
   }
 }

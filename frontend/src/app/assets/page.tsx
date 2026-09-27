@@ -86,9 +86,9 @@ const VERDICT_RANK: Record<string, number> = {
 };
 // VOCABULÁRIO ÚNICO: mesmas palavras do Ranking (verdict canônico do backend).
 const VERDICT_LABEL: Record<string, string> = {
-  "COMPRAR FORTE": "Comprar Forte",
-  COMPRAR: "Comprar",
-  JUSTO: "Justo",
+  "COMPRAR FORTE": "Oportunidade Forte",
+  COMPRAR: "Oportunidade",
+  JUSTO: "Neutro",
   ESTICADO: "Esticado",
   ESPECULATIVO: "Especulativo",
   RESERVA: "Reserva",
@@ -97,7 +97,7 @@ const VERDICT_LABEL: Record<string, string> = {
 type SortKey = "rank" | "dy" | "momentum" | "quality" | "beta" | "leverage" | "best_aporte";
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "rank", label: "Rank (composto)" },
-  { key: "best_aporte", label: "Melhor aporte agora ★" },
+  { key: "best_aporte", label: "Maior oportunidade agora ★" },
   { key: "dy", label: "Dividend Yield" },
   { key: "momentum", label: "Momento" },
   { key: "quality", label: "Qualidade" },

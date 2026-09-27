@@ -6,7 +6,7 @@ import TickerLogo from "@/components/ui/TickerLogo";
 import Tooltip from "@/components/ui/Tooltip";
 import HeuristicBadge from "@/components/ui/HeuristicBadge";
 import AssetChartModal from "@/components/assets/AssetChartModal";
-import { plainVerdict, canonicalLeverage, leverageLabel, riskLine } from "@/lib/verdictCopy";
+import { plainVerdict, canonicalLeverage, leverageLabel, riskLine, verdictLabel } from "@/lib/verdictCopy";
 import type { AssetScore } from "@/types";
 
 interface AssetCardProps {
@@ -169,7 +169,7 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
       {/* Botão explícito de gráfico — abre o AssetChartModal sem mexer na seleção. */}
       <button
         type="button"
-        title="Ver gráfico de preço (RSI semanal, stop, zona de compra, dividendos)"
+        title="Ver gráfico de preço (RSI semanal, stop, zona de oportunidade, dividendos)"
         onClick={(e) => {
           e.stopPropagation();
           setShowChart(true);
@@ -267,7 +267,7 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
                 {(asset.entry_signal === "COMPRAR" || asset.entry_signal === "OPORTUNIDADE" || asset.entry_signal === "ENTRAR") ? "🟢" : (asset.entry_signal === "COMPRAR FORTE" || asset.entry_signal === "OPORTUNIDADE FORTE" || asset.entry_signal === "ENTRAR FORTE") ? "🟢🟢" : "⏸"}
               </span>
               <span className={cn("text-sm font-bold tracking-wider", entry.text)}>
-                {asset.entry_signal}
+                {verdictLabel(asset.entry_signal)}
               </span>
             </div>
             {asset.entry_leverage != null && (
@@ -298,7 +298,7 @@ function AssetCard({ asset, onSelect, selected = false, onToggleSelect }: AssetC
       {/* ── Visão simples: alavancagem única + máx. queda ─── */}
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
-          <Tooltip content="Alavancagem sugerida pelo motor (Camada 3: aptidão × regime de mercado). Um número só — não é Kelly." side="top" delay={300}>
+          <Tooltip content="Teto simulado de alavancagem (Camada 3: aptidão × regime de mercado), derivado das simulações históricas. Um número só — não é Kelly." side="top" delay={300}>
             <p className="text-xs text-text-muted mb-0.5">{leverageLabel()}</p>
           </Tooltip>
           <span className="text-lg font-bold text-warning font-mono">

@@ -38,7 +38,7 @@ const AssetChartModal = dynamic(() => import("@/components/assets/AssetChartModa
   ssr: false,
 });
 // Cópia única em PT de investidor comum (frase-veredito + alavancagem canônica).
-import { plainVerdict, canonicalLeverage, leverageLabel, riskLine } from "@/lib/verdictCopy";
+import { plainVerdict, canonicalLeverage, leverageLabel, riskLine, verdictLabel } from "@/lib/verdictCopy";
 
 /* ------------------------------------------------------------------ */
 /* Constantes                                                          */
@@ -378,7 +378,7 @@ function BestBuyCard({ asset, top }) {
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[10px] uppercase tracking-wider text-text-muted">{CAT_LABEL[asset._cat]}</span>
         <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${vCls}`}>
-          {asset.verdict}
+          {verdictLabel(asset.verdict)}
         </span>
       </div>
       <div className="flex items-center gap-2">
@@ -726,7 +726,7 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
 
         <div className="col-span-4 sm:col-span-2 flex flex-col gap-1">
           <span className={`inline-block self-start px-2 py-1 rounded-md text-[11px] font-semibold border whitespace-nowrap ${verdictCls}`}>
-            {asset.verdict}
+            {verdictLabel(asset.verdict)}
           </span>
           {/* Risco essencial: máx. queda (a alavancagem única vive na coluna à direita). */}
           {asset.max_dd != null && (
@@ -741,7 +741,7 @@ function RankingRow({ asset, position, expanded, onToggle, onRemove, onLogoClick
           {canonLev != null && (
             <div className="flex flex-col gap-0.5">
               <span
-                title="Alavancagem sugerida para ESTE ativo (amplia ganhos E perdas). Não é a rede agregada da carteira."
+                title="Teto simulado de alavancagem para ESTE ativo, derivado das simulações históricas (amplia ganhos E perdas). Não é a rede agregada da carteira."
                 className="inline-flex items-center self-start gap-1 text-[10px] font-semibold text-[#C084FC] bg-[#C084FC]/10 border border-[#C084FC]/30 rounded px-1.5 py-0.5 whitespace-nowrap"
               >
                 <Zap size={10} /> {leverageLabel()}: {fmtNum(canonLev, 1)}x
@@ -1524,7 +1524,7 @@ export default function RankingPage() {
         {!rankLoading && !rankError && bestBuys.length > 0 && (
           <div className="mb-6">
             <div className="text-[11px] uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1.5">
-              <Trophy size={12} className="text-success" /> melhores aportes agora
+              <Trophy size={12} className="text-success" /> maiores oportunidades agora
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {bestBuys.map((a, i) => (
@@ -1581,7 +1581,7 @@ export default function RankingPage() {
             <span className="w-px self-stretch bg-border mx-1 shrink-0" aria-hidden />
             <button
               onClick={() => setOnlyOpportunities((v) => !v)}
-              title="Mostrar só os ativos acionáveis (COMPRAR / COMPRAR FORTE) e esconder os mornos"
+              title="Mostrar só as classificações OPORTUNIDADE / OPORTUNIDADE FORTE e esconder os neutros"
               className={`px-3 py-1 rounded-full text-xs whitespace-nowrap border transition-all flex items-center gap-1 ${
                 onlyOpportunities
                   ? "bg-primary/20 text-primary border-primary/50 font-semibold shadow-[0_0_10px_rgba(0,255,136,0.15)]"
@@ -1641,7 +1641,7 @@ export default function RankingPage() {
                   As 3 melhores oportunidades do motor agora
                 </p>
                 <p className="text-xs text-text-muted mt-0.5">
-                  De {teaser.total_assets ?? "—"} ativos analisados, {teaser.total_opportunities ?? "—"} estão em zona de compra.
+                  De {teaser.total_assets ?? "—"} ativos analisados, {teaser.total_opportunities ?? "—"} estão em zona de oportunidade.
                 </p>
               </div>
               {(teaser.top || []).map((a) => {
@@ -1691,7 +1691,7 @@ export default function RankingPage() {
         ) : assets.length === 0 ? (
           onlyOpportunities ? (
             <div className="card text-center py-16 text-text-secondary">
-              Nenhuma oportunidade (COMPRAR / COMPRAR FORTE) em{" "}
+              Nenhuma classificação de oportunidade em{" "}
               <span className="text-text-primary font-medium">{CAT_LABEL[activeCat]}</span> agora — o mercado está morno.{" "}
               <button onClick={() => setOnlyOpportunities(false)} className="text-primary underline hover:no-underline">
                 ver todos
