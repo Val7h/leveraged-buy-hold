@@ -86,8 +86,9 @@ def test_shrinkage_br_1de3_perto_do_prior():
 
 def test_shrinkage_2de3_paga_preco():
     # 2/3 (cobertura parcial) → w convexo (^1.5) já desconta; a trava de sub-cobertura capa em 65.
+    # Soft cap (9c5aef3): acima de 65 cada 1pp extra vale 0,25pp → no máximo 65 + 0,25*35.
     q, _ = S.compute_quality_blend(roic=0.30, debt_to_equity=0.3, market="BR")
-    assert q <= 65
+    assert q <= 65 + (100 - 65) * 0.25
     # e ainda assim ACIMA de 1/3 (mais cobertura → mais nota, ordem preservada).
     q1, _ = S.compute_quality_blend(roic=0.30, market="BR")
     assert q > q1
@@ -100,7 +101,7 @@ def test_sub_cobertura_nunca_passa_de_65():
     for kwargs in (dict(roic=0.50), dict(roic=0.40, debt_to_equity=0.1),
                    dict(fcf_yield=0.25, debt_to_equity=0.1)):
         q, _ = S.compute_quality_blend(market="BR", **kwargs)
-        assert q <= 65
+        assert q <= 65 + (100 - 65) * 0.25      # soft cap: comprimido 4:1 acima de 65, sem clustering
 
 
 def test_dado_quebrado_vira_neutro_com_flag():
@@ -113,8 +114,8 @@ def test_dado_quebrado_vira_neutro_com_flag():
 
 
 def test_um_pilar_nunca_passa_de_55():
-    q, _ = S.compute_quality_blend(roic=0.45, market="US")   # 1 pilar (k≤1) → trava ≤55
-    assert q <= 55
+    q, _ = S.compute_quality_blend(roic=0.45, market="US")   # 1 pilar (k≤1) → soft cap em 55
+    assert q <= 55 + (100 - 55) * 0.25
 
 
 # ═══════════════════════ 5) CICLICIDADE ═══════════════════════

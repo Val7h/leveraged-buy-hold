@@ -51,7 +51,7 @@ def test_extremo_alto_com_dado_fino_encolhe_pro_prior_e_baixa_confianca():
     # mais "Q100 de 1 pilar" na decisão de compra. Confiança segue BAIXA. (Sem alavancagem: é só a
     # nota de qualidade refletir honestamente que 1 pilar não comprova um compounder.)
     q, bd = S.compute_quality_blend(roic=0.40)    # 1 só pilar, ROIC altíssimo
-    assert q <= 55                                # shrinkage + trava k≤1 → perto do prior, NÃO ~100
+    assert q <= 55 + (100 - 55) * 0.25            # shrinkage + soft cap k≤1 → perto do prior, NÃO ~100
     assert S.quality_pilares_reais(bd) == 1
     assert S.quality_data_confidence(bd, q) == "BAIXA"
 
@@ -85,8 +85,9 @@ def _state(**kw):
 def test_verdict_forte_rebaixa_com_dado_fino():
     # qualidade frágil-mas-alta (q100 de 1 pilar) + momento forte → SEM guardrail seria FORTE.
     st = _state(quality=100.0, quality_thin=True)
-    # momento 75 + quality 100 → aporte_verdict = COMPRAR FORTE; guardrail rebaixa p/ COMPRAR.
-    assert R._verdict_from_momentum(75.0, st, "US") == "COMPRAR"
+    # momento 75 + quality 100 → aporte_verdict = COMPRAR FORTE; dado fino NUNCA emite COMPRAR
+    # (f5f8044 + 4585228: o guardrail agora vale nos dois passos) → JUSTO.
+    assert R._verdict_from_momentum(75.0, st, "US") == "JUSTO"
 
 
 def test_verdict_especulativo_falso_vira_justo_com_dado_fino():

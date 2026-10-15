@@ -59,10 +59,11 @@ def test_zero_regressao_us_dado_completo_identico():
     q, bd = S.compute_quality_blend(
         roic=0.20, debt_to_equity=0.4, fcf_yield=0.07, growth_5y=12)
     assert set(bd.keys()) == {"roic_nivel", "safety", "fcf", "crescimento"}
-    # legado (sem market) == US explícito
+    # legado (sem market) segue com os 4 pilares; US explícito conta só os 3 obteníveis (sem crescimento)
     assert S.quality_data_thin(bd) == S.quality_data_thin(bd, market="US") is False
     assert S.quality_data_confidence(bd, q) == S.quality_data_confidence(bd, q, market="US") == "ALTA"
-    assert S.quality_pilares_reais(bd) == S.quality_pilares_reais(bd, market="US") == 4
+    assert S.quality_pilares_reais(bd) == 4
+    assert S.quality_pilares_reais(bd, market="US") == 3
 
 
 def test_zero_regressao_us_so_3_nucleo_sem_growth():

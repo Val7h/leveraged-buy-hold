@@ -76,7 +76,8 @@ def test_survival_all_factors_missing_returns_none():
     s, bd, omits = S.compute_crypto_survival(
         volume_24h=None, market_cap_rank=None, age_years=None, onchain_z=None)
     assert s is None
-    assert bd == {}
+    assert {k: v for k, v in bd.items() if k != "quality_data_thin"} == {}   # só a flag de dado fino
+    assert bd.get("quality_data_thin") is True
     assert set(omits) >= {"liquidez", "marketcap_dominancia", "saude_onchain", "lindy"}
 
 

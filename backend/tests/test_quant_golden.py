@@ -17,8 +17,11 @@ def test_aporte_verdict_thresholds():
     assert S.aporte_verdict(75, 65) == "COMPRAR FORTE"     # momento alto + qualidade boa
     assert S.aporte_verdict(75, 40) == "ESPECULATIVO"      # descontado mas qualidade fraca = faca
     assert S.aporte_verdict(60, 55) == "COMPRAR"
-    assert S.aporte_verdict(45, 80) == "JUSTO"             # boa empresa, hora mediana
-    assert S.aporte_verdict(20, 80) == "ESTICADO"          # sem desconto agora (NÃO exclui)
+    # Q-GATE (ratificado): a qualidade define a FAIXA; o momento move dentro dela.
+    assert S.aporte_verdict(45, 80) == "COMPRAR"           # excelente (≥70) com momento ≥42 não cai de COMPRAR
+    assert S.aporte_verdict(35, 80) == "JUSTO"             # excelente mas esticada → aguardar
+    assert S.aporte_verdict(20, 80) == "JUSTO"             # excelente nunca vira ESTICADO por momento
+    assert S.aporte_verdict(20, 60) == "ESTICADO"          # boa (≥58) sem desconto agora (NÃO exclui)
 
 
 def test_aporte_verdict_two_bands_15b():

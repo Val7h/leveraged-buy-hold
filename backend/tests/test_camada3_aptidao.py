@@ -211,9 +211,10 @@ def test_regime_entra_no_min():
 
 # ─────────────────────────── GATES eliminatórios → 1x ───────────────────────────
 def test_gate_liquidez_zera():
+    # Liquidez GRADUADA (e2388e5): ADV-$ < US$150k → teto 1x (não é mais gate duro; só o gap-extremo é).
     lev, det = S.teto_alavancagem_aptidao(max_dd_pct=-10, sigma_pct=8, beta=0.5,
                                           mult_regime=4, volume=10_000)
-    assert lev == 1.0 and det["binding"] == "GATE" and det["gate_liquidez"] is True
+    assert lev == 1.0 and det["binding"] == "liquidez"
 
 
 def test_sem_volume_nao_veta_por_liquidez():
@@ -251,10 +252,13 @@ def test_gap_risk_nao_extremo_nao_dispara():
 
 # ─────────────────────────── GATE de LIQUIDEZ via ADV-$ (vivo) ───────────────────────────
 def test_gate_liquidez_adv_baixo_veta():
-    # ADV-$ < US$ 5M (micro-cap ilíquida) → veta → 1x à vista.
+    # Liquidez GRADUADA (e2388e5): ADV-$ ≥ US$1M → teto 3x; US$400k → 2x (iliquidez real ainda aperta).
     lev, det = S.teto_alavancagem_aptidao(max_dd_pct=-10, sigma_pct=8, beta=0.5,
                                           mult_regime=4, volume=2_000_000.0)
-    assert lev == 1.0 and det["binding"] == "GATE" and det["gate_liquidez"] is True
+    assert lev == 3.0 and det["binding"] == "liquidez"
+    lev2, det2 = S.teto_alavancagem_aptidao(max_dd_pct=-10, sigma_pct=8, beta=0.5,
+                                            mult_regime=4, volume=400_000.0)
+    assert lev2 == 2.0 and det2["binding"] == "liquidez"
 
 
 def test_gate_liquidez_adv_largecap_passa():

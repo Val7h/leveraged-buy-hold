@@ -64,7 +64,8 @@ def test_fallback_to_chart_api_when_yfinance_empty(monkeypatch):
 def test_period_to_days_mapping():
     assert market_data._PERIOD_DAYS["1y"] == 366
     assert market_data._PERIOD_DAYS["5y"] == 1830
-    assert market_data._PERIOD_DAYS["max"] == 9000
+    assert market_data._PERIOD_DAYS["25y"] == 9150
+    assert market_data._PERIOD_DAYS["max"] == 9200
 
 
 def test_returns_none_when_chart_api_also_fails(monkeypatch):
