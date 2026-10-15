@@ -9,6 +9,10 @@ import Footer from "./Footer";
 import BetaBanner from "@/components/BetaBanner";
 import { Menu } from "lucide-react";
 
+// Rotas que mostram uma prévia para visitante anônimo (isca do ranking: top 3 + CTA).
+// Nelas o 401 de /me NÃO redireciona para /login — a própria página decide o que mostrar.
+const PUBLIC_PREVIEW_PATHS = ["/ranking"];
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, token, fetchMe } = useAuthStore();
   const router = useRouter();
@@ -58,7 +62,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       // infra parecia logout (achado da auditoria 24/09). Nesses casos mantém a
       // shell e as páginas mostram seus próprios erros.
       if (res && res.status === 401) {
-        router.replace("/login");
+        if (!PUBLIC_PREVIEW_PATHS.includes(window.location.pathname)) router.replace("/login");
         return;
       }
       if (!res || !res.ok) return; // transitório: mantém a sessão visual
