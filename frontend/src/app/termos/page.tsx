@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LEGAL_VERSIONS, DPO_EMAIL } from "@/lib/legal/versions";
 
 export const metadata: Metadata = {
-  title: "Termos de Uso | LBH System",
+  title: "Termos de Uso",
   description:
     "Termos de Uso do LBH System: condicoes de uso, limitacao de responsabilidade, modo demo, vedacoes e foro.",
   robots: { index: true, follow: true },

@@ -19,13 +19,11 @@ export interface RetryOptions {
   /** Cap on the backoff window in ms (default 5000). */
   maxMs?: number;
   /** Decide which errors are retryable. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   retryOn?: (err: any) => boolean;
   /** Allows the caller to abort all pending sleeps + future attempts. */
   signal?: AbortSignal;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function defaultRetryOn(err: any): boolean {
   // Caller explicitly aborted — never retry.
   if (err?.name === "AbortError") return false;
@@ -90,7 +88,6 @@ export async function withRetry<T>(
   const retryOn = opts.retryOn ?? defaultRetryOn;
   const signal = opts.signal;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let lastErr: any;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (signal?.aborted) {

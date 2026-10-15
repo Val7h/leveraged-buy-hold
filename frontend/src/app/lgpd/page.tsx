@@ -3,7 +3,7 @@ import { LEGAL_VERSIONS, DPO_EMAIL } from "@/lib/legal/versions";
 import LgpdRequestForm from "./LgpdRequestForm";
 
 export const metadata: Metadata = {
-  title: "Direitos do Titular (LGPD) | LBH System",
+  title: "Direitos do Titular (LGPD)",
   description:
     "Canal oficial para exercicio dos direitos do titular previstos no Art. 18 da LGPD: acesso, correcao, eliminacao, portabilidade e revogacao.",
   robots: { index: true, follow: true },

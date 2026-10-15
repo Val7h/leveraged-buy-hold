@@ -127,9 +127,9 @@ function PriceTradeChart({
   ticker = "Ativo",
   height = 320,
 }: PriceTradeChartProps) {
-  if (!priceData || priceData.length === 0) return null;
 
   const memoizedData = useMemo(() => {
+    if (!priceData || priceData.length === 0) return null;
     // Build trade map (date → trade)
     const tradeMap = new Map(trades.map((t) => [t.date, t]));
 
@@ -146,6 +146,8 @@ function PriceTradeChart({
 
     return { chartData, presentTypes };
   }, [priceData, trades]);
+
+  if (!memoizedData) return null;
 
   return (
     <div className="card">

@@ -560,7 +560,7 @@ export default function WatchlistPage() {
                         {item.note && (
                           <span className="inline-flex items-center gap-1 text-text-secondary bg-surface-2 border border-border rounded-lg px-2 py-0.5 max-w-[55%] truncate">
                             <StickyNote size={10} className="text-primary flex-shrink-0" />
-                            <span className="truncate italic">"{item.note}"</span>
+                            <span className="truncate italic">&ldquo;{item.note}&rdquo;</span>
                           </span>
                         )}
 

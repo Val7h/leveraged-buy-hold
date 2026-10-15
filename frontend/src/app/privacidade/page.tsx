@@ -3,7 +3,7 @@ import Link from "next/link";
 import { LEGAL_VERSIONS, DPO_EMAIL, CONTROLLER_NAME } from "@/lib/legal/versions";
 
 export const metadata: Metadata = {
-  title: "Politica de Privacidade | LBH System",
+  title: "Politica de Privacidade",
   description:
     "Politica de Privacidade do LBH System em conformidade com a LGPD (Lei 13.709/2018): controlador, encarregado, finalidades, bases legais e direitos do titular.",
   robots: { index: true, follow: true },

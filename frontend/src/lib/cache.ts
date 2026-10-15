@@ -25,10 +25,8 @@ export interface CacheStore {
 // ────────────────────────────────────────────────────────────────────────────────
 class UpstashStore implements CacheStore {
   // Lazy-loaded so the import does not crash dev installs without the dep yet.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private clientPromise: Promise<any> | null = null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async client(): Promise<any> {
     if (!this.clientPromise) {
       this.clientPromise = (async () => {

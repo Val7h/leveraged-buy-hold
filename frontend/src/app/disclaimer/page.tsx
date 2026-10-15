@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LEGAL_VERSIONS } from "@/lib/legal/versions";
 
 export const metadata: Metadata = {
-  title: "Disclaimer CVM | LBH System",
+  title: "Disclaimer CVM",
   description:
     "Aviso legal: o LBH System nao constitui recomendacao de investimento, oferta, analise de valores mobiliarios ou consultoria. Material meramente educacional.",
   robots: { index: true, follow: true },

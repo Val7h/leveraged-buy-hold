@@ -18,9 +18,9 @@ interface DrawdownChartProps {
 }
 
 function DrawdownChart({ data, height = 220 }: DrawdownChartProps) {
-  if (!data || Object.keys(data).length === 0) return null;
 
   const memoizedData = useMemo(() => {
+    if (!data || Object.keys(data).length === 0) return null;
     const strategies = Object.keys(data);
     const allDates = [...new Set(strategies.flatMap((s) => (data[s] || []).map((d) => d.date)))].sort();
     const merged = allDates.map((date) => {
@@ -34,6 +34,8 @@ function DrawdownChart({ data, height = 220 }: DrawdownChartProps) {
 
     return merged.filter((_, i) => i % 15 === 0 || i === merged.length - 1);
   }, [data]);
+
+  if (!memoizedData) return null;
 
   const strategies = Object.keys(data);
 

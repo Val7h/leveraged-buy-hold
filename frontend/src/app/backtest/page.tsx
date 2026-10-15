@@ -460,7 +460,7 @@ export default function BacktestPage() {
                   return (
                     <div>
                       <p className="text-xs font-semibold text-text-secondary mb-2">
-                        Projeção: "Se você sobreviver X anos com CAGR líquido de {cagr.toFixed(1)}%"
+                        Projeção: &ldquo;Se você sobreviver X anos com CAGR líquido de {cagr.toFixed(1)}%&rdquo;
                       </p>
                       <p className="text-[10px] text-text-muted mb-3">
                         Capital inicial + aportes mensais. Sobreviver (não liquidar) é condição necessária — não é garantia de retorno.

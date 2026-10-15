@@ -21,9 +21,9 @@ interface LeverageChartProps {
 }
 
 function LeverageChart({ data, height = 200, title = "Alavancagem ao Longo do Tempo" }: LeverageChartProps) {
-  if (!data?.length) return null;
 
   const memoizedData = useMemo(() => {
+    if (!data?.length) return null;
     const formatted = data.map((d) => ({
       label: d.date ? d.date.slice(0, 7) : `Ano ${d.year?.toFixed(0)}`,
       leverage: d.leverage,
@@ -32,6 +32,8 @@ function LeverageChart({ data, height = 200, title = "Alavancagem ao Longo do Te
       (_, i) => i % Math.max(1, Math.floor(formatted.length / 60)) === 0
     );
   }, [data]);
+
+  if (!memoizedData) return null;
 
   return (
     <div className="card">

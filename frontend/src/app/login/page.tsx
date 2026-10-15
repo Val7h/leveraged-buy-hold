@@ -101,7 +101,7 @@ export default function LoginPage() {
   // Quem quiser testar sem se cadastrar usa email/senha quaisquer ja persistidos.
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div role="main" className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
 
         {/* Logo */}
@@ -110,7 +110,7 @@ export default function LoginPage() {
             <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
               <span className="text-primary font-bold text-lg">L</span>
             </div>
-            <span className="text-xl font-semibold text-text-primary">LBH System</span>
+            <h1 className="text-xl font-semibold text-text-primary">LBH System</h1>
           </div>
           <p className="text-text-secondary text-sm">Simulador educacional de Buy &amp; Hold Alavancado Adaptativo</p>
           <p className="text-[10px] text-text-muted/70 mt-1">Conteúdo educacional. Não constitui recomendação de investimento. CVM Of-Circ 04/2023.</p>
@@ -122,6 +122,8 @@ export default function LoginPage() {
             {(["login", "register"] as const).map((t) => (
               <button
                 key={t}
+                type="button"
+                aria-pressed={tab === t}
                 onClick={() => { setTab(t); setError(""); }}
                 className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
                   tab === t ? "bg-surface text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"
@@ -135,8 +137,10 @@ export default function LoginPage() {
           <form onSubmit={tab === "login" ? handleLogin : handleRegister} className="space-y-4">
             {tab === "register" && (
               <div>
-                <label className="label">Nome completo</label>
+                <label className="label" htmlFor="lbh-name">Nome completo</label>
                 <input
+                  id="lbh-name"
+                  autoComplete="name"
                   className="input"
                   type="text"
                   value={name}
@@ -146,8 +150,10 @@ export default function LoginPage() {
               </div>
             )}
             <div>
-              <label className="label">Email</label>
+              <label className="label" htmlFor="lbh-email">Email</label>
               <input
+                id="lbh-email"
+                autoComplete="email"
                 className="input"
                 type="email"
                 value={email}
@@ -158,7 +164,7 @@ export default function LoginPage() {
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="label mb-0">Senha</label>
+                <label className="label mb-0" htmlFor="lbh-password">Senha</label>
                 {tab === "login" && (
                   <Link
                     href="/forgot-password"
@@ -169,6 +175,8 @@ export default function LoginPage() {
                 )}
               </div>
               <input
+                id="lbh-password"
+                autoComplete={tab === "register" ? "new-password" : "current-password"}
                 className="input"
                 type="password"
                 value={password}

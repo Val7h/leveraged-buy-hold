@@ -29,13 +29,13 @@ import {
 // calculateRSI
 // ──────────────────────────────────────────────────────────────────
 describe('calculateRSI', () => {
-  it('retorna 50 (neutro) com array vazio', () => {
-    expect(calculateRSI([])).toBe(50);
+  it('retorna null (sem dado) com array vazio', () => {
+    expect(calculateRSI([])).toBeNull();
   });
 
-  it('retorna 50 quando prices.length < period + 1', () => {
+  it('retorna null quando prices.length < period + 1', () => {
     // period default = 14, precisa de pelo menos 15 elementos.
-    expect(calculateRSI([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])).toBe(50);
+    expect(calculateRSI([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])).toBeNull();
   });
 
   it('retorna 100 quando todos os movimentos sao de alta (avgLoss = 0)', () => {
@@ -72,12 +72,12 @@ describe('calculateRSI', () => {
 // calculateVol
 // ──────────────────────────────────────────────────────────────────
 describe('calculateVol', () => {
-  it('retorna 0 com array de 1 elemento', () => {
-    expect(calculateVol([100])).toBe(0);
+  it('retorna null com array de 1 elemento (amostra insuficiente)', () => {
+    expect(calculateVol([100])).toBeNull();
   });
 
-  it('retorna 0 com array vazio', () => {
-    expect(calculateVol([])).toBe(0);
+  it('retorna null com array vazio', () => {
+    expect(calculateVol([])).toBeNull();
   });
 
   it('retorna 0 com sequencia constante (sem variacao)', () => {
@@ -148,16 +148,17 @@ describe('calculateScores', () => {
     expect(s.entry_signal).toBe('DESFAVORÁVEL');
   });
 
-  it('kelly.kelly_half clampado em [0.8, 2.0]', () => {
+  it('kelly_half nunca negativo e igual ao dobro do kelly_quarter', () => {
     const s = calculateScores(baseQuote);
-    expect(s.kelly.kelly_half).toBeGreaterThanOrEqual(0.8);
-    expect(s.kelly.kelly_half).toBeLessThanOrEqual(2.0);
+    expect(s.kelly.kelly_half).toBeGreaterThanOrEqual(0);
+    expect(s.kelly.kelly_half).toBeLessThanOrEqual(1);
+    expect(s.kelly.kelly_half).toBeCloseTo(2 * s.kelly.kelly_quarter, 2);
   });
 
-  it('kelly.kelly_quarter clampado em [0.5, 1.5]', () => {
+  it('kelly_quarter nunca negativo', () => {
     const s = calculateScores(baseQuote);
-    expect(s.kelly.kelly_quarter).toBeGreaterThanOrEqual(0.5);
-    expect(s.kelly.kelly_quarter).toBeLessThanOrEqual(1.5);
+    expect(s.kelly.kelly_quarter).toBeGreaterThanOrEqual(0);
+    expect(s.kelly.kelly_quarter).toBeLessThanOrEqual(0.5);
   });
 
   it('expõe confidence_score como alias de win_rate (rename gradual)', () => {
@@ -167,10 +168,10 @@ describe('calculateScores', () => {
     expect(s.kelly.confidence_score).toBeLessThanOrEqual(100);
   });
 
-  it('recommended_leverage clampado em [1.2, 2.5]', () => {
+  it('recommended_leverage clampado em [1.0, 3.0]', () => {
     const s = calculateScores(baseQuote);
-    expect(s.recommended_leverage).toBeGreaterThanOrEqual(1.2);
-    expect(s.recommended_leverage).toBeLessThanOrEqual(2.5);
+    expect(s.recommended_leverage).toBeGreaterThanOrEqual(1.0);
+    expect(s.recommended_leverage).toBeLessThanOrEqual(3.0);
   });
 
   it('max_recommended_leverage <= 3.0', () => {
@@ -178,9 +179,16 @@ describe('calculateScores', () => {
     expect(s.max_recommended_leverage).toBeLessThanOrEqual(3.0);
   });
 
-  it('risk_rating ELEVADO quando vol > 30%', () => {
-    const s = calculateScores({ ...baseQuote, realized_vol_30d: 35 });
+  it('risk_rating ELEVADO quando vol*0.6 + beta*12 > 36 (com beta real)', () => {
+    const s = calculateScores({ ...baseQuote, realized_vol_30d: 45 });
     expect(s.risk_rating).toBe('ELEVADO');
+    expect(s.risk_rating_is_heuristic).toBe(false);
+  });
+
+  it('risk_rating cai no fallback heuristico por vol (> 30% = ELEVADO) sem beta', () => {
+    const s = calculateScores({ ...baseQuote, beta: null, realized_vol_30d: 35 });
+    expect(s.risk_rating).toBe('ELEVADO');
+    expect(s.risk_rating_is_heuristic).toBe(true);
   });
 
   it('risk_rating BAIXO quando vol <= 20%', () => {

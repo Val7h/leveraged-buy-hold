@@ -19,9 +19,9 @@ interface MonteCarloChartProps {
 }
 
 function MonteCarloChart({ scenarios, height = 360 }: MonteCarloChartProps) {
-  if (!scenarios?.length) return null;
 
   const memoizedData = useMemo(() => {
+    if (!scenarios?.length) return null;
     const SCENARIO_CONFIG: Record<string, { color: string; label: string; opacity: number }> = {
       p5: { color: "#FF3B3B", label: "Pessimista (P5)", opacity: 0.15 },
       p25: { color: "#FFB800", label: "Conservador (P25)", opacity: 0.15 },
@@ -53,6 +53,8 @@ function MonteCarloChart({ scenarios, height = 360 }: MonteCarloChartProps) {
 
     return { merged, scenarioMap };
   }, [scenarios]);
+
+  if (!memoizedData) return null;
 
   return (
     <div className="card">
