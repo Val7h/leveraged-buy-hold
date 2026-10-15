@@ -58,3 +58,4 @@ cache/
 !backend/app/cache/
 !backend/app/cache/**
 frontend;C/
+backend/app/data/screen_assets_cache.json
