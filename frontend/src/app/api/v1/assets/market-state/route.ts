@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getQuote } from "@/lib/yfinance";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const spy = await getQuote("SPY");
 

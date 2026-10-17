@@ -57,7 +57,7 @@ function ScoreGauge({ score, label, size = "md", showValue = true }: ScoreGaugeP
             textAnchor="middle"
             fill={color}
             fontSize={fontSize}
-            fontFamily="JetBrains Mono, monospace"
+            fontFamily="var(--font-jetbrains), JetBrains Mono, monospace"
             fontWeight="600"
           >
             {Math.round(pct)}

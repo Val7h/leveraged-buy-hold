@@ -739,7 +739,7 @@ export default function PortfolioIntelligence({ analytics }: { analytics: Analyt
                     <div className="absolute inset-y-0 w-0.5 bg-text-primary/70" style={{ left: `${Math.min(target, 100)}%` }} title={`alvo ${target}%`} />
                   )}
                 </div>
-                <div className="w-44 shrink-0 text-right text-xs">
+                <div className="w-36 sm:w-44 shrink-0 text-right text-xs">
                   <span className="font-mono text-text-primary">{fmt(real, "%", 0)}</span>
                   {target != null && <span className="text-text-muted"> / {fmt(target, "%", 0)}</span>}
                   {b.drift != null && (

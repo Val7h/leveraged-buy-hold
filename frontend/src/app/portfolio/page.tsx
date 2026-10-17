@@ -550,12 +550,12 @@ function PortfolioPageInner() {
 
         {/* Contribution suggestions */}
         <div className="card">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
               <Lightbulb size={15} className="text-warning" />
               Sugestões de Aporte
             </h2>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center flex-wrap gap-3">
               <div className="flex items-center gap-2">
                 <label className="text-xs text-text-muted">Capital disponível:</label>
                 <input type="number" className="input w-28 text-xs font-mono" value={capital} onChange={(e) => setCapital(Number(e.target.value))} min={100} step={100} />

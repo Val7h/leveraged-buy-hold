@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import CookieBanner from "@/components/legal/CookieBanner";
 
@@ -10,6 +11,10 @@ import CookieBanner from "@/components/legal/CookieBanner";
 // contexto de request, e os scripts saem sem nonce → CSP bloqueia →
 // React nunca hidrata → spinner "Verificando sessao..." eterno.
 export const dynamic = "force-dynamic";
+
+// next/font baixa as fontes no build e serve do próprio domínio (compatível com a CSP estrita).
+const inter = Inter({ subsets: ["latin"], weight: ["300", "400", "500", "600", "700"], display: "swap", variable: "--font-inter" });
+const jetbrains = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], display: "swap", variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
   title: { default: "LBH System — Buy & Hold Alavancado Adaptativo", template: "%s | LBH System" },
@@ -48,7 +53,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
+    <html lang="pt-BR" className={`${inter.variable} ${jetbrains.variable}`} suppressHydrationWarning>
       <body className="bg-background text-text-primary antialiased">
         {children}
         <CookieBanner />

@@ -59,3 +59,4 @@ cache/
 !backend/app/cache/**
 frontend;C/
 backend/app/data/screen_assets_cache.json
+backend/app/data/ranking_cache.json
