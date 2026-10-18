@@ -28,10 +28,11 @@ export const DPO_EMAIL = "dpo@lbh-system.com.br";
 
 // Identidade legal REAL (Decreto 7.962/2013 exige razao social, CNPJ, endereco
 // e contato em comercio eletronico). Dados conferidos na Receita (consulta
-// publica) em 29/06/2026; cofre juridico do dono é a fonte.
+// publica) em 29/06/2026; endereco atualizado em 18/10/2026 pelo comprovante de
+// inscricao da Receita (Valth); cofre juridico do dono é a fonte.
 export const CONTROLLER_NAME =
   "RENATA ESTRELA SILVA GUIMARAES (Lemon Tech) — CNPJ 47.918.130/0001-71";
 export const CONTROLLER_CNPJ = "47.918.130/0001-71";
 export const CONTROLLER_TRADE_NAME = "Lemon Tech";
 export const CONTROLLER_ADDRESS =
-  "Av. Elpidio de Almeida, 1077, Sala 04 — Catole, Campina Grande/PB, CEP 58410-215";
+  "R. Fernandes Vieira, 1394, Casa A Lote 4 — Mirante, Campina Grande/PB, CEP 58407-573";
