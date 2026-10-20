@@ -92,8 +92,8 @@ Após sprint de correção:
 - Token: `rnd_h6Nakrt15pVwkog48pZkpYHJug1z`
 
 ### Supabase (pooler us-east-2)
-- DATABASE_URL: `postgresql://postgres.cvlrelzztgucqdhdykyo:MGNlQ1u9ondyHY29@aws-1-us-east-2.pooler.supabase.com:6543/postgres?pgbouncer=true&connect_timeout=15`
-- DIRECT_DATABASE_URL (session mode porta 5432): `postgresql://postgres.cvlrelzztgucqdhdykyo:MGNlQ1u9ondyHY29@aws-1-us-east-2.pooler.supabase.com:5432/postgres`
+- DATABASE_URL: `postgresql://postgres.cvlrelzztgucqdhdykyo:<SENHA-REMOVIDA>@aws-1-us-east-2.pooler.supabase.com:6543/postgres?pgbouncer=true&connect_timeout=15`
+- DIRECT_DATABASE_URL (session mode porta 5432): `postgresql://postgres.cvlrelzztgucqdhdykyo:<SENHA-REMOVIDA>@aws-1-us-east-2.pooler.supabase.com:5432/postgres`
 
 ### Env vars setadas no Render
 - DATABASE_URL, DIRECT_DATABASE_URL (Supabase)
